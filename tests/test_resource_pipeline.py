@@ -1,0 +1,616 @@
+import hashlib
+import json
+import tempfile
+import unittest
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import Mock
+
+from youtube_pipeline.cli import main
+from youtube_pipeline.resource_pipeline import MINIMAX_PROFILE, ResourcePackPipeline
+from youtube_pipeline.resource_provider import AIResourceProvider, DemoResourceProvider
+from youtube_pipeline.resource_cli import build_resource_parser
+from youtube_pipeline.resource_prompts import vietnamese_translation_prompt
+from youtube_pipeline.resource_validation import unsupported_source_claims, validate_plan
+from youtube_pipeline.sections import insert_pause_tags, strip_minimax_tags
+
+
+class ResourcePackPipelineTests(unittest.TestCase):
+    class RevisingDemoProvider(DemoResourceProvider):
+        def __init__(self):
+            self.received_review = None
+
+        def review_script(self, contract, plan, source_pack, draft, competitor_context=""):
+            # Schema rule v9 (PHẦN 1–5): Gemini trả bản tái cấu trúc hoàn chỉnh.
+            return {
+                "decision": "revise",
+                "optimization_report": "一か所を修正する。",
+                "score_report": {
+                    "retention_impact": 7,
+                    "style_tone": 8,
+                    "pacing_structure": 7,
+                    "total": 73,
+                    "drop_off_points": [],
+                },
+                "restructure_map": [
+                    {"original": "最後の文", "new": "簡潔な文", "reason": "重複表現"}
+                ],
+                "cut_list": [],
+                "revised_draft_clean": draft,
+                "revised_draft_vi": "",
+                "tts_tag_anchors": [],
+                "title_thumbnail_advisory": {"note": "Giữ nguyên title/thumbnail trong contract."},
+                "issues": ["表現が重複している"],
+                "required_changes": ["最後の文だけ簡潔にする"],
+                "char_report": {
+                    "chars": len(draft),
+                    "method": "manual_block_count_demo",
+                    "target_min_chars": 8 * 389,
+                    "status": "ok",
+                    "shortfall": 0,
+                },
+            }
+
+        def apply_review(self, contract, plan, source_pack, draft, review):
+            self.received_review = review
+            return draft
+
+    def test_provider_routes_generation_to_deepseek(self):
+        provider = AIResourceProvider.__new__(AIResourceProvider)
+        provider.settings = SimpleNamespace(
+            gemini_review_model="gemini-review",
+            gemini_audit_model="gemini-audit",
+        )
+        provider._gemini_json = Mock(return_value={})
+        provider._deepseek_json = Mock(return_value={})
+
+        provider.create_contract("topic", {}, {})
+        provider.create_plan({}, {})
+        provider.repair_script({}, {}, {}, "script", {})
+        provider.create_thumbnail({}, "script")
+        provider.create_image_strategy({}, {}, {})
+        provider.create_image_prompts(
+            {
+                "visual_beats": [
+                    {
+                        "id": "B01",
+                        "image_id": "IMG-01",
+                        "new_image": True,
+                        "visual_information": "scene",
+                    }
+                ]
+            },
+            {},
+        )
+        provider.create_publish_draft({}, {})
+
+        self.assertEqual(provider._deepseek_json.call_count, 7)
+        provider._gemini_json.assert_not_called()
+
+    def test_provider_keeps_research_and_review_on_gemini(self):
+        provider = AIResourceProvider.__new__(AIResourceProvider)
+        provider.settings = SimpleNamespace(
+            gemini_review_model="gemini-review",
+            gemini_audit_model="gemini-audit",
+        )
+        provider._gemini_json = Mock(return_value={})
+        provider._deepseek_json = Mock(return_value={})
+
+        provider.research_topics({}, {})
+        provider.create_topic_candidates({}, {}, {})
+        provider.select_topic({}, {}, {})
+        provider.lock_source("topic", {}, {})
+        provider.review_script({}, {}, {}, "draft")
+        provider.audit_script("gemini", {}, {}, {}, "script")
+
+        self.assertEqual(provider._gemini_json.call_count, 6)
+        provider._deepseek_json.assert_not_called()
+
+    def test_deepseek_revision_reconstructs_writer_conversation(self):
+        provider = AIResourceProvider.__new__(AIResourceProvider)
+        provider.settings = SimpleNamespace(deepseek_model="deepseek-writer")
+        provider._deepseek_text_messages = Mock(return_value="修正版")
+        review = {
+            "decision": "revise",
+            "optimization_report": "要修正",
+            "issues": ["重複"],
+            "required_changes": ["重複を削除"],
+        }
+
+        result = provider.apply_review({}, {}, {}, "元の草稿", review)
+
+        self.assertEqual(result, "修正版")
+        messages = provider._deepseek_text_messages.call_args.args[2]
+        self.assertEqual([item["role"] for item in messages], ["user", "assistant", "user"])
+        self.assertEqual(messages[1]["content"], "元の草稿")
+        self.assertIn("GEMINI REVIEW", messages[2]["content"])
+        self.assertIn("重複を削除", messages[2]["content"])
+
+    def test_source_boundary_rejects_unsourced_neuroscience_plan(self):
+        source = {
+            "source_concept": "課題の分離",
+            "editorial_application": "職場で境界線を引く",
+            "allowed_paraphrases": ["相手の機嫌は相手自身の課題である"],
+            "verified_sources": [],
+        }
+        plan = {
+            "retention_blueprint": [],
+            "sections": [
+                {
+                    "id": "S%d" % index,
+                    "new_information": "脳は危険信号として処理する" if index == 1 else "境界線",
+                    "state_advance": "before -> after",
+                    "so_what_next": "next",
+                    "segment_function": "recognition",
+                }
+                for index in range(1, 7)
+            ],
+            "hook_draft": "hook",
+            "planning_quality_gate": {
+                "first_insight_before_35s": True,
+                "first_major_payoff_before_5m": True,
+                "no_duplicate_sections": True,
+                "every_section_advances_state": True,
+            },
+        }
+        self.assertIn("脳は", unsupported_source_claims("脳は危険信号として処理する", source))
+        with self.assertRaises(ValueError):
+            validate_plan(plan, source)
+
+    def test_resource_cli_has_no_topic_override(self):
+        with self.assertRaises(SystemExit):
+            build_resource_parser().parse_args(["--demo", "--topic", "manual topic"])
+
+    def _run(self, root: Path):
+        pipeline = ResourcePackPipeline(
+            DemoResourceProvider(),
+            root,
+            max_retries=1,
+            retry_delay=0,
+            progress=lambda _message: None,
+        )
+        state = pipeline.create_state(
+            json.dumps({"schema_version": 2, "videos": {}}, ensure_ascii=False),
+            run_id="test-resource",
+        )
+        return pipeline, pipeline.run(state)
+
+    def test_resource_pack_writes_complete_manual_bundle(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            _pipeline, state = self._run(root)
+            self.assertEqual(state.status, "complete")
+            required = (
+                "resource_manifest.json",
+                "script/script.txt",
+                "script/sections.json",
+                "script/minimax-prompt.txt",
+                "thumbnail/thumbnail-prompt.txt",
+                "visuals/storyboard.json",
+                "visuals/prompts/prompts-ALL.txt",
+                "qa/manual-production-checklist.md",
+            )
+            for relative in required:
+                self.assertTrue((root / relative).exists(), relative)
+            self.assertTrue((root / "research/topic-research.json").exists())
+            self.assertTrue((root / "research/topic-candidates.json").exists())
+            self.assertTrue((root / "research/topic-selection.json").exists())
+            manifest = json.loads((root / "resource_manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual(manifest["topic"], "返信を後回しにしたあとの罪悪感")
+            self.assertEqual(manifest["minimax_tts_profile"]["speed"], 1.02)
+            self.assertEqual(manifest["minimax_tts_profile"]["pitch"], -1)
+            self.assertEqual(manifest["minimax_tts_profile"]["volume"], 1.02)
+            self.assertFalse(manifest.get("final_video"))
+            self.assertFalse(list((root / "visuals/prompts").glob("prompts-batch-*.txt")))
+            state_payload = json.loads((root / "run_state.json").read_text(encoding="utf-8"))
+            self.assertFalse(
+                any(name.startswith("image_prompts_batch_") for name in state_payload["artifact_index"])
+            )
+
+    def test_translate_script_vi_stage_writes_vietnamese_artifact(self):
+        # Flow mới: sau khi script final chốt → dịch sang tiếng Việt cho quản lý kênh đọc duyệt.
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            _pipeline, state = self._run(root)
+            self.assertEqual(state.status, "complete")
+            vi_file = root / "script/script-vi.txt"
+            self.assertTrue(vi_file.exists())
+            content = vi_file.read_text(encoding="utf-8")
+            self.assertIn("Bản dịch tiếng Việt", content)
+            state_payload = json.loads((root / "run_state.json").read_text(encoding="utf-8"))
+            self.assertIn("script_vi", state_payload["artifact_index"])
+            self.assertEqual(
+                state_payload["artifact_index"]["script_vi"]["path"], "script/script-vi.txt"
+            )
+
+    def test_vietnamese_translation_prompt_keeps_japanese_terms(self):
+        # Prompt dịch phải yêu cầu giữ nguyên tên người/sách/thuật ngữ tiếng Nhật
+        # (bản dịch chỉ để đọc hiểu — không thay thế script.txt, không dùng cho TTS).
+        prompt = vietnamese_translation_prompt("岸見一郎の『嫌われる勇気』に基づく内容です。")
+        self.assertIn("岸見一郎", prompt)
+        self.assertIn("KỊCH BẢN GỐC", prompt)
+        self.assertIn("KHÔNG thêm ý", prompt)
+        self.assertIn("KHÔNG dùng cho TTS", prompt)
+
+    def test_sections_fallback_when_tts_ready_drifts_from_final_script(self):
+        # Gemini trả tts_ready khớp revised (qua _review gate), nhưng DeepSeek hoàn
+        # thiện thêm nội dung → tts_ready lệch final_script → chèn tag deterministic.
+        class DriftingTtsProvider(DemoResourceProvider):
+            def review_script(self, contract, plan, source_pack, draft, competitor_context=""):
+                result = super().review_script(contract, plan, source_pack, draft)
+                result["decision"] = "revise"
+                result["required_changes"] = ["Thêm một kết luận."]
+                result["tts_ready"] = "<#1.5#>" + draft  # strip vẫn == revised
+                return result
+
+            def apply_review(self, contract, plan, source_pack, draft, review):
+                return draft + "最後に一句。\n"
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            pipeline = ResourcePackPipeline(
+                DriftingTtsProvider(), root, max_retries=1, retry_delay=0,
+                progress=lambda _message: None,
+            )
+            state = pipeline.create_state(
+                json.dumps({"schema_version": 2, "videos": {}}), run_id="tts-drift"
+            )
+            completed = pipeline.run(state)
+            self.assertEqual(completed.status, "complete")
+            script = (root / "script/script.txt").read_text(encoding="utf-8")
+            prompt = (root / "script/minimax-prompt.txt").read_text(encoding="utf-8")
+            self.assertEqual(strip_minimax_tags(prompt), script)
+            sections = json.loads((root / "script/sections.json").read_text(encoding="utf-8"))
+            self.assertEqual(sections["pause_policy"]["minimax_prompt_source"], "deterministic_sections")
+            self.assertEqual(sections["pause_policy"]["syntax"], "<#x#>")
+            self.assertTrue(any("tts_ready" in warning for warning in state.stage_records["post_script_assets"].warnings))
+
+    def test_sections_uses_tts_ready_built_from_anchors(self):
+        # Schema v7 mới: Gemini trả tag ANCHORS (vị trí), pipeline tự chèn <#x#>
+        # bằng code → strip(tags) == script bảo đảm đúng, không thể drift.
+        class AnchoredReviewProvider(DemoResourceProvider):
+            def review_script(self, contract, plan, source_pack, draft, competitor_context=""):
+                result = super().review_script(contract, plan, source_pack, draft)
+                result["tts_tag_anchors"] = [
+                    {"anchor": "通知を見た瞬間、返事をしなければと思うのに、指が止まってしまう夜があります。", "tag": "<#1.5#>"}
+                ]
+                return result
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            pipeline = ResourcePackPipeline(
+                AnchoredReviewProvider(), root, max_retries=1, retry_delay=0,
+                progress=lambda _message: None,
+            )
+            state = pipeline.create_state(
+                json.dumps({"schema_version": 2, "videos": {}}), run_id="anchored"
+            )
+            completed = pipeline.run(state)
+            self.assertEqual(completed.status, "complete")
+            prompt = (root / "script/minimax-prompt.txt").read_text(encoding="utf-8")
+            script = (root / "script/script.txt").read_text(encoding="utf-8")
+            self.assertEqual(strip_minimax_tags(prompt), script)
+            self.assertIn("<#1.5#>", prompt)  # tag do pipeline chèn từ anchor
+            sections = json.loads((root / "script/sections.json").read_text(encoding="utf-8"))
+            self.assertEqual(sections["pause_policy"]["minimax_prompt_source"], "review_tts_ready")
+
+    def test_sections_fallback_when_anchors_do_not_resolve(self):
+        # Anchor Gemini trả không tồn tại trong revised → bỏ tts_ready, pipeline
+        # chèn tag deterministic — run không chết vì v7 nữa.
+        class BadAnchorProvider(DemoResourceProvider):
+            def review_script(self, contract, plan, source_pack, draft, competitor_context=""):
+                result = super().review_script(contract, plan, source_pack, draft)
+                result["tts_tag_anchors"] = [
+                    {"anchor": "存在しないアンカー文字列", "tag": "<#1.5#>"}
+                ]
+                return result
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            pipeline = ResourcePackPipeline(
+                BadAnchorProvider(), root, max_retries=1, retry_delay=0,
+                progress=lambda _message: None,
+            )
+            state = pipeline.create_state(
+                json.dumps({"schema_version": 2, "videos": {}}), run_id="bad-anchor"
+            )
+            completed = pipeline.run(state)
+            self.assertEqual(completed.status, "complete")
+            script = (root / "script/script.txt").read_text(encoding="utf-8")
+            prompt = (root / "script/minimax-prompt.txt").read_text(encoding="utf-8")
+            self.assertEqual(strip_minimax_tags(prompt), script)
+            sections = json.loads((root / "script/sections.json").read_text(encoding="utf-8"))
+            self.assertEqual(sections["pause_policy"]["minimax_prompt_source"], "deterministic_sections")
+
+    def test_review_findings_return_to_deepseek_and_session_is_persisted(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            provider = self.RevisingDemoProvider()
+            pipeline = ResourcePackPipeline(provider, root, max_retries=1, retry_delay=0, progress=lambda _message: None)
+            state = pipeline.create_state(json.dumps({"schema_version": 2, "videos": {}}), run_id="review-session")
+            completed = pipeline.run(state)
+
+            self.assertEqual(completed.status, "complete")
+            self.assertEqual(provider.received_review["decision"], "revise")
+            report = json.loads((root / "script/review-report.json").read_text(encoding="utf-8"))
+            self.assertNotIn("final_script", report)
+            session = json.loads((root / "script/writer-session.json").read_text(encoding="utf-8"))
+            self.assertEqual(session["strategy"], "persisted_transcript")
+            self.assertEqual([turn["role"] for turn in session["turns"]], ["deepseek", "gemini", "deepseek"])
+            self.assertEqual(session["turns"][2]["type"], "revision")
+
+    def test_review_coerces_drifted_score_report_values(self):
+        # Regression: Gemini hay trả điểm dạng string/null/thang khác. Điểm chỉ là
+        # informational — coerce, không chết run (từng fail 3 lần retry vì điều này).
+        class DriftedScoreProvider(DemoResourceProvider):
+            def review_script(self, contract, plan, source_pack, draft, competitor_context=""):
+                return {
+                    "decision": "pass",
+                    "optimization_report": "問題なし。",
+                    "score_report": {
+                        "retention_impact": "7",
+                        "style_tone": None,
+                        "pacing_structure": 85,
+                        "total": 73,
+                        "drop_off_points": [],
+                    },
+                    "issues": [],
+                    "required_changes": [],
+                    "revised_draft_clean": draft,
+                    "tts_tag_anchors": [],
+                    "char_report": {"target_min_chars": 0, "shortfall": 0},
+                }
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            pipeline = ResourcePackPipeline(DriftedScoreProvider(), root, max_retries=1, retry_delay=0, progress=lambda _message: None)
+            state = pipeline.create_state(json.dumps({"schema_version": 2, "videos": {}}), run_id="review-score-drift")
+            completed = pipeline.run(state)
+            self.assertEqual(completed.status, "complete")
+            report = json.loads((root / "script/review-report.json").read_text(encoding="utf-8"))
+            score = report["score_report"]
+            self.assertEqual(score["retention_impact"], 7.0)
+            self.assertEqual(score["style_tone"], 0.0)
+            self.assertEqual(score["pacing_structure"], 10.0)
+
+    def test_review_revise_with_empty_required_changes_uses_issues(self):
+        class IssuesOnlyProvider(DemoResourceProvider):
+            def review_script(self, contract, plan, source_pack, draft, competitor_context=""):
+                return {
+                    "decision": "revise",
+                    "optimization_report": "一か所修正する。",
+                    "score_report": {"retention_impact": 7, "style_tone": 8, "pacing_structure": 7, "drop_off_points": []},
+                    "issues": ["最後の文が重複している"],
+                    "required_changes": [],
+                    "revised_draft_clean": draft,
+                    "tts_tag_anchors": [],
+                    "char_report": {"target_min_chars": 0, "shortfall": 0},
+                }
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            pipeline = ResourcePackPipeline(IssuesOnlyProvider(), root, max_retries=1, retry_delay=0, progress=lambda _message: None)
+            state = pipeline.create_state(json.dumps({"schema_version": 2, "videos": {}}), run_id="review-issues-fallback")
+            completed = pipeline.run(state)
+            self.assertEqual(completed.status, "complete")
+            report = json.loads((root / "script/review-report.json").read_text(encoding="utf-8"))
+            self.assertEqual(report["decision"], "revise")
+            self.assertEqual(report["required_changes"], ["最後の文が重複している"])
+
+    def test_review_revise_with_no_instructions_downgrades_to_pass(self):
+        class EmptyReviseProvider(DemoResourceProvider):
+            def review_script(self, contract, plan, source_pack, draft, competitor_context=""):
+                return {
+                    "decision": "revise",
+                    "optimization_report": "要修正。",
+                    "score_report": {"retention_impact": 7, "style_tone": 8, "pacing_structure": 7, "drop_off_points": []},
+                    "issues": [],
+                    "required_changes": [],
+                    "revised_draft_clean": draft,
+                    "tts_tag_anchors": [],
+                    "char_report": {"target_min_chars": 0, "shortfall": 0},
+                }
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            pipeline = ResourcePackPipeline(EmptyReviseProvider(), root, max_retries=1, retry_delay=0, progress=lambda _message: None)
+            state = pipeline.create_state(json.dumps({"schema_version": 2, "videos": {}}), run_id="review-empty-revise")
+            completed = pipeline.run(state)
+            self.assertEqual(completed.status, "complete")
+            report = json.loads((root / "script/review-report.json").read_text(encoding="utf-8"))
+            self.assertEqual(report["decision"], "pass")
+            session = json.loads((root / "script/writer-session.json").read_text(encoding="utf-8"))
+            self.assertEqual(session["turns"][2]["type"], "draft_preserved")
+
+    def test_resume_reuses_passed_stages(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            pipeline, state = self._run(root)
+            attempts = {
+                name: record.attempts for name, record in state.stage_records.items()
+            }
+            loaded = pipeline.load_state()
+            resumed = pipeline.run(loaded)
+            self.assertEqual(
+                attempts,
+                {name: record.attempts for name, record in resumed.stage_records.items()},
+            )
+
+    def test_state_uses_artifact_references(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            _pipeline, _state = self._run(root)
+            payload = json.loads((root / "run_state.json").read_text(encoding="utf-8"))
+            self.assertEqual(payload["schema_version"], 2)
+            self.assertIn("artifact_index", payload)
+            self.assertNotIn("final_script", payload)
+            self.assertLess((root / "run_state.json").stat().st_size, 100_000)
+
+    def test_cli_resource_pack_demo(self):
+        with tempfile.TemporaryDirectory() as directory:
+            code = main(
+                [
+                    "resource-pack",
+                    "--demo",
+                    "--run-id",
+                    "cli-test",
+                    "--output-dir",
+                    directory,
+                ]
+            )
+            self.assertEqual(code, 0)
+            self.assertTrue((Path(directory) / "resource_manifest.json").exists())
+
+    def test_cli_migrates_only_raw_data_from_legacy_checkpoint(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            legacy = root / "legacy.json"
+            legacy.write_text(
+                json.dumps(
+                    {
+                        "raw_youtube_data": json.dumps({"schema_version": 2, "videos": {}}),
+                        "gemini_proposal": {"suggested_title": "legacy"},
+                        "deepseek_draft": "legacy draft",
+                        "final_script": "legacy final",
+                        "completed_steps": ["analysis", "writing", "review"],
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            output = root / "migrated"
+            code = main(
+                [
+                    "resource-pack",
+                    "--demo",
+                    "--resume-legacy",
+                    str(legacy),
+                    "--output-dir",
+                    str(output),
+                ]
+            )
+            self.assertEqual(code, 0)
+            migration = json.loads(
+                (output / "research/legacy-migration.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(migration["reused"], ["raw_youtube_data"])
+            script = (output / "script/script.txt").read_text(encoding="utf-8")
+            self.assertNotIn("legacy final", script)
+
+
+def _break_structure(healthy: str) -> str:
+    """Bẻ psychology-first bằng chuỗi plot tuần tự; không khôi phục marker 7-part cũ."""
+    return "扉が開いた。彼は部屋に入った。その後、窓を見た。やがて昔を思い出した。\n\n" + healthy
+
+
+class _StructureRepairingProvider:
+    """Bọc DemoResourceProvider nhưng KHÔNG subclass nó — guard isinstance
+    DemoResourceProvider trong _structure_check phải thấy đây là provider có
+    LLM repair thật, còn mọi stage khác vẫn chạy hành vi demo."""
+
+    def __init__(self):
+        self._demo = DemoResourceProvider()
+        self.repair_calls = []
+        self.healthy_script = None
+
+    def __getattr__(self, name):
+        return getattr(self._demo, name)
+
+    def write_script(self, contract, plan, source_pack, mechanism_context="", cultural_frame_context=""):
+        return _break_structure(self._demo.write_script(contract, plan, source_pack))
+
+    def repair_script(self, contract, plan, source_pack, script, findings):
+        self.repair_calls.append(findings)
+        self.healthy_script = self._demo.write_script(contract, plan, source_pack)
+        return {"optimization_report": "Demo structure repair", "final_script": self.healthy_script}
+
+
+class _StuckRepairingProvider(_StructureRepairingProvider):
+    def repair_script(self, contract, plan, source_pack, script, findings):
+        self.repair_calls.append(findings)
+        return {"optimization_report": "Không sửa được", "final_script": script}
+
+
+class _BrokenDemoProvider(DemoResourceProvider):
+    def write_script(self, contract, plan, source_pack, mechanism_context="", cultural_frame_context=""):
+        return _break_structure(super().write_script(contract, plan, source_pack))
+
+
+class StructureCheckRepairTests(unittest.TestCase):
+    def test_structure_repair_fixes_script_and_writes_back(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            provider = _StructureRepairingProvider()
+            pipeline = ResourcePackPipeline(
+                provider, root, max_retries=1, retry_delay=0,
+                progress=lambda _message: None,
+            )
+            state = pipeline.create_state(
+                json.dumps({"schema_version": 2, "videos": {}}), run_id="structure-repair"
+            )
+            completed = pipeline.run(state)
+
+            self.assertEqual(completed.status, "complete")
+            report = json.loads((root / "script/structure-check.json").read_text(encoding="utf-8"))
+            self.assertEqual(len(report["repair_rounds"]), 1)
+            self.assertLess(report["repair_rounds"][0]["before_score"], 100)
+            self.assertGreaterEqual(report["repair_rounds"][0]["after_score"], 70)
+            self.assertEqual(report["status"], "pass")
+            self.assertEqual(report["issues"], [])
+            script_on_disk = (root / "script/script.txt").read_text(encoding="utf-8")
+            self.assertEqual(script_on_disk, provider.healthy_script)
+            self.assertEqual(
+                report["script_sha"],
+                hashlib.sha256(script_on_disk.encode("utf-8")).hexdigest(),
+            )
+            self.assertTrue(provider.repair_calls[0]["structure_repair"])
+            self.assertEqual(len(provider.repair_calls[0]["required_changes"]), 1)
+
+    def test_demo_provider_skips_repair(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            pipeline = ResourcePackPipeline(
+                _BrokenDemoProvider(), root, max_retries=1, retry_delay=0,
+                progress=lambda _message: None,
+            )
+            state = pipeline.create_state(
+                json.dumps({"schema_version": 2, "videos": {}}), run_id="demo-no-repair"
+            )
+            with self.assertRaises(RuntimeError):
+                pipeline.run(state)
+            self.assertEqual(state.status, "failed")
+            report = json.loads((root / "script/structure-check.json").read_text(encoding="utf-8"))
+            self.assertEqual(report["repair_rounds"], [])
+            self.assertLess(report["structure_score"], 100)
+            self.assertEqual(len(report["issues"]), 1)  # một anti-story finding
+
+    def test_unfixable_script_raises_after_cap_and_retries_are_short_circuited(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            provider = _StuckRepairingProvider()
+            pipeline = ResourcePackPipeline(
+                provider, root, max_retries=3, retry_delay=0,
+                progress=lambda _message: None,
+            )
+            state = pipeline.create_state(
+                json.dumps({"schema_version": 2, "videos": {}}), run_id="stuck-repair"
+            )
+            with self.assertRaises(RuntimeError):
+                pipeline.run(state)
+            self.assertEqual(state.status, "failed")
+            report = json.loads((root / "script/structure-check.json").read_text(encoding="utf-8"))
+            self.assertEqual(len(report["repair_rounds"]), 3)
+            self.assertLess(report["structure_score"], 100)
+            # Guard idempotence: 3 vòng repair ở attempt 1, attempt 2-3 raise ngay
+            # thay vì sửa tiếp (không có guard con số này sẽ là 9).
+            self.assertEqual(len(provider.repair_calls), 3)
+            self.assertEqual(
+                report["script_sha"],
+                hashlib.sha256(
+                    (root / "script/script.txt").read_text(encoding="utf-8").encode("utf-8")
+                ).hexdigest(),
+            )
+
+
+if __name__ == "__main__":
+    unittest.main()

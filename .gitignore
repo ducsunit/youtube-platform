@@ -1,0 +1,64 @@
+# Environment & Secrets
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+token.json
+
+# Channel Data
+data/channels/*.json
+!data/channels/.gitkeep
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.coverage
+htmlcov/
+*.egg-info/
+build/
+dist/
+
+# Pipeline Outputs
+output/
+runtime/logs/
+runs/
+video-build/
+
+# IDE
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Frontend
+apps/web/node_modules/
+apps/web/dist/
+apps/web/.vite/
+
+# Thumbnail assets (optional - uncomment if you want to keep these in git)
+# thumbnail-template/
+# thumbnail-release/
+
+# Mac
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Temporary files
+*.tmp
+*.bak
+*.log
+.cache/
+
+
+# Local Google OAuth credentials
+client_secret.json
+token.json

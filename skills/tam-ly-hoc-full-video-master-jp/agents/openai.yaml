@@ -1,0 +1,4 @@
+interface:
+  display_name: "Full Video Resource Master JP"
+  short_description: "Điều phối resource pack video tâm lý học Nhật"
+  default_prompt: "Từ youtube_data.json, để Gemini nghiên cứu và tự chọn topic rồi tạo resource pack Phase 1 cho video tâm lý học tiếng Nhật."
