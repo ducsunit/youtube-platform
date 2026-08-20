@@ -29,13 +29,15 @@ class CompetitorContextUnitTests(unittest.TestCase):
     def test_inject_text_contains_psychtoons_patterns(self):
         text = competitor_context.competitor_inject_text()
         self.assertIn("PsychToons", text)
-        self.assertIn("課題の分離", text)
-        self.assertIn("9-11 phút", text)
+        self.assertIn("2–4 giây", text)
+        self.assertIn("9–11 phút", text)
 
     def test_inject_text_equals_baked_constant(self):
         self.assertEqual(
             competitor_context.competitor_inject_text(),
-            competitor_context.PSYCHTOONS_PATTERNS,
+            competitor_context.PSYCHTOONS_PATTERNS
+            + "\n"
+            + competitor_context.PSYCHTOONS_WRITING_DNA,
         )
 
     def test_topic_candidates_prompt_includes_competitor_context(self):
@@ -83,6 +85,12 @@ class CompetitorContextUnitTests(unittest.TestCase):
         prompt = thumbnail_prompt({}, "script").lower()
         self.assertIn("flat illustrated", prompt)
         self.assertIn("navy", prompt)
+
+    def test_thumbnail_prompt_requires_soft_gradient_composition(self):
+        prompt = thumbnail_prompt({}, "script").lower()
+        self.assertIn("soft", prompt)
+        self.assertIn("gradient", prompt)
+        self.assertIn("hard split", prompt)
 
     def test_baked_text_thumbnail_prompt_carries_baked_kanji(self):
         contract = {

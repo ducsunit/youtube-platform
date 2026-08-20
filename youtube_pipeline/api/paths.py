@@ -17,7 +17,7 @@ RUN_ID_PATTERN = r"^[A-Za-z0-9._-]{1,80}$"
 def backend_root() -> Path:
     if _BACKEND_ROOT is not None:
         return _BACKEND_ROOT
-    env = os.environ.get("YT_API_BACKEND_ROOT")
+    env = os.environ.get("YT_API_BACKEND_ROOT") or os.environ.get("YOUTUBE_BACKEND_ROOT")
     if env:
         return Path(env).resolve()
     # youtube_pipeline/api/paths.py -> parents[2] = project root
@@ -29,23 +29,40 @@ def runs_dir() -> Path:
 
 
 def logs_dir() -> Path:
-    return backend_root() / "runtime" / "logs" / "api-runs"
+    return _job_logs_dir("api-runs")
 
 
 def data_jobs_dir() -> Path:
     """Log + pid của các data job (kéo data YouTube) — tách khỏi pipeline runs."""
-    return backend_root() / "runtime" / "logs" / "api-data"
+    return _job_logs_dir("api-data")
 
 
 def build_jobs_dir() -> Path:
     """Log + pid của các job Dựng video (build service) — tách riêng 3 runner."""
-    return backend_root() / "runtime" / "logs" / "api-build"
+    return _job_logs_dir("api-build")
+
+
+def image_jobs_dir() -> Path:
+    return _job_logs_dir("api-image-gen")
+
+
+def srt_jobs_dir() -> Path:
+    return _job_logs_dir("api-srt")
 
 
 
 def veo_jobs_dir() -> Path:
     """Log + pid của các job Veo — tách riêng khỏi build/data jobs."""
-    return backend_root() / "runtime" / "logs" / "api-veo"
+    return _job_logs_dir("api-veo")
+
+
+def _job_logs_dir(kind: str) -> Path:
+    """Support older local log folders when the current runtime folder is absent."""
+    runtime = backend_root() / "runtime" / "logs" / kind
+    legacy = backend_root() / "logs" / kind
+    if not runtime.exists() and legacy.exists():
+        return legacy
+    return runtime
 
 def run_dir(run_id: str) -> Path:
     return runs_dir() / run_id

@@ -2,6 +2,8 @@
 .env
 .env.local
 .env.*.local
+config/model-routing.json
+config/image-generation.json
 *.key
 *.pem
 token.json

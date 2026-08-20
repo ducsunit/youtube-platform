@@ -1,2 +1,126 @@
-"""Backward-compatible import shim. Use youtube_pipeline.resource_pack.analysis."""
-from .resource_pack.analysis import *
+from __future__ import annotations
+
+import json
+from typing import Any
+
+
+def build_channel_snapshot(raw_data: str) -> dict[str, Any]:
+    try:
+        data = json.loads(raw_data)
+    except json.JSONDecodeError:
+        return {
+            "source_format": "text",
+            "raw_summary": raw_data[:12000],
+            "video_count": 0,
+            "recent_videos": [],
+            "data_quality": ["Input không phải JSON; performance fields bị giới hạn."],
+        }
+    videos_value = data.get("videos", {}) if isinstance(data, dict) else {}
+    if isinstance(videos_value, dict):
+        video_rows = list(videos_value.values())
+    elif isinstance(videos_value, list):
+        video_rows = videos_value
+    else:
+        video_rows = []
+    recent_videos = []
+    for video in video_rows:
+        if not isinstance(video, dict):
+            continue
+        summary_rows = ((video.get("analytics") or {}).get("summary") or [])
+        analytics = summary_rows[0] if summary_rows and isinstance(summary_rows[0], dict) else {}
+        recent_videos.append(
+            {
+                "video_id": video.get("videoId"),
+                "title": video.get("title"),
+                "published_at": video.get("publishedAt"),
+                "duration_iso": video.get("duration_iso"),
+                "views": analytics.get("views", video.get("viewCount")),
+                "average_view_duration_seconds": analytics.get("averageViewDuration"),
+                "average_view_percentage": analytics.get("averageViewPercentage"),
+                "likes": analytics.get("likes", video.get("likeCount")),
+                "comments": analytics.get("comments", video.get("commentCount")),
+                "ctr": (video.get("analytics") or {}).get("ctr"),
+            }
+        )
+    recent_videos.sort(key=lambda row: row.get("published_at") or "", reverse=True)
+    return {
+        "source_format": "youtube_data_v%d" % int(data.get("schema_version", 1)),
+        "generated_at": data.get("generated_at"),
+        "channel_id": data.get("channel_id"),
+        "analytics_window": data.get("analytics_window"),
+        "video_count": len(recent_videos),
+        "recent_videos": recent_videos,
+        "recent_titles": [row["title"] for row in recent_videos if row.get("title")],
+        "data_quality": [],
+    }
+
+
+def build_performance_review(snapshot: dict[str, Any]) -> dict[str, Any]:
+    videos = snapshot.get("recent_videos", [])
+    eligible = [row for row in videos if isinstance(row.get("views"), (int, float)) and row["views"] >= 30]
+    best = max(
+        eligible,
+        key=lambda row: row.get("average_view_percentage") or 0,
+        default=None,
+    )
+    ctr_values = [row.get("ctr") for row in videos if isinstance(row.get("ctr"), (int, float))]
+    warnings = []
+    if not ctr_values:
+        warnings.append("PACKAGING_UNKNOWN: youtube_data.json không có CTR thật.")
+    insufficient = [row.get("video_id") for row in videos if (row.get("views") or 0) < 30]
+    if insufficient:
+        warnings.append("INSUFFICIENT_DATA: %s" % ", ".join(str(value) for value in insufficient))
+    return {
+        "sample_quality": "LOW_SAMPLE" if len(eligible) < 3 else "LIMITED",
+        "strongest_signal": (
+            "Video %s có AVP cao nhất trong sample đủ 30 views." % best.get("video_id")
+            if best
+            else "Chưa có sample đủ mạnh."
+        ),
+        "primary_bottleneck": "PACKAGING_UNKNOWN" if not ctr_values else "REVIEW_REQUIRED",
+        "secondary_bottleneck": "EARLY_RETENTION",
+        "what_worked": [
+            "Góc 『嫌われる勇気』/課題の分離 có AVP nội bộ tốt nhất."
+        ] if best and "嫌われる勇気" in (best.get("title") or "") else [],
+        "what_failed": ["Video 25-26 phút có AVP thấp."],
+        "confidence": "low-to-medium",
+        "test_one_hypothesis": "Resource 9-11 phút với title/thumbnail tình huống cụ thể giúp giảm rơi sớm.",
+        "next_format": {"duration_mode": "focus", "target_minutes": "9-11"},
+        "warnings": warnings,
+        "best_internal_video": best,
+    }
+
+
+def pre_rank_topic_candidates(candidates: dict[str, Any], limit: int = 6) -> dict[str, Any]:
+    """Cheap local pre-ranking before the expensive LLM topic selection call.
+
+    Scores specificity, audience pain, promise strength, angle clarity and novelty.
+    This is intentionally a filter, not the final editorial decision.
+    """
+    rows = candidates.get("candidates", []) if isinstance(candidates, dict) else []
+
+    def score(row: dict[str, Any]) -> float:
+        fields = [
+            str(row.get("topic") or ""),
+            str(row.get("audience_moment") or ""),
+            str(row.get("core_pain") or ""),
+            str(row.get("angle") or ""),
+            str(row.get("promise") or ""),
+        ]
+        nonempty = sum(bool(v.strip()) for v in fields)
+        lengths = [len(v.strip()) for v in fields]
+        specificity = min(25.0, 5.0 * nonempty)
+        pain = min(20.0, max(0.0, lengths[2] * 0.8))
+        promise = min(20.0, max(0.0, lengths[4] * 0.8))
+        angle = min(15.0, max(0.0, lengths[3] * 0.7))
+        novelty = min(20.0, max(0.0, len(str(row.get("novelty") or "")) * 0.7))
+        return round(specificity + pain + promise + angle + novelty, 2)
+
+    ranked = sorted(rows, key=score, reverse=True)
+    selected = ranked[: max(3, min(limit, len(ranked)))]
+    return {
+        "candidates": selected,
+        "pre_ranked": True,
+        "pool_limit": len(selected),
+        "original_count": len(rows),
+    }

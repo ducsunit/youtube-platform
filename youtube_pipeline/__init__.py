@@ -1,8 +1,8 @@
 """Stateful AI pipeline for YouTube script production.
 
-Flow hiện tại: psychology-first 22-stage `resource_pipeline.ResourcePackPipeline`.
+Flow production hiện tại: UI/API dùng `resource_pack.pipeline.ResourcePackPipeline`.
 `YouTubePipeline`/`FlowState` dưới đây là LEGACY (flow 7-step cũ) — giữ nguyên
-vì CLI entrypoint `youtube-pipeline` (pyproject.toml → cli.py) còn dùng.
+chỉ để tương thích import cũ; không thêm feature hoặc gọi nó từ UI/API.
 """
 
 import logging

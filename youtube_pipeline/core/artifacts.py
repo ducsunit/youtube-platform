@@ -18,6 +18,7 @@ def _atomic_write(path: Path, content: bytes) -> None:
 class ArtifactStore:
     def __init__(self, root: Path) -> None:
         self.root = root
+        self._platform_db = None
 
     def _ref(
         self,
@@ -103,6 +104,12 @@ class ArtifactStore:
         state.updated_at = utc_now()
         content = (json.dumps(state.to_dict(), ensure_ascii=False, indent=2) + "\n").encode("utf-8")
         _atomic_write(self.root / "run_state.json", content)
+        # SQLite is metadata only. The just-written state file remains the
+        # recoverable source of truth for artifacts and resume.
+        if self._platform_db is None:
+            from ..platform_db import PlatformDatabase
+            self._platform_db = PlatformDatabase.for_run_root(self.root)
+        self._platform_db.sync_state(state, self.root)
 
     def load_state(self) -> RunState:
         data = json.loads((self.root / "run_state.json").read_text(encoding="utf-8"))

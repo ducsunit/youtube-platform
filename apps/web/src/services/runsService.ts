@@ -3,7 +3,9 @@ import type {
   LogPage,
   NewRunBody,
   RunDetail,
+  RunDiagnostics,
   RunStatus,
+  RunEvent,
   RunSummary,
   ServerConfig,
 } from '../types';
@@ -15,6 +17,30 @@ export const getRun = (runId: string) =>
   request<RunDetail>(`/runs/${encodeURIComponent(runId)}`);
 export const getRunStatus = (runId: string) =>
   request<RunStatus>(`/runs/${encodeURIComponent(runId)}/status`);
+export const getRunDiagnostics = (runId: string) =>
+  request<RunDiagnostics>(`/runs/${encodeURIComponent(runId)}/diagnostics`);
+
+export const runEventsUrl = (runId: string) =>
+  `${API_BASE}/runs/${encodeURIComponent(runId)}/events`;
+
+export function connectRunEvents(
+  runId: string,
+  onEvent: (event: RunEvent) => void,
+  onOpen?: () => void,
+  onError?: () => void,
+): EventSource {
+  const source = new EventSource(runEventsUrl(runId));
+  source.onopen = () => onOpen?.();
+  source.onerror = () => onError?.();
+  source.addEventListener('run_update', (message) => {
+    try {
+      onEvent(JSON.parse((message as MessageEvent).data) as RunEvent);
+    } catch (error) {
+      console.error('Invalid run_update SSE payload', error);
+    }
+  });
+  return source;
+}
 export const startRun = (body: NewRunBody) =>
   request<{ run_id: string; status: string; log_path: string }>('/runs', {
     method: 'POST',

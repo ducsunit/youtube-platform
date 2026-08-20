@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { PlayCircle, X, FlaskConical, Rocket, FileJson, FolderOutput, Loader2 } from './Icons';
-import { ApiError, startRun } from '../api';
+import { PlayCircle, X, FlaskConical, Rocket, FolderOutput, Loader2, RefreshCw } from './Icons';
+import { ApiError, getDataJob, getDataStatus, pullData, startRun } from '../api';
 import { useT } from '../i18n';
 import type { ServerConfig } from '../types';
 
@@ -17,7 +17,8 @@ interface Props {
 export function NewRunDialog({ open, config, initialInputFile, onClose, onStarted }: Props) {
   const { t } = useT();
   const [mode, setMode] = useState<'demo' | 'production'>('demo');
-  const [inputFile, setInputFile] = useState('');
+  const [autoSync, setAutoSync] = useState(true);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [runId, setRunId] = useState('');
   const [outputDir, setOutputDir] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -26,7 +27,12 @@ export function NewRunDialog({ open, config, initialInputFile, onClose, onStarte
   useEffect(() => {
     if (open && initialInputFile) {
       setMode('production');
-      setInputFile(initialInputFile);
+      setAutoSync(false);
+    }
+    if (open) {
+      setSyncMessage(null);
+      setError(null);
+      setSubmitting(false);
     }
   }, [open, initialInputFile]);
 
@@ -34,17 +40,51 @@ export function NewRunDialog({ open, config, initialInputFile, onClose, onStarte
 
   const busy = Boolean(config?.busy);
 
-  /** File hiệu lực: state nếu user chọn, còn không thì dùng default từ server. */
-  const effectiveInputFile =
-    inputFile || (mode === 'production' ? config?.default_input_file || '' : '');
+  const waitForDataJob = async (jobId: string) => {
+    for (;;) {
+      const job = await getDataJob(jobId);
+      if (job.status !== 'running') return job;
+      await new Promise((resolve) => window.setTimeout(resolve, 1500));
+    }
+  };
 
   const submit = async () => {
     setSubmitting(true);
     setError(null);
+    setSyncMessage(null);
     try {
+      let latestInputFile: string | undefined;
+
+      if (mode === 'production' && autoSync) {
+        const dataStatus = await getDataStatus();
+        if (!dataStatus.available) {
+          throw new Error('Không tìm thấy YouTube data puller.');
+        }
+        if (!dataStatus.connected) {
+          throw new Error('YouTube chưa được kết nối. Hãy kết nối kênh ở trang Data trước.');
+        }
+        if (dataStatus.busy) {
+          throw new Error('Đang có một data job khác chạy. Chờ job đó hoàn thành rồi tạo run.');
+        }
+        setSyncMessage('Đang kéo dữ liệu YouTube mới nhất...');
+        const pull = await pullData({
+          mode: 'all',
+          out_file: 'youtube_data.json',
+        });
+        const job = await waitForDataJob(pull.job_id);
+        if (job.status !== 'complete') {
+          throw new Error(`Kéo data thất bại (job ${pull.job_id}). Mở trang Data để xem log.`);
+        }
+        const refreshed = await getDataStatus();
+        latestInputFile = refreshed.last_result?.file ?? 'youtube_data.json';
+        setSyncMessage(`Đã cập nhật dữ liệu: ${latestInputFile}`);
+      } else if (mode === 'production') {
+        latestInputFile = initialInputFile;
+      }
+
       const result = await startRun({
         mode,
-        ...(mode === 'production' && effectiveInputFile ? { input_file: effectiveInputFile } : {}),
+        ...(mode === 'production' && latestInputFile ? { input_file: latestInputFile } : {}),
         ...(runId.trim() ? { run_id: runId.trim() } : {}),
         ...(outputDir.trim() ? { output_dir: outputDir.trim() } : {}),
       });
@@ -63,7 +103,6 @@ export function NewRunDialog({ open, config, initialInputFile, onClose, onStarte
     }
   };
 
-  const files = config?.input_files ?? [];
 
   return (
     <div
@@ -107,9 +146,6 @@ export function NewRunDialog({ open, config, initialInputFile, onClose, onStarte
               checked={mode === 'production'}
               onChange={() => {
                 setMode('production');
-                if (!inputFile && config?.default_input_file) {
-                  setInputFile(config.default_input_file);
-                }
               }}
               disabled={submitting}
             />
@@ -125,23 +161,31 @@ export function NewRunDialog({ open, config, initialInputFile, onClose, onStarte
 
         {mode === 'production' && (
           <div className="form-row">
-            <label htmlFor="new-input-file" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <FileJson size={13} />
-              {t('new.inputFile')}
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <RefreshCw size={13} />
+              Dữ liệu kênh
             </label>
-            <select
-              id="new-input-file"
-              value={effectiveInputFile}
-              onChange={(e) => setInputFile(e.target.value)}
-              disabled={submitting}
-            >
-              {files.map((f) => (
-                <option key={f.name} value={f.name}>
-                  {f.name}
-                </option>
-              ))}
-              {files.length === 0 && <option value="">—</option>}
-            </select>
+            <label className="checkbox-row" style={{ marginTop: 0 }}>
+              <input
+                type="checkbox"
+                checked={autoSync}
+                onChange={(e) => setAutoSync(e.target.checked)}
+                disabled={submitting}
+              />
+              Tự động kéo data YouTube mới nhất trước khi chạy
+            </label>
+            <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 5 }}>
+              {autoSync
+                ? 'Pipeline sẽ tự kéo dataset mới nhất rồi mới bắt đầu run.'
+                : initialInputFile
+                  ? `Dùng dataset hiện tại: ${initialInputFile}`
+                  : 'Không tự kéo data; backend sẽ dùng dataset mới nhất đã có.'}
+            </div>
+            {syncMessage && (
+              <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 6 }}>
+                {syncMessage}
+              </div>
+            )}
           </div>
         )}
 
@@ -182,7 +226,7 @@ export function NewRunDialog({ open, config, initialInputFile, onClose, onStarte
             type="button"
             className="btn btn-primary"
             onClick={() => void submit()}
-            disabled={busy || submitting || (mode === 'production' && !effectiveInputFile)}
+            disabled={busy || submitting}
           >
             {submitting ? <Loader2 size={15} className="spin" /> : <Rocket size={15} />}
             {submitting ? '...' : t('new.submit')}
@@ -192,4 +236,3 @@ export function NewRunDialog({ open, config, initialInputFile, onClose, onStarte
     </div>
   );
 }
-

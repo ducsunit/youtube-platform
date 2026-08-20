@@ -5,8 +5,7 @@ import logging
 from typing import Any, Mapping, Protocol
 
 from ..config import Settings
-from ..core.llm_cache import LLMResponseCache
-from ..domain.models import ValidationError
+from ..model_router import ModelRouter, ModelProfile
 from .metrics import non_whitespace_chars
 from ..infrastructure.model_trace import trace_parsed_response, trace_raw_response, trace_request
 from ..providers import parse_json_object
@@ -68,8 +67,8 @@ class ResourceContentProvider(Protocol):
     def select_topic(self, candidates: dict, research: dict, performance: dict) -> dict: ...
     def lock_source(self, topic: str, snapshot: dict, performance: dict) -> dict: ...
     def create_psychology_brief(self, topic: str, source_pack: dict, performance: dict) -> dict: ...
-    def create_contract(self, topic: str, source_pack: dict, performance: dict, psychology_brief: dict) -> dict: ...
-    def create_plan(self, contract: dict, source_pack: dict, psychology_brief: dict) -> dict: ...
+    def create_contract(self, topic: str, source_pack: dict, performance: dict, psychology_brief: dict, validation_feedback: str = "") -> dict: ...
+    def create_plan(self, contract: dict, source_pack: dict, psychology_brief: dict, validation_feedback: str = "") -> dict: ...
     def write_script(self, contract: dict, plan: dict, source_pack: dict, psychology_brief: dict | None = None) -> str: ...
     def review_script(self, contract: dict, plan: dict, source_pack: dict, draft: str, competitor_context: str = "") -> dict: ...
     def apply_review(self, contract: dict, plan: dict, source_pack: dict, draft: str, review: dict) -> str: ...
@@ -83,211 +82,49 @@ class ResourceContentProvider(Protocol):
 
 
 class AIResourceProvider:
-    def __init__(self, settings: Settings) -> None:
+    def __init__(self, settings: Settings, routing_snapshot: dict[str, Any] | None = None) -> None:
         try:
-            from google import genai
             from openai import OpenAI
-        except ImportError as exc:
-            raise RuntimeError("Thiếu SDK; hãy cài project dependencies.") from exc
+        except ImportError:
+            OpenAI = None
         self.settings = settings
-        self.gemini = genai.Client(api_key=settings.gemini_api_key)
-        self.deepseek = OpenAI(api_key=settings.deepseek_api_key, base_url=settings.deepseek_base_url)
-        self.llm_cache = LLMResponseCache(settings.llm_cache_dir, settings.llm_cache_enabled, settings.llm_cache_schema_version)
-
-    def cache_stats(self) -> dict[str, Any]:
-        return self.llm_cache.stats()
+        self.router = (
+            ModelRouter.from_snapshot(settings, routing_snapshot)
+            if routing_snapshot
+            else ModelRouter(settings)
+        )
+        self._OpenAI = OpenAI
+        self._clients: dict[tuple[str, str, str], Any] = {}
 
     @property
     def max_retries(self) -> int:
         return self.settings.max_retries
 
-    def _thinking_level(self, label: str) -> str:
-        """Single production policy: high reasoning only where it protects quality."""
-        quality_critical = {"RP_PSYCHOLOGY_BRIEF", "RP_REVIEW", "RP_AUDIT_GEMINI"}
-        return "high" if label in quality_critical else "medium"
+    def _legacy_router(self):
+        if not hasattr(self, "router"):
+            self.router = ModelRouter(self.settings)
+        return self.router
 
-    def _gemini_generate(self, model: str, contents: str, config: Any, label: str) -> Any:
-        """Gọi Gemini với retry khi API quá tải (503 / UNAVAILABLE / high demand).
-
-        Lỗi quá tải là tạm thời — ngủ 15–30s rồi thử lại, tối đa 3 lần. Mọi lỗi
-        khác (4xx, xác thực, mạng thật) raise ngay để không che giấu lỗi.
-        """
-        import random
-        import time
-
-        from google.genai import errors as genai_errors
-
-        max_attempts = 3
-        base_delay = 15.0
-        last_error: Exception | None = None
-        for attempt in range(1, max_attempts + 1):
-            try:
-                return self.gemini.models.generate_content(
-                    model=model, contents=contents, config=config
-                )
-            except genai_errors.APIError as exc:
-                last_error = exc
-                message = str(exc).lower()
-                overloaded = (
-                    getattr(exc, "code", None) == 503
-                    or "unavailable" in message
-                    or "high demand" in message
-                )
-                if not overloaded or attempt == max_attempts:
-                    raise
-                delay = base_delay * attempt + random.uniform(0, 5)
-                logger.warning(
-                    "Gemini quá tải (503) — thử lại lần %d/%d sau %.0fs | stage=%s",
-                    attempt + 1,
-                    max_attempts,
-                    delay,
-                    label,
-                )
-                time.sleep(delay)
-        assert last_error is not None
-        raise last_error
-
-    @staticmethod
-    def _cacheable_label(label: str) -> bool:
-        """Cache only deterministic/repeatable content tasks.
-
-        Creative generation (writing, repair, thumbnail and image prompts) stays
-        uncached so a retry can genuinely produce a different candidate.
-        """
-        return label in {
-            "RP_TOPIC_RESEARCH",
-            "RP_TOPIC_CANDIDATES",
-            "RP_TOPIC_SELECTION",
-            "RP_SOURCE_LOCK",
-            "RP_PSYCHOLOGY_BRIEF",
-            "RP_SCRIPT_CONTRACT",
-            "RP_PLANNING",
-            "RP_AUDIT_GEMINI",
-            "RP_AUDIT_DEEPSEEK",
-            "RP_TRANSLATE_VI",
-            "RP_PUBLISH_DRAFT",
-        }
-
-    def _gemini_json(
-        self,
-        label: str,
-        system: str,
-        prompt: str,
-        temperature: float = 0.2,
-        model: str | None = None,
-        thinking_level: str | None = None,
-    ) -> dict:
-        from google.genai import types
-
-        chosen_model = model or self.settings.gemini_analysis_model
-        level = thinking_level or self._thinking_level(label)
-        cache_key = self.llm_cache.build_key(
-            provider="gemini", model=chosen_model, system=system, prompt=prompt,
-            temperature=temperature, thinking_level=level, schema_version=self.settings.llm_cache_schema_version,
-        )
-        cached = self.llm_cache.get(cache_key) if self._cacheable_label(label) else None
-        if cached is not None:
-            trace_raw_response(label, label, cached)
-            try:
-                value = parse_json_object(cached)
-            except ValidationError:
-                # Never let a malformed cached model response poison retries.
-                self.llm_cache.delete(cache_key)
-                logger.warning(
-                    "Invalid LLM cache entry discarded | provider=Gemini | stage=%s | model=%s",
-                    label, chosen_model,
-                )
-            else:
-                trace_parsed_response(label, label, value)
-                logger.info("LLM cache hit | provider=Gemini | stage=%s | model=%s", label, chosen_model)
-                return value
-        trace_request(label, label, "Gemini", chosen_model, system, prompt, temperature)
-        response = self._gemini_generate(
-            model=chosen_model,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                system_instruction=system,
-                response_mime_type="application/json",
-                temperature=temperature,
-                thinking_config=types.ThinkingConfig(thinking_level=level),
-            ),
-            label=label,
-        )
-        trace_raw_response(label, label, response.text)
-        value = parse_json_object(response.text)
-        trace_parsed_response(label, label, value)
-        # Cache only responses that successfully parsed as JSON.
-        if self._cacheable_label(label):
-            self.llm_cache.put(cache_key, response.text)
-        logger.info("Resource provider complete | stage=%s | model=%s", label, chosen_model)
-        return value
-
-    def _deepseek_json(self, label: str, system: str, prompt: str, temperature: float = 0.0) -> dict:
-        cache_key = self.llm_cache.build_key(
-            provider="deepseek", model=self.settings.deepseek_model, system=system, prompt=prompt,
-            temperature=temperature, thinking_level="", schema_version=self.settings.llm_cache_schema_version,
-        )
-        cached = self.llm_cache.get(cache_key) if self._cacheable_label(label) else None
-        if cached is not None:
-            trace_raw_response(label, label, cached)
-            try:
-                value = parse_json_object(cached)
-            except ValidationError:
-                self.llm_cache.delete(cache_key)
-                logger.warning(
-                    "Invalid LLM cache entry discarded | provider=DeepSeek | stage=%s | model=%s",
-                    label, self.settings.deepseek_model,
-                )
-            else:
-                trace_parsed_response(label, label, value)
-                logger.info("LLM cache hit | provider=DeepSeek | stage=%s | model=%s", label, self.settings.deepseek_model)
-                return value
-        raw = ""
-        for attempt in range(1, 3):
-            trace_request(label, label, "DeepSeek", self.settings.deepseek_model, system, prompt, temperature)
-            response = self.deepseek.chat.completions.create(
-                model=self.settings.deepseek_model,
-                messages=[{"role": "system", "content": system}, {"role": "user", "content": prompt}],
-                temperature=temperature,
-            )
-            raw = response.choices[0].message.content or ""
-            if raw.strip():
-                break
-            logger.warning("DeepSeek trả nội dung rỗng (lần %d/2) | stage=%s", attempt, label)
+    def _gemini_json(self, label: str, system: str, prompt: str, temperature: float = 0.2, model: str | None = None) -> dict:
+        """Backward-compatible test/integration hook; production routes through ModelRouter."""
+        router = self._legacy_router()
+        profile = router.profile_for("analysis")
+        if model:
+            profile = ModelProfile("gemini", model, profile.base_url, profile.api_key_env, temperature, profile.max_output_tokens, profile.api_key, profile.profile_name)
+        trace_request(label, label, "Gemini", profile.model, system, prompt, temperature)
+        response = self._gemini_generate(profile, prompt, system, label, True)
+        raw = response.text
         trace_raw_response(label, label, raw)
         value = parse_json_object(raw)
         trace_parsed_response(label, label, value)
-        # Cache only responses that successfully parsed as JSON.
-        if self._cacheable_label(label):
-            self.llm_cache.put(cache_key, raw)
         return value
 
+    def _deepseek_json(self, label: str, system: str, prompt: str, temperature: float = 0.0) -> dict:
+        self._legacy_router()
+        return self._call_json("writer", label, system, prompt)
+
     def _deepseek_text(self, label: str, system: str, prompt: str, temperature: float = 0.7) -> str:
-        cache_key = self.llm_cache.build_key(
-            provider="deepseek", model=self.settings.deepseek_model, system=system, prompt=prompt,
-            temperature=temperature, thinking_level="", schema_version=self.settings.llm_cache_schema_version,
-        )
-        cached = self.llm_cache.get(cache_key) if self._cacheable_label(label) else None
-        if cached is not None:
-            trace_raw_response(label, label, cached)
-            trace_parsed_response(label, label, cached)
-            logger.info("LLM cache hit | provider=DeepSeek | stage=%s | model=%s", label, self.settings.deepseek_model)
-            return cached
-        trace_request(label, label, "DeepSeek", self.settings.deepseek_model, system, prompt, temperature)
-        response = self.deepseek.chat.completions.create(
-            model=self.settings.deepseek_model,
-            messages=[{"role": "system", "content": system}, {"role": "user", "content": prompt}],
-            temperature=temperature,
-        )
-        value = response.choices[0].message.content
-        if not value or not value.strip():
-            raise ValueError("DeepSeek trả script rỗng.")
-        result = value.strip()
-        if self._cacheable_label(label):
-            self.llm_cache.put(cache_key, result)
-        trace_raw_response(label, label, result)
-        trace_parsed_response(label, label, result)
-        return result
+        return self._call_text("writer", label, system, prompt, temperature)
 
     def _deepseek_text_messages(
         self,
@@ -296,75 +133,198 @@ class AIResourceProvider:
         messages: list[dict[str, str]],
         temperature: float = 0.2,
     ) -> str:
-        """Reconstruct a DeepSeek conversation from persisted messages.
+        return self._call_text_messages("editor", label, system, messages, temperature)
 
-        Chat Completions is stateless. Sending the original user prompt, the
-        previous DeepSeek answer as an assistant message, and Gemini's review as
-        the next user message preserves the writer context across API calls and
-        can be reproduced after a checkpoint resume.
-        """
-        full_messages = [{"role": "system", "content": system}, *messages]
-        prompt = json.dumps(full_messages, ensure_ascii=False, sort_keys=True)
-        cache_key = self.llm_cache.build_key(
-            provider="deepseek", model=self.settings.deepseek_model, system=system, prompt=prompt,
-            temperature=temperature, thinking_level="messages", schema_version=self.settings.llm_cache_schema_version,
-        )
-        cached = self.llm_cache.get(cache_key) if self._cacheable_label(label) else None
-        if cached is not None:
-            trace_raw_response(label, label, cached)
-            trace_parsed_response(label, label, cached)
-            logger.info("LLM cache hit | provider=DeepSeek | stage=%s | model=%s", label, self.settings.deepseek_model)
-            return cached
-        trace_request(label, label, "DeepSeek", self.settings.deepseek_model, system, prompt, temperature)
-        response = self.deepseek.chat.completions.create(
-            model=self.settings.deepseek_model,
-            messages=full_messages,
-            temperature=temperature,
-        )
-        value = response.choices[0].message.content
-        if not value or not value.strip():
-            raise ValueError("DeepSeek trả script đã sửa rỗng.")
+    def _client_for(self, profile: ModelProfile) -> Any:
+        api_key = self.router.resolve_api_key(profile)
+        key = (profile.provider, api_key, profile.base_url)
+        if key in self._clients:
+            return self._clients[key]
+        if profile.provider == "gemini":
+            from google import genai
+            client = genai.Client(api_key=api_key)
+        elif profile.provider == "openai_compatible":
+            if self._OpenAI is None:
+                raise RuntimeError("Thiếu SDK openai; cài package openai để dùng provider openai_compatible.")
+            client = self._OpenAI(api_key=api_key, base_url=profile.base_url or None)
+        else:
+            raise ValueError(f"Provider không hỗ trợ: {profile.provider}")
+        self._clients[key] = client
+        return client
+
+    def _gemini_generate(self, profile: ModelProfile, contents: str, system: str, label: str, json_mode: bool) -> Any:
+        import random
+        import time
+        from google.genai import types
+        from google.genai import errors as genai_errors
+
+        last_error: Exception | None = None
+        for attempt in range(1, 4):
+            try:
+                client = self._client_for(profile)
+                config_kwargs = {
+                    "system_instruction": system,
+                    "response_mime_type": "application/json" if json_mode else None,
+                    "temperature": profile.temperature,
+                    "thinking_config": types.ThinkingConfig(thinking_level="high"),
+                }
+                if profile.max_output_tokens:
+                    config_kwargs["max_output_tokens"] = profile.max_output_tokens
+                return client.models.generate_content(
+                    model=profile.model,
+                    contents=contents,
+                    config=types.GenerateContentConfig(**config_kwargs),
+                )
+            except genai_errors.APIError as exc:
+                last_error = exc
+                message = str(exc).lower()
+                overloaded = getattr(exc, "code", None) == 503 or "unavailable" in message or "high demand" in message
+                if not overloaded or attempt == 3:
+                    raise
+                delay = 15.0 * attempt + random.uniform(0, 5)
+                logger.warning("%s quá tải — thử lại %d/3 sau %.0fs | stage=%s | model=%s", profile.provider, attempt + 1, delay, label, profile.model)
+                time.sleep(delay)
+        raise last_error or RuntimeError("Provider call failed")
+
+    def _call_json(self, role: str, label: str, system: str, prompt: str) -> dict:
+        if not hasattr(self, "router"):
+            legacy = {"analysis": "_gemini_json", "reviewer": "_gemini_json", "auditor": "_gemini_json", "writer": "_deepseek_json", "editor": "_deepseek_json", "packaging": "_deepseek_json"}[role]
+            return getattr(self, legacy)(label, system, prompt)
+        profile = self.router.profile_for(role)
+        trace_request(label, label, profile.provider, profile.model, system, prompt, profile.temperature)
+        if profile.provider == "gemini":
+            response = self._gemini_generate(profile, prompt, system, label, True)
+            raw = response.text
+        else:
+            client = self._client_for(profile)
+            kwargs = {
+                "model": profile.model,
+                "messages": [{"role": "system", "content": system}, {"role": "user", "content": prompt}],
+                "temperature": profile.temperature,
+                "response_format": {"type": "json_object"},
+            }
+            # Large visual JSON is the one stage where an uncapped response can
+            # run for many minutes and be cut inside a quoted prompt. Respect
+            # the UI-configured cap; otherwise apply a bounded stage default.
+            # Image prompts are requested in bounded batches below. Do not
+            # impose a hard token budget on those calls; batching is the size
+            # control and avoids truncating a valid JSON string.
+            output_limit = (
+                None
+                if label.startswith(("RP_IMAGE_STRATEGY", "RP_IMAGE_PROMPTS"))
+                else profile.max_output_tokens
+            )
+            if output_limit:
+                kwargs["max_tokens"] = int(output_limit)
+            response = client.chat.completions.create(**kwargs)
+            raw = response.choices[0].message.content or ""
+        trace_raw_response(label, label, raw)
+        value = parse_json_object(raw)
+        trace_parsed_response(label, label, value)
+        logger.info("Resource provider complete | stage=%s | role=%s | provider=%s | model=%s", label, role, profile.provider, profile.model)
+        return value
+
+    def _call_text(self, role: str, label: str, system: str, prompt: str, temperature_override: float | None = None) -> str:
+        if not hasattr(self, "router"):
+            self._legacy_router()
+        profile = self.router.profile_for(role)
+        temperature = profile.temperature if temperature_override is None else temperature_override
+        trace_request(label, label, profile.provider, profile.model, system, prompt, temperature)
+        if profile.provider == "gemini":
+            response = self._gemini_generate(
+                ModelProfile(profile.provider, profile.model, profile.base_url, profile.api_key_env, temperature, profile.max_output_tokens, profile.api_key, profile.profile_name),
+                prompt, system, label, False
+            )
+            value = response.text or ""
+        else:
+            client = self._client_for(profile)
+            kwargs = {
+                "model": profile.model,
+                "messages": [{"role": "system", "content": system}, {"role": "user", "content": prompt}],
+                "temperature": temperature,
+            }
+            if profile.max_output_tokens:
+                kwargs["max_tokens"] = profile.max_output_tokens
+            response = client.chat.completions.create(**kwargs)
+            value = response.choices[0].message.content or ""
+        if not value.strip():
+            raise ValueError(f"{label}: model trả nội dung rỗng.")
         result = value.strip()
-        if self._cacheable_label(label):
-            self.llm_cache.put(cache_key, result)
+        trace_raw_response(label, label, result)
+        trace_parsed_response(label, label, result)
+        logger.info("Resource provider complete | stage=%s | role=%s | provider=%s | model=%s", label, role, profile.provider, profile.model)
+        return result
+
+    def _call_text_messages(self, role: str, label: str, system: str, messages: list[dict[str, str]], temperature_override: float | None = None) -> str:
+        if not hasattr(self, "router"):
+            if "_deepseek_text_messages" in self.__dict__:
+                return self.__dict__["_deepseek_text_messages"](label, system, messages, temperature_override or 0.2)
+            self._legacy_router()
+        profile = self.router.profile_for(role)
+        temperature = profile.temperature if temperature_override is None else temperature_override
+        trace_request(label, label, profile.provider, profile.model, system, json.dumps(messages, ensure_ascii=False), temperature)
+        if profile.provider == "gemini":
+            # A Gemini follow-up is represented as one prompt to keep the provider abstraction portable.
+            merged = "\n\n".join(f"{m.get('role','user').upper()}: {m.get('content','')}" for m in messages)
+            response = self._gemini_generate(
+                ModelProfile(profile.provider, profile.model, profile.base_url, profile.api_key_env, temperature, profile.max_output_tokens, profile.api_key, profile.profile_name),
+                merged, system, label, False
+            )
+            value = response.text or ""
+        else:
+            client = self._client_for(profile)
+            response = client.chat.completions.create(
+                model=profile.model,
+                messages=[{"role": "system", "content": system}, *messages],
+                temperature=temperature,
+            )
+            value = response.choices[0].message.content or ""
+        if not value.strip():
+            raise ValueError(f"{label}: model trả nội dung rỗng.")
+        result = value.strip()
         trace_raw_response(label, label, result)
         trace_parsed_response(label, label, result)
         return result
 
-    def lock_source(self, topic: str, snapshot: dict, performance: dict) -> dict:
-        return self._gemini_json("RP_SOURCE_LOCK", SOURCE_SYSTEM, source_prompt(topic, snapshot, performance))
-
     def research_topics(self, snapshot: dict, performance: dict) -> dict:
-        return self._gemini_json("RP_TOPIC_RESEARCH", TOPIC_RESEARCH_SYSTEM, topic_research_prompt(snapshot, performance), temperature=0.4)
+        return self._call_json("analysis", "RP_TOPIC_RESEARCH", TOPIC_RESEARCH_SYSTEM, topic_research_prompt(snapshot, performance))
 
     def create_topic_candidates(self, research: dict, snapshot: dict, performance: dict, competitor_context: str = "") -> dict:
-        return self._gemini_json("RP_TOPIC_CANDIDATES", TOPIC_RESEARCH_SYSTEM, topic_candidates_prompt(research, snapshot, performance, competitor_context), temperature=0.5)
+        return self._call_json("analysis", "RP_TOPIC_CANDIDATES", TOPIC_RESEARCH_SYSTEM, topic_candidates_prompt(research, snapshot, performance, competitor_context))
 
     def select_topic(self, candidates: dict, research: dict, performance: dict) -> dict:
-        return self._gemini_json("RP_TOPIC_SELECTION", TOPIC_SELECTION_SYSTEM, topic_selection_prompt(candidates, research, performance), temperature=0.1)
+        return self._call_json("analysis", "RP_TOPIC_SELECTION", TOPIC_SELECTION_SYSTEM, topic_selection_prompt(candidates, research, performance))
+
+    def lock_source(self, topic: str, snapshot: dict, performance: dict) -> dict:
+        return self._call_json("analysis", "RP_SOURCE_LOCK", SOURCE_SYSTEM, source_prompt(topic, snapshot, performance))
 
     def create_psychology_brief(self, topic: str, source_pack: dict, performance: dict) -> dict:
-        return self._gemini_json("RP_PSYCHOLOGY_BRIEF", PSYCHOLOGY_BRIEF_SYSTEM, psychology_brief_prompt(topic, source_pack, performance), temperature=0.2)
+        return self._call_json("analysis", "RP_PSYCHOLOGY_BRIEF", PSYCHOLOGY_BRIEF_SYSTEM, psychology_brief_prompt(topic, source_pack, performance))
 
-    def create_contract(self, topic: str, source_pack: dict, performance: dict, psychology_brief: dict | None = None) -> dict:
-        psychology_brief = _normalize_psychology_context(psychology_brief)
-        return self._deepseek_json("RP_SCRIPT_CONTRACT", CONTRACT_SYSTEM, contract_prompt(topic, source_pack, performance, psychology_brief), temperature=0.2)
+    def create_contract(self, topic: str, source_pack: dict, performance: dict, psychology_brief: dict | None = None, validation_feedback: str = "") -> dict:
+        brief = _normalize_psychology_context(psychology_brief)
+        label = "RP_SCRIPT_CONTRACT_REPAIR" if validation_feedback else "RP_SCRIPT_CONTRACT"
+        return self._call_json(
+            "writer",
+            label,
+            CONTRACT_SYSTEM,
+            contract_prompt(topic, source_pack, performance, brief, validation_feedback),
+        )
 
-    def create_plan(self, contract: dict, source_pack: dict, psychology_brief: dict | None = None) -> dict:
-        psychology_brief = _normalize_psychology_context(psychology_brief)
-        return self._deepseek_json("RP_PLANNING", PLANNING_SYSTEM, planning_prompt(contract, source_pack, psychology_brief), temperature=0.3)
+    def create_plan(self, contract: dict, source_pack: dict, psychology_brief: dict | None = None, validation_feedback: str = "") -> dict:
+        brief = _normalize_psychology_context(psychology_brief)
+        label = "RP_PLANNING_REPAIR" if validation_feedback else "RP_PLANNING"
+        return self._call_json(
+            "writer", label, PLANNING_SYSTEM,
+            planning_prompt(contract, source_pack, brief, validation_feedback),
+        )
 
     def write_script(self, contract: dict, plan: dict, source_pack: dict, psychology_brief: dict | None = None) -> str:
-        psychology_brief = _normalize_psychology_context(psychology_brief)
-        return self._deepseek_text("RP_WRITING", WRITING_SYSTEM, writing_prompt(contract, plan, source_pack, psychology_brief))
+        brief = _normalize_psychology_context(psychology_brief)
+        return self._call_text("writer", "RP_WRITING", WRITING_SYSTEM, writing_prompt(contract, plan, source_pack, brief), 0.7)
 
     def review_script(self, contract: dict, plan: dict, source_pack: dict, draft: str, competitor_context: str = "") -> dict:
-        return self._gemini_json(
-            "RP_REVIEW",
-            REVIEW_SYSTEM,
-            review_prompt(contract, plan, source_pack, draft, competitor_context),
-            model=self.settings.gemini_review_model,
-        )
+        return self._call_json("reviewer", "RP_REVIEW", REVIEW_SYSTEM, review_prompt(contract, plan, source_pack, draft, competitor_context))
 
     def apply_review(self, contract: dict, plan: dict, source_pack: dict, draft: str, review: dict) -> str:
         original_prompt = writing_prompt(contract, plan, source_pack, {
@@ -375,51 +335,72 @@ class AIResourceProvider:
             "selected_mechanisms": [{"name": name} for name in contract.get("selected_mechanisms", [])],
         })
         follow_up = apply_review_prompt(contract, plan, source_pack, draft, review)
-        return self._deepseek_text_messages(
-            "RP_APPLY_REVIEW",
-            WRITING_SYSTEM,
-            [
-                {"role": "user", "content": original_prompt},
-                {"role": "assistant", "content": draft},
-                {"role": "user", "content": follow_up},
-            ],
-            temperature=0.2,
-        )
+        return self._call_text_messages("editor", "RP_APPLY_REVIEW", WRITING_SYSTEM, [
+            {"role": "user", "content": original_prompt},
+            {"role": "assistant", "content": draft},
+            {"role": "user", "content": follow_up},
+        ], 0.2)
 
     def audit_script(self, auditor: str, contract: dict, plan: dict, source_pack: dict, script: str) -> dict:
+        if auditor != "auditor":
+            raise ValueError("audit_script chỉ nhận logical role 'auditor'.")
         prompt = audit_prompt(auditor, contract, plan, source_pack, script)
-        if auditor == "deepseek":
-            return self._deepseek_json("RP_AUDIT_DEEPSEEK", AUDIT_SYSTEM, prompt)
-        return self._gemini_json(
-            "RP_AUDIT_GEMINI",
-            AUDIT_SYSTEM,
-            prompt,
-            temperature=0.0,
-            model=self.settings.gemini_audit_model,
-        )
+        result = self._call_json("auditor", "RP_AUDIT", AUDIT_SYSTEM, prompt)
+        if hasattr(self, "router"):
+            profile = self.router.profile_for("auditor")
+            result["routing"] = {
+                "role": "auditor",
+                "profile": profile.profile_name,
+                "provider": profile.provider,
+                "model": profile.model,
+            }
+        return result
 
     def repair_script(self, contract: dict, plan: dict, source_pack: dict, script: str, findings: dict) -> dict:
-        return self._deepseek_json(
-            "RP_REPAIR",
-            REPAIR_SYSTEM,
-            repair_prompt(contract, plan, source_pack, script, findings),
-            temperature=0.2,
-        )
+        return self._call_json("editor", "RP_REPAIR", REPAIR_SYSTEM, repair_prompt(contract, plan, source_pack, script, findings))
 
     def translate_to_vietnamese(self, script: str) -> str:
-        return self._deepseek_text("RP_TRANSLATE_VI", TRANSLATE_SYSTEM, vietnamese_translation_prompt(script), temperature=0.3)
+        return self._call_text("writer", "RP_TRANSLATE_VI", TRANSLATE_SYSTEM, vietnamese_translation_prompt(script), 0.3)
 
     def create_thumbnail(self, contract: dict, script: str, competitor_context: str = "") -> dict:
-        return self._deepseek_json("RP_THUMBNAIL", THUMBNAIL_SYSTEM, thumbnail_prompt(contract, script, competitor_context), temperature=0.4)
+        return self._call_json("packaging", "RP_THUMBNAIL", THUMBNAIL_SYSTEM, thumbnail_prompt(contract, script, competitor_context))
 
     def create_image_strategy(self, contract: dict, plan: dict, thumbnail: dict) -> dict:
-        return self._deepseek_json("RP_IMAGE_STRATEGY", IMAGE_SYSTEM, image_strategy_prompt(contract, plan, thumbnail), temperature=0.4)
+        return self._call_json("packaging", "RP_IMAGE_STRATEGY", IMAGE_SYSTEM, image_strategy_prompt(contract, plan, thumbnail))
 
     def create_image_prompts(self, strategy: dict, contract: dict) -> dict:
-        return self._deepseek_json("RP_IMAGE_PROMPTS", IMAGE_SYSTEM, image_prompts_prompt(strategy, contract), temperature=0.5)
+        beats = [beat for beat in strategy.get("visual_beats", []) if bool(beat.get("new_image"))]
+        if not beats:
+            return {"images": [], "storyboard": []}
+
+        # Each prompt repeats the channel style bible. Keep requests small so
+        # the provider never has to return a giant images+storyboard JSON blob.
+        # Storyboard rows are generated locally from the full strategy.
+        batch_size = 12
+        images: list[dict] = []
+        for start in range(0, len(beats), batch_size):
+            batch = beats[start:start + batch_size]
+            batch_strategy = {
+                "style_bible": strategy.get("style_bible", ""),
+                "character_bible": strategy.get("character_bible", ""),
+                "environment_bible": strategy.get("environment_bible", ""),
+                "visual_beats": batch,
+            }
+            label = "RP_IMAGE_PROMPTS_%02d" % (start // batch_size + 1)
+            result = self._call_json(
+                "packaging",
+                label,
+                IMAGE_SYSTEM,
+                image_prompts_prompt(batch_strategy, contract),
+            )
+            batch_images = result.get("images")
+            if not isinstance(batch_images, list):
+                raise ValueError("%s phải trả field images dạng list." % label)
+            images.extend(batch_images)
+        return {"images": images, "storyboard": []}
 
     def create_publish_draft(self, contract: dict, source_pack: dict) -> dict:
-        return self._deepseek_json("RP_PUBLISH_DRAFT", PUBLISH_SYSTEM, publish_prompt(contract, source_pack), temperature=0.4)
+        return self._call_json("packaging", "RP_PUBLISH_DRAFT", PUBLISH_SYSTEM, publish_prompt(contract, source_pack))
 
 
 def _demo_script() -> str:
@@ -430,6 +411,10 @@ def _demo_script() -> str:
         "ここで役に立つのが、アドラー心理学で語られる課題の分離という考え方です。岸見一郎と古賀史健の著書『嫌われる勇気』では、自分が引き受ける課題と、相手が引き受ける課題を見分ける大切さが説明されています。これは人を切り捨てるためではなく、関係を無理なく続けるための境界線です。",
         "返事をいつ、どのような言葉で送るかは、自分が選ぶ課題です。一方、その返事を読んで相手がどう感じるかは、最終的には相手の課題です。もちろん、乱暴な言葉を使わない配慮は必要です。しかし、どれほど丁寧に書いても、相手の受け取り方を完全に管理することはできません。",
         "私たちはしばしば、相手を悲しませないことまで自分の責任だと考えます。その瞬間、返事は会話ではなく、相手の感情を操作する仕事に変わります。遅れたことを何度も謝り、理由を長く説明し、嫌われていない証拠を言葉の中に詰め込もうとする。すると、一通の返事に必要なエネルギーがさらに大きくなります。",
+        "この負担を見分けるには、返事の内容と、返事を読んだ相手の気持ちを分けて考える必要があります。内容には自分の配慮を反映できますが、相手がどう受け取るかまで完全に決めることはできません。そこを一つの仕事として抱えると、送信前の確認が増え、短く答えられる場面でも説明が長くなります。やがて、丁寧にしたいという意図そのものが、返事を遅らせる力に変わります。大切なのは配慮を捨てることではなく、自分が選べる部分と、相手に返す部分を同じ重さで扱わないことです。",
+        "返事をする前に、まず自分へ二つだけ尋ねることもできます。今必要なのは、事実を伝えることなのか、それとも相手が悪く思わない保証を作ることなのか。前者なら一文で終えられます。後者まで自分の仕事にすると、どれだけ書いても不安は完全には消えません。確認するほど誠実になるとは限らず、確認の目的が相手の反応を管理することに変わった時、負担だけが増えていきます。",
+        "この違いに気づくと、返事の遅れは性格の欠陥ではなく、責任の範囲が広がりすぎたサインとして見えてきます。必要な配慮は残しながら、相手の感情を自分の課題へ戻さない。その境界が、返事を始めるための余白になります。",
+        "返事を急ぐことと、誠実に向き合うことも同じではありません。速さだけで誠実さを測る必要はないのです。短くても、できる範囲を正直に伝えれば十分です。焦らなくていいのです。今の余白を守ることも誠実さです。",
         "課題を分けるとは、冷たくなることではありません。自分にできるのは、今の状態を正直に伝え、必要なら返事を待ってもらうことです。相手が少し残念に思う可能性まで消すことではありません。相手にも、自分の感情を受け止め、関係について考える力があると信じることでもあります。",
         "まず試せるのは、完璧な返事ではなく、会話を一度止めるための短い返事です。今日は少し余裕がないので、落ち着いたら返します。この一文なら、相手を無視せず、自分の限界も隠しません。詳しく説明するのは、必要になった時で構いません。今すべてを解決しなくてもいいのです。",
         "次に、返事をする時間を自分で決めます。通知が来るたびに反応するのではなく、夜の二十分だけ確認する。急ぎの用事は電話で知らせてもらう。こうした小さなルールは、相手を遠ざける壁ではありません。いつなら落ち着いて向き合えるかを伝える、関係の案内板です。",
@@ -439,24 +424,7 @@ def _demo_script() -> str:
         "もし今、返せていないメッセージがあるなら、長い説明を完成させる必要はありません。今は余裕がないけれど、落ち着いたら返したい。その気持ちだけを短く届けてもいいのです。返事の速さではなく、無理のない形で関係に向き合おうとする姿勢が、あなたの誠実さを表します。",
         "あなたは、返事を急がなければならない場面と、少し待ってもらえる場面を分けられていますか。コメントでは、すぐ返す、時間を決めて返す、落ち着いてから返す、今の自分に近いものを一つだけ教えてください。自分の課題を大切にするところから、軽い関係の作り方は始まります。",
     ]
-    additions = [
-        "相手を尊重することと、相手の気分を背負うことは別です。前者は思いやりですが、後者が続くと自分の気持ちを感じる余裕がなくなります。",
-        "短い返事を選ぶ時、自分を正当化する長い理由は必要ありません。事実を一つ伝え、次に話せる時期を示すだけでも、十分に誠実な連絡になります。",
-        "境界線は一度で完璧に引けるものではありません。小さく試し、相手との関係に合わせて調整することで、自分にも相手にも分かりやすい形になります。",
-        "返事を待つ時間を相手に渡すことは、相手の力を信じることでもあります。すべてを先回りして守ろうとしない関係には、息をつける余白が生まれます。",
-    ]
     text = "\n\n".join(paragraphs)
-    index = 0
-    from .metrics import non_whitespace_chars
-
-    while non_whitespace_chars(text) < 2850:
-        text += "\n\n" + additions[index % len(additions)]
-        index += 1
-    while non_whitespace_chars(text) > 3000:
-        cut = text.rfind("\n\n")
-        if cut < 0 or non_whitespace_chars(text[:cut]) < 2800:
-            break
-        text = text[:cut]
     return text
 
 
@@ -468,7 +436,7 @@ class DemoResourceProvider:
             "content_gaps": ["応答の遅れを課題の分離で捉える具体例"],
             "trend_hypotheses": [{"hypothesis": "具体的な返信場面は抽象的な心理学より自己認識を生みやすい", "evidence": "既存動画のアドラー心理学関心", "confidence": "medium"}],
             "source_directions": [{"person": "岸見一郎", "work": "嫌われる勇気", "concept": "課題の分離"}],
-            "research_notes": ["Demo fixture; production Gemini should validate current sources and competition."],
+            "research_notes": ["Demo fixture; production configured analysis model should validate current sources and competition."],
         }
 
     def create_topic_candidates(self, research: dict, snapshot: dict, performance: dict, competitor_context: str = "") -> dict:
@@ -484,7 +452,7 @@ class DemoResourceProvider:
         ]}
 
     def select_topic(self, candidates: dict, research: dict, performance: dict) -> dict:
-        return {"selected_topic": "返信を後回しにしたあとの罪悪感", "selected_candidate_id": "T01", "selection_reason": "最も具体的な視聴者瞬間と実践可能な心理学の接続があり、9-11分で約束を完結しやすい。", "scores": {"channel_fit": 24, "audience_pain": 19, "packaging_potential": 18, "retention_8_10m": 14, "source_strength": 9, "novelty": 9, "total": 93}, "rejected_topics": [{"candidate_id": "T02", "reason": "状況が広く、thumbnail promise が弱い"}, {"candidate_id": "T03", "reason": "既存の承認欲求テーマと重なりやすい"}], "source_person": "岸見一郎", "source_work": "嫌われる勇気", "source_concept": "課題の分離", "audience_moment": "通知を見ても返事ができず、夜に自分を責める", "promise": "背負いすぎた責任を見分けて、短く誠実に返せる"}
+        return {"selected_topic": "返信を後回しにしたあとの罪悪感", "selected_candidate_id": "T01", "selection_reason": "最も具体的な視聴者瞬間と心理メカニズムの接続があり、短いfocus動画でも約束を完結しやすい。", "scores": {"channel_fit": 24, "audience_pain": 19, "packaging_potential": 18, "retention_fit": 14, "source_strength": 9, "novelty": 9, "total": 93}, "rejected_topics": [{"candidate_id": "T02", "reason": "状況が広く、thumbnail promise が弱い"}, {"candidate_id": "T03", "reason": "既存の承認欲求テーマと重なりやすい"}], "source_person": "岸見一郎", "source_work": "嫌われる勇気", "source_concept": "課題の分離", "audience_moment": "通知を見ても返事ができず、夜に自分を責める", "promise": "背負いすぎた責任を見分けて、短く誠実に返せる"}
 
     def lock_source(self, topic: str, snapshot: dict, performance: dict) -> dict:
         return {
@@ -523,7 +491,7 @@ class DemoResourceProvider:
             "exclusions": ["childhood cause", "diagnosis", "fictional protagonist"],
         }
 
-    def create_contract(self, topic: str, source_pack: dict, performance: dict, psychology_brief: dict | None = None) -> dict:
+    def create_contract(self, topic: str, source_pack: dict, performance: dict, psychology_brief: dict | None = None, validation_feedback: str = "") -> dict:
         psychology_brief = psychology_brief or self.create_psychology_brief(topic, source_pack, performance)
         candidates = [
             {"title": "返事をしないだけで、なぜ心が苦しい？", "mechanism": "question", "char_count": 18},
@@ -542,9 +510,10 @@ class DemoResourceProvider:
             "title_candidates": candidates,
             "chosen_title": candidates[1]["title"],
             "chosen_title_char_count": 18,
-            "target_duration_minutes": "9-11",
-            "target_char_min": 2400,
-            "target_char_max": 4700,
+            "title_hook_contract": {"title_behavior": "通知を見ても返事ができない", "title_pain": "短い返信なのに指が止まり、自分を責める", "opening_anchors": ["通知", "返事", "指が止まる"], "payoff_by_seconds": 20},
+            "target_duration_minutes": "6-12",
+            "target_char_min": 2300,
+            "target_char_max": 6000,
             "hook_contract": {"recognition_by_seconds": 8, "misconception_or_tension_by_seconds": 18, "first_real_insight_by_seconds": 35, "core_question_by_seconds": 55},
             "thumbnail_brief": {"click_question": "なぜ短い返信が怖いのか", "visual_conflict": "通知は小さいのに心の影は大きい", "title_must_not_repeat": "返信できない"},
             "format_lock": {
@@ -562,29 +531,30 @@ class DemoResourceProvider:
             },
         }
 
-    def create_plan(self, contract: dict, source_pack: dict, psychology_brief: dict | None = None) -> dict:
+    def create_plan(self, contract: dict, source_pack: dict, psychology_brief: dict | None = None, validation_feedback: str = "") -> dict:
         psychology_brief = psychology_brief or {
             "route": contract.get("route", "EXPLANATION"),
             "selected_mechanisms": [{"name": name} for name in contract.get("selected_mechanisms", [])],
         }
-        functions = ["recognition", "misconception_reframe", "mechanism", "inner_world", "contradiction", "integration", "practical_shift", "insight_landing"]
+        functions = ["recognition", "misconception_reframe", "mechanism", "contradiction", "practical_shift", "insight_landing"]
         mechanism = psychology_brief["selected_mechanisms"][0]["name"]
         sections = []
         for index, function in enumerate(functions, start=1):
             used = [mechanism] if function in {"mechanism", "inner_world", "contradiction", "integration", "practical_shift"} else []
-            sections.append({"id": "S%d" % index, "purpose": function, "psychological_job": function, "behavior_link": "返信行動との接続", "why_answered": "なぜ返信負担が増えるか", "mechanisms_used": used, "example_budget": 1 if function in {"recognition", "mechanism"} else 0, "optional_reason": "core" if function not in {"practical_shift"} else "brief=useful", "new_information": "新しい情報%d" % index, "viewer_question_answered": "問い%d" % index, "state_advance": "理解%d -> 理解%d" % (index - 1, index), "so_what_next": "次の問い%d" % index, "segment_function": function, "estimated_seconds": 65})
+            sections.append({"id": "S%d" % index, "purpose": function, "psychological_job": function, "behavior_link": "返信行動との接続", "relative_weight": 1.0, "why_answered": "なぜ返信負担が増えるか", "mechanisms_used": used, "example_budget": 1 if function in {"recognition", "mechanism"} else 0, "optional_reason": "core" if function not in {"practical_shift"} else "brief=useful", "new_information": "新しい情報%d" % index, "viewer_question_answered": "問い%d" % index, "state_advance": "理解%d -> 理解%d" % (index - 1, index), "so_what_next": "次の問い%d" % index, "segment_function": function})
         return {
             "route": psychology_brief["route"],
             "retention_blueprint": [
-                {"time": "0:00-0:08", "new_information": "通知を見て手が止まる場面", "stay_reason": "自分を認識する", "visual_opportunity": "暗い部屋と小さな通知"},
-                {"time": "0:08-0:35", "new_information": "怠けではなく感情管理の負担", "stay_reason": "理解が反転する", "visual_opportunity": "小さな画面と大きな影"},
+                {"movement": "cold_open", "new_information": "通知を見て手が止まる行動", "stay_reason": "自分を認識する", "psychological_progress": "behavior -> recognition"},
+                {"movement": "early_reframe", "new_information": "怠けではなく返信に伴う責任負担", "stay_reason": "理解が反転する", "psychological_progress": "self-blame -> psychological interpretation"},
             ],
             "sections": sections,
             "redundancy_risks": ["同じ安心表現を繰り返さない"],
             "reassurance_lines_used": [],
-            "hook_draft": "通知を見た瞬間、返事をしなければと思うのに、指が止まる夜があります。",
+            "core_question": "なぜ返事をする意図より、相手の反応を先回りする負担が先に選ばれるのか。",
+            "hook_draft": "なぜ返事をする意図より、相手の反応を先回りする負担が先に選ばれるのでしょうか。通知を見ても指が止まるのは、怠けではなく、最初の一文に責任を背負わせているからです。",
             "cta_plan": "三つの返信習慣から一つ選ぶ",
-            "planning_quality_gate": {"first_insight_before_35s": True, "first_major_payoff_before_5m": True, "no_duplicate_sections": True, "every_section_advances_state": True, "psychology_is_spine": True, "no_plot_or_character_arc": True, "ending_creates_self_understanding": True},
+            "planning_quality_gate": {"first_insight_before_30s": True, "first_insight_before_35s": True, "first_major_payoff_before_5m": True, "no_duplicate_sections": True, "every_section_advances_state": True, "psychology_is_spine": True, "no_plot_or_character_arc": True, "ending_creates_self_understanding": True},
         }
 
     def write_script(self, contract: dict, plan: dict, source_pack: dict, psychology_brief: dict | None = None) -> str:
@@ -652,7 +622,7 @@ class DemoResourceProvider:
         return {"optimization_report": "Demo repair", "final_script": script}
 
     def translate_to_vietnamese(self, script: str) -> str:
-        return "【Bản dịch tiếng Việt (DEMO) — production dịch đầy đủ qua DeepSeek】\n" + script[:300]
+        return "【Bản dịch tiếng Việt (DEMO) — production dịch đầy đủ qua configured writer】\n" + script[:300]
 
     def create_thumbnail(self, contract: dict, script: str, competitor_context: str = "") -> dict:
         return {
@@ -667,7 +637,7 @@ class DemoResourceProvider:
             "thumbnail_carries": "言葉にできない重さ",
             "text_color": "#FFFFFF",
             "background_color": "#1A2332",
-            "image_prompt": "A fictional anonymous gender-neutral illustrated character looking at a phone notification with visible hesitation, flat illustrated cartoon style, thick black outline, solid colors, no gradients or realistic shading, navy #1A2332 background, subject on the right with clean negative space on the left, 16:9 full bleed, no text, no logo, no watermark, not resembling any identifiable real person.",
+            "image_prompt": "A fictional anonymous gender-neutral illustrated character looking at a phone notification with visible hesitation, flat illustrated cartoon style, thick black outline, solid colors, navy #1A2332 background, full-bleed 16:9 scene across the entire frame, main action weighted to the right, soft left-to-right navy atmospheric gradient fading into a low-detail text zone, no hard split or vertical divider, no text, no logo, no watermark, not resembling any identifiable real person.",
             "negative_prompt": "text, logo, watermark, recognizable public figure, exact likeness, extra fingers, distorted hands, low contrast, cluttered background",
             "overlay_spec": {"lines": 1, "font_weight": "heavy", "height_percent": 14, "position": "left", "safe_margin_percent": 5},
             "manual_squint_test": "PENDING_USER",
@@ -675,11 +645,11 @@ class DemoResourceProvider:
 
     def create_image_strategy(self, contract: dict, plan: dict, thumbnail: dict) -> dict:
         beats = []
-        # 49 beats / 42 ảnh unique = mật độ tối thiểu cho 9-11 phút theo
-        # derive_visual_density_targets (front-loaded schedule), để demo tự vượt qua validation.
+        # Demo giữ mật độ đủ cho validator; production vẫn derive floor động từ
+        # contract + plan và không dùng số ảnh cố định.
         for index in range(1, 50):
             image_number = index if index <= 42 else ((index - 43) % 42) + 1
-            beats.append({"id": "B%02d" % index, "time": "DRAFT_TIMING", "script_section": "S%d" % min(8, ((index - 1) // 6) + 1), "visual_information": "視覚情報%d" % index, "mode": "literal" if index % 3 else "contrast", "new_image": index <= 42, "reuse_image_id": None if index <= 42 else "IMG-%02d" % image_number})
+            beats.append({"id": "B%02d" % index, "time": "DRAFT_TIMING", "script_section": "S%d" % min(6, ((index - 1) // 8) + 1), "visual_information": "視覚情報%d" % index, "mode": "literal" if index % 3 else "contrast", "new_image": index <= 42, "image_id": "IMG-%02d" % image_number, "reuse_image_id": None if index <= 42 else "IMG-%02d" % image_number})
         return {"style_bible": "flat illustrated cartoon, thick black outline, solid colors, no gradients, navy #1A2332 background, strong readable contrast", "character_bible": "anonymous gender-neutral illustrated character, simple flat shapes, no facial detail beyond expression", "environment_bible": "minimal flat Japanese interior, solid color blocks", "opening_visual_contract": {"thumbnail_scene": thumbnail["concepts"][0]["scene"], "first_frame_scene": "通知を見る女性", "first_15s_visuals": ["phone detail", "frozen hand", "large shadow"]}, "estimated_unique_images": 42, "estimated_total_visual_events": 49, "mascot_ratio": 0.0, "density_check": True, "no_filler_check": True, "visual_beats": beats}
 
     def create_image_prompts(self, strategy: dict, contract: dict) -> dict:
@@ -694,4 +664,4 @@ class DemoResourceProvider:
         return {"images": images, "storyboard": storyboard}
 
     def create_publish_draft(self, contract: dict, source_pack: dict) -> dict:
-        return {"description_draft": "返事を後回しにしたあと、罪悪感で画面を開けなくなることはありませんか。\nこの動画では、課題の分離という考え方から、背負いすぎた責任を見直します。", "chapters_status": "DRAFT_OMITTED", "pinned_comment": "返事をする時、今の自分に近いのはどれですか？ ①すぐ返す ②時間を決める ③落ち着いてから返す", "hashtags": ["#人間関係", "#アドラー心理学", "#メンタルケア"], "tags": ["返信", "罪悪感", "課題の分離", "人間関係"], "source_note": "参考：岸見一郎・古賀史健『嫌われる勇気』"}
+        return {"description_draft": "返事を後回しにしたあと、罪悪感で画面を開けなくなることはありませんか。\nこの動画では、短い返信が大きな負担になる心理を、課題の分離という考え方から整理します。相手の受け取り方まで自分の責任として抱えると、正解を探し続けて返信が遅れ、遅れるほど罪悪感が強くなります。動画では、どこまでが自分の課題なのかを見直し、誠実さと過剰な責任を分けて考えます。\n\nこの動画は教育・情報提供を目的としたもので、医療的助言ではありません。", "chapters_status": "DRAFT_OMITTED", "pinned_comment": "返事をする時、今の自分に近いのはどれですか？ ①すぐ返す ②時間を決める ③落ち着いてから返す", "hashtags": ["#人間関係", "#アドラー心理学", "#メンタルケア"], "tags": ["返信", "罪悪感", "課題の分離", "人間関係"], "source_note": "参考：岸見一郎・古賀史健『嫌われる勇気』"}

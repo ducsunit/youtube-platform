@@ -96,7 +96,14 @@ def resource_main(argv: Optional[Sequence[str]] = None) -> int:
             bootstrap = ResourcePackPipeline(DemoResourceProvider(), output_dir, max_retries=1)
             state = bootstrap.load_state()
             complete = state.status == "complete"
-            provider = DemoResourceProvider() if args.demo or complete else AIResourceProvider(Settings.from_env())
+            provider = (
+                DemoResourceProvider()
+                if args.demo or complete
+                else AIResourceProvider(
+                    Settings.from_env(require_keys=False),
+                    routing_snapshot=state.config_snapshot.get("model_routing"),
+                )
+            )
             pipeline = ResourcePackPipeline(
                 provider,
                 output_dir,
@@ -108,7 +115,7 @@ def resource_main(argv: Optional[Sequence[str]] = None) -> int:
             raw_data = _new_input(args, parser)
             run_id = args.run_id or uuid.uuid4().hex
             output_dir = args.output_dir or Path("runs") / run_id
-            provider = DemoResourceProvider() if args.demo else AIResourceProvider(Settings.from_env())
+            provider = DemoResourceProvider() if args.demo else AIResourceProvider(Settings.from_env(require_keys=False))
             pipeline = ResourcePackPipeline(
                 provider,
                 output_dir,
@@ -123,7 +130,7 @@ def resource_main(argv: Optional[Sequence[str]] = None) -> int:
                     "source_checkpoint": str(args.resume_legacy),
                     "legacy_completed_steps": legacy_payload.get("completed_steps", []),
                     "reused": ["raw_youtube_data"],
-                    "not_reused": ["gemini_proposal", "deepseek_draft", "final_script"],
+                "not_reused": ["legacy_proposal", "legacy_draft", "final_script"],
                     "reason": "Resource-pack source/language/character gates phải chạy lại.",
                 }
                 ref = pipeline.store.put_json(
@@ -141,7 +148,7 @@ def resource_main(argv: Optional[Sequence[str]] = None) -> int:
                 "profile": "resource_pack",
                 "mode": "demo" if args.demo else "production",
                 "output_dir": str(output_dir),
-                "topic": state.topic or "PENDING_GEMINI_SELECTION",
+                "topic": state.topic or "PENDING_MODEL_SELECTION",
             },
         )
         trace_started = True
@@ -149,7 +156,7 @@ def resource_main(argv: Optional[Sequence[str]] = None) -> int:
         state = pipeline.run(state)
         manifest = output_dir / "resource_manifest.json"
         print("\nHoàn tất resource pack: %s" % output_dir)
-        print("Topic do Gemini chọn: %s" % state.topic)
+        print("Topic do configured analysis role chọn: %s" % state.topic)
         print("Manifest: %s" % manifest)
         print("Checkpoint: %s" % (output_dir / "run_state.json"))
         print("Thời gian chạy: %s" % format_duration(state.execution_elapsed_seconds))

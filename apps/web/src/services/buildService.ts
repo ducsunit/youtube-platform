@@ -10,17 +10,17 @@ import type {
 import { API_BASE, request } from './apiClient';
 
 export const getBuildStatus = (runId: string) =>
-  request<BuildStatus>(`/build/${encodeURIComponent(runId)}/status`);
+  request<BuildStatus>(`/build/runs/${encodeURIComponent(runId)}/status`);
 
 export const getSubStyle = (runId: string) =>
-  request<{ run_id: string; substyle: SubStyle }>(
-    `/build/${encodeURIComponent(runId)}/substyle`,
+  request<{ run_id: string; style: SubStyle }>(
+    `/build/runs/${encodeURIComponent(runId)}/sub-style`,
   );
 
 export const putSubStyle = (runId: string, substyle: SubStyle) =>
-  request<{ updated: boolean; substyle: SubStyle }>(
-    `/build/${encodeURIComponent(runId)}/substyle`,
-    { method: 'PUT', body: JSON.stringify({ substyle }) },
+  request<{ run_id: string; saved: boolean; style: SubStyle }>(
+    `/build/runs/${encodeURIComponent(runId)}/sub-style`,
+    { method: 'PUT', body: JSON.stringify(substyle) },
   );
 
 export const importPackImages = (
@@ -33,7 +33,7 @@ export const importPackImages = (
   );
 
 export const startBuild = (runId: string, body: BuildStartBody) =>
-  request<BuildJobStarted>(`/build/${encodeURIComponent(runId)}/start`, {
+  request<BuildJobStarted>(`/build/runs/${encodeURIComponent(runId)}/build`, {
     method: 'POST',
     body: JSON.stringify(body),
   });

@@ -1,7 +1,7 @@
 """LEGACY — flow 7-step cũ (YouTubePipeline + FlowState), KHÔNG còn là flow chính.
 
-Flow hiện tại là psychology-first 22-stage ResourcePackPipeline trong
-`resource_pipeline.py` (→ `skills/tam-ly-hoc-full-video-master-jp`). File này
+Flow production hiện tại là psychology-first ResourcePackPipeline trong
+`resource_pack/pipeline.py`. File này
 chỉ còn giữ vì CLI entrypoint `youtube-pipeline` (`cli.py`) và re-export
 trong `__init__.py` vẫn trỏ vào — nếu dùng CLI, ưu tiên chuyển sang flow mới;
 đừng thêm feature mới vào đây.
@@ -61,7 +61,7 @@ class YouTubePipeline:
             trace_error("%s | lần %d/%d" % (step_name, attempt, self.max_retries), exc)
 
         try:
-            return run_with_retry(
+            result, _retry_metadata = run_with_retry(
                 step_name,
                 operation,
                 self.max_retries,
@@ -69,6 +69,9 @@ class YouTubePipeline:
                 self.progress,
                 on_error,
             )
+            # The shared retry engine returns telemetry alongside the value;
+            # this legacy pipeline still exposes the historical value-only API.
+            return result
         except RuntimeError as exc:
             raise PipelineError(str(exc)) from exc
 

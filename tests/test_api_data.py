@@ -254,7 +254,7 @@ class TestActions(DataApiTestCase):
         self.assertEqual(r.status_code, 202)
         self.wait_job(r.json()["job_id"])
         argv = self.invocations()[0]["argv"]
-        self.assertIn("--all-videos", argv)
+        self.assertEqual(argv, ["youtube_pull.py", "--out", str((self.root / "youtube_data.json").resolve())])
         self.assertNotIn("--videos", argv)
 
     def test_pull_advanced_options(self) -> None:
@@ -469,10 +469,20 @@ class TestBuilders(unittest.TestCase):
             max_replies=5,
             no_replies=True,
         )
-        # Mode đặt trước options: [..., --all-videos, --max-comments, ...]
         self.assertEqual(
-            adv[adv.index("--all-videos") + 1 :],
-            ["--max-comments", "50", "--max-replies-per-thread", "5", "--no-replies"],
+            adv,
+            [
+                self.PY,
+                "-u",
+                "youtube_pull.py",
+                "--out",
+                str(out),
+                "--max-comments",
+                "50",
+                "--max-replies-per-thread",
+                "5",
+                "--no-replies",
+            ],
         )
 
 

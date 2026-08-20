@@ -12,10 +12,28 @@ from youtube_pipeline.resource_provider import AIResourceProvider, DemoResourceP
 from youtube_pipeline.resource_cli import build_resource_parser
 from youtube_pipeline.resource_prompts import vietnamese_translation_prompt
 from youtube_pipeline.resource_validation import unsupported_source_claims, validate_plan
+from youtube_pipeline.resource_pack.pipeline import _finalize_source_audit_after_scrub
 from youtube_pipeline.sections import insert_pause_tags, strip_minimax_tags
 
 
 class ResourcePackPipelineTests(unittest.TestCase):
+    def test_final_source_scrub_removes_only_exact_claims(self):
+        script = "行動を確認します。相手からの信頼に影響することがあります。ここで終わります。"
+        audit = {
+            "outline_coverage": True,
+            "title_alignment": True,
+            "missing_outline_points": [],
+            "unsupported_claims": [
+                {"claim": "相手からの信頼に影響することがあります。", "reason": "unsupported"}
+            ],
+        }
+        cleaned, scrubbed, removed = _finalize_source_audit_after_scrub(
+            script, {"audits": {"auditor": audit}}
+        )
+        self.assertTrue(scrubbed)
+        self.assertEqual(removed, ["相手からの信頼に影響することがあります。"])
+        self.assertNotIn("信頼", cleaned)
+
     class RevisingDemoProvider(DemoResourceProvider):
         def __init__(self):
             self.received_review = None
@@ -62,7 +80,11 @@ class ResourcePackPipelineTests(unittest.TestCase):
             gemini_audit_model="gemini-audit",
         )
         provider._gemini_json = Mock(return_value={})
-        provider._deepseek_json = Mock(return_value={})
+        provider._deepseek_json = Mock(
+            side_effect=lambda label, system, prompt, **kwargs: (
+                {"images": []} if label.startswith("RP_IMAGE_PROMPTS") else {}
+            )
+        )
 
         provider.create_contract("topic", {}, {})
         provider.create_plan({}, {})
@@ -87,7 +109,27 @@ class ResourcePackPipelineTests(unittest.TestCase):
         self.assertEqual(provider._deepseek_json.call_count, 7)
         provider._gemini_json.assert_not_called()
 
-    def test_provider_keeps_research_and_review_on_gemini(self):
+    def test_image_prompt_requests_are_batched_without_hard_token_limit(self):
+        provider = AIResourceProvider.__new__(AIResourceProvider)
+        profile = SimpleNamespace(
+            provider="openai_compatible",
+            model="model",
+            base_url="https://example.test/v1",
+            temperature=0.2,
+            max_output_tokens=1234,
+        )
+        provider.router = SimpleNamespace(
+            profile_for=Mock(return_value=profile),
+            resolve_api_key=Mock(return_value="key"),
+        )
+        client = Mock()
+        client.chat.completions.create.return_value.choices = [SimpleNamespace(message=SimpleNamespace(content='{"ok": true}'))]
+        provider._clients = {}
+        provider._OpenAI = Mock(return_value=client)
+        provider._call_json("packaging", "RP_IMAGE_PROMPTS_01", "system", "prompt")
+        self.assertNotIn("max_tokens", client.chat.completions.create.call_args.kwargs)
+
+    def test_provider_routes_analysis_review_and_audit_to_their_roles(self):
         provider = AIResourceProvider.__new__(AIResourceProvider)
         provider.settings = SimpleNamespace(
             gemini_review_model="gemini-review",
@@ -101,12 +143,35 @@ class ResourcePackPipelineTests(unittest.TestCase):
         provider.select_topic({}, {}, {})
         provider.lock_source("topic", {}, {})
         provider.review_script({}, {}, {}, "draft")
-        provider.audit_script("gemini", {}, {}, {}, "script")
+        provider.audit_script("auditor", {}, {}, {}, "script")
 
         self.assertEqual(provider._gemini_json.call_count, 6)
         provider._deepseek_json.assert_not_called()
 
-    def test_deepseek_revision_reconstructs_writer_conversation(self):
+    def test_audit_uses_only_locked_auditor_role(self):
+        provider = AIResourceProvider.__new__(AIResourceProvider)
+        profile = SimpleNamespace(
+            profile_name="locked-gpt",
+            provider="openai_compatible",
+            model="gpt-5.6-luna",
+        )
+        provider.router = SimpleNamespace(profile_for=Mock(return_value=profile))
+        provider._call_json = Mock(return_value={"source_alignment": True})
+
+        result = provider.audit_script("auditor", {}, {}, {}, "script")
+
+        self.assertEqual(provider._call_json.call_args.args[0], "auditor")
+        self.assertEqual(provider._call_json.call_args.args[1], "RP_AUDIT")
+        self.assertEqual(result["routing"], {
+            "role": "auditor",
+            "profile": "locked-gpt",
+            "provider": "openai_compatible",
+            "model": "gpt-5.6-luna",
+        })
+        with self.assertRaisesRegex(ValueError, "logical role 'auditor'"):
+            provider.audit_script("gemini", {}, {}, {}, "script")
+
+    def test_editor_revision_reconstructs_writer_conversation(self):
         provider = AIResourceProvider.__new__(AIResourceProvider)
         provider.settings = SimpleNamespace(deepseek_model="deepseek-writer")
         provider._deepseek_text_messages = Mock(return_value="修正版")
@@ -123,7 +188,7 @@ class ResourcePackPipelineTests(unittest.TestCase):
         messages = provider._deepseek_text_messages.call_args.args[2]
         self.assertEqual([item["role"] for item in messages], ["user", "assistant", "user"])
         self.assertEqual(messages[1]["content"], "元の草稿")
-        self.assertIn("GEMINI REVIEW", messages[2]["content"])
+        self.assertIn("REVIEWER FINDINGS", messages[2]["content"])
         self.assertIn("重複を削除", messages[2]["content"])
 
     def test_source_boundary_rejects_unsourced_neuroscience_plan(self):
@@ -263,7 +328,7 @@ class ResourcePackPipelineTests(unittest.TestCase):
             sections = json.loads((root / "script/sections.json").read_text(encoding="utf-8"))
             self.assertEqual(sections["pause_policy"]["minimax_prompt_source"], "deterministic_sections")
             self.assertEqual(sections["pause_policy"]["syntax"], "<#x#>")
-            self.assertTrue(any("tts_ready" in warning for warning in state.stage_records["post_script_assets"].warnings))
+            self.assertTrue(any("tts_ready" in warning for warning in state.stage_records["sections"].warnings))
 
     def test_sections_uses_tts_ready_built_from_anchors(self):
         # Schema v7 mới: Gemini trả tag ANCHORS (vị trí), pipeline tự chèn <#x#>
@@ -322,7 +387,7 @@ class ResourcePackPipelineTests(unittest.TestCase):
             sections = json.loads((root / "script/sections.json").read_text(encoding="utf-8"))
             self.assertEqual(sections["pause_policy"]["minimax_prompt_source"], "deterministic_sections")
 
-    def test_review_findings_return_to_deepseek_and_session_is_persisted(self):
+    def test_review_findings_return_to_editor_and_session_is_persisted(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             provider = self.RevisingDemoProvider()
@@ -336,7 +401,7 @@ class ResourcePackPipelineTests(unittest.TestCase):
             self.assertNotIn("final_script", report)
             session = json.loads((root / "script/writer-session.json").read_text(encoding="utf-8"))
             self.assertEqual(session["strategy"], "persisted_transcript")
-            self.assertEqual([turn["role"] for turn in session["turns"]], ["deepseek", "gemini", "deepseek"])
+            self.assertEqual([turn["role"] for turn in session["turns"]], ["writer", "reviewer", "editor"])
             self.assertEqual(session["turns"][2]["type"], "revision")
 
     def test_review_coerces_drifted_score_report_values(self):

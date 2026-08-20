@@ -37,7 +37,7 @@ def build_new_run_command(
     mode: str,
     input_file: Optional[Path] = None,
 ) -> list[str]:
-    """Lệnh chạy resource-pack mới.
+    """Lệnh chạy resource-pack worker nội bộ cho UI.
 
     Lưu ý: demo KHÔNG được kèm --input-file — resource_cli._new_input cho
     input_file ưu tiên hơn --demo (nếu kèm cả hai, demo provider sẽ nhận
@@ -46,8 +46,7 @@ def build_new_run_command(
     argv = [
         sys.executable,
         "-m",
-        "youtube_pipeline",
-        "resource-pack",
+        "youtube_pipeline.api.pipeline_job",
         "--run-id",
         run_id,
         "--output-dir",
@@ -63,13 +62,11 @@ def build_new_run_command(
 
 
 def build_resume_command(run_id: str, run_dir: Path) -> list[str]:
-    """Lệnh resume — bắt buộc cả --resume và --output-dir absolute trỏ cùng
-    thư mục (resource_cli.py validate resolve()== nhau)."""
+    """Resume worker nội bộ cho run do Web UI quản lý."""
     return [
         sys.executable,
         "-m",
-        "youtube_pipeline",
-        "resource-pack",
+        "youtube_pipeline.api.pipeline_job",
         "--resume",
         str(run_dir / "run_state.json"),
         "--output-dir",

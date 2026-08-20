@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 
 from .timeline import build_timeline, find_audio_file, probe_duration
+from .logo_cleanup import clean_clips
 from .build import (
     ANIM_MODES,
     build_marks_tsv,
@@ -51,6 +52,8 @@ BUILD_DEFAULTS = {
     "render": True,
     "dry_run": False,
     "subtitles": False,
+    "logo_cleanup": False,
+    "logo_mode": "delogo",
 }
 
 # Style phụ đề mặc định — copy từ youtube_pipeline/video/engine.py (SUB_DEFAULTS + JP_FONTS);
@@ -554,7 +557,7 @@ def build_pack(
         "tool": str(build_video_script()),
         "service": "youtube_pipeline.build_service",
         "options": {k: opts[k] for k in (
-            "motion", "animation", "transition", "resolution", "render", "dry_run", "subtitles")},
+        "motion", "animation", "transition", "resolution", "render", "dry_run", "subtitles", "logo_cleanup", "logo_mode")},
         "generated_at": _utc_now(),
         "status": "PACK_READY",
         "next_step": "",
@@ -653,6 +656,16 @@ def build_pack(
     clips_note = ["clips/ (%d file)" % len(report["clips"]["present"])] if report["clips"]["present"] else []
     report["resources"] = resources + ["images/ (đầy đủ)"] + clips_note
 
+    if opts.get("logo_cleanup") and report["clips"]["present"]:
+        cleanup = clean_clips(build_dir, mode=opts.get("logo_mode", "delogo"), log=log)
+        report["logo_cleanup"] = cleanup
+        if cleanup["failed"]:
+            report["status"] = "RENDER_FAILED"
+            report["error"] = "Logo cleanup thất bại: %s" % cleanup["failed"]
+            report["next_step"] = "Kiểm tra FFmpeg và vùng watermark, rồi chạy lại. Bản gốc nằm trong video-build/clips-original/."
+            _write_report(build_dir, report)
+            return report
+
     # 6) Chỉ chuẩn bị pack (render=false) — dừng ở PACK_READY.
     if not opts.get("render"):
         report["status"] = "PACK_READY"
@@ -720,6 +733,10 @@ def build_parser() -> argparse.ArgumentParser:
                         help="Xem trước: chạy build-video.py --dry-run (kiểm tra timeline, không rap).")
     parser.add_argument("--subtitles", action="store_true",
                         help="Đốt phụ đề srt/ theo video-build/sub-style.json khi rap.")
+    parser.add_argument("--logo-cleanup", action="store_true",
+                        help="Xử lý watermark cố định ở góc phải dưới của clip.")
+    parser.add_argument("--logo-mode", choices=("delogo", "blur"), default="delogo",
+                        help="Cách xử lý watermark: delogo hoặc blur.")
     return parser
 
 
@@ -735,6 +752,8 @@ def main(argv: Optional[list[str]] = None) -> int:
         "render": not args.prepare_only,
         "dry_run": args.dry_run,
         "subtitles": args.subtitles,
+        "logo_cleanup": args.logo_cleanup,
+        "logo_mode": args.logo_mode,
     }
     try:
         resolution = tuple(int(part) for part in args.resolution.lower().split("x"))

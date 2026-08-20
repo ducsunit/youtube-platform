@@ -1,6 +1,6 @@
 """Chia script thành sections theo số section của planning — KHÔNG chia chunk.
 
-Kịch bản 9–11 phút (2.400–4.700 ký tự) gen được trong MỘT lần gọi MiniMax từ
+Kịch bản focus khoảng 6–12 phút (2.300–6.000 ký tự theo guideline; có thể tới 15 phút khi argument đủ) gen được trong MỘT lần gọi MiniMax từ
 `script/minimax-prompt.txt`; không còn file chunk để gen/ghép từng phần.
 
 Sections chỉ là cơ cấu đánh dấu mốc cho bước Dựng video (cửa sổ giây theo tỉ
@@ -37,8 +37,6 @@ class ScriptSection:
 
 def _split_by_sentences(segment: str) -> list[str]:
     parts = [part for part in re.split(r"(?<=[。！？])", segment) if part]
-    if len(parts) < 2:
-        raise ValueError("Đoạn script không có ranh giới câu để chia.")
     return parts
 
 
@@ -86,7 +84,8 @@ def split_script_sections(
         groups.append(current)
 
     # Về đúng section_count: thừa → gộp cặp liền nhau nhỏ nhất; thiếu → tách
-    # section lớn nhất tại ranh giới câu (script 2.400+ ký tự luôn làm được).
+    # section lớn nhất tại ranh giới câu. Script ngắn được phép có ít section
+    # thực tế hơn planning metadata nếu không còn ranh giới câu an toàn.
     while len(groups) > section_count:
         merge_index = min(
             range(len(groups) - 1),
@@ -97,6 +96,8 @@ def split_script_sections(
     while len(groups) < section_count:
         largest = max(range(len(groups)), key=lambda i: non_whitespace_chars(groups[i]))
         parts = _split_by_sentences(groups[largest])
+        if len(parts) < 2:
+            break
         half = ceil(non_whitespace_chars(groups[largest]) / 2)
         first = ""
         for sentence in parts:
@@ -109,10 +110,11 @@ def split_script_sections(
         ScriptSection(index=index, id="S%d" % index, text=text)
         for index, text in enumerate(groups, start=1)
     ]
-    validate_sections(script, sections, section_count)
+    actual_section_count = len(sections)
+    validate_sections(script, sections, actual_section_count)
     policy = {
         "script_chars": total,
-        "section_count": section_count,
+        "section_count": actual_section_count,
         "cpm_min": cpm_min,
         "cpm_max": cpm_max,
         "estimated_min_seconds": round(total / cpm_max * 60),

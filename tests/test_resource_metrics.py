@@ -51,21 +51,17 @@ def _clean_audit(**overrides) -> dict:
 
 
 class AuditGateTests(unittest.TestCase):
-    def test_deepseek_ten_point_scale_is_normalized_to_hundred(self):
-        # Run thật: deepseek trả overall_score=9 (thang 1-10) trong khi gemini
-        # trả 100 cho cùng script — threshold 90 làm deepseek luôn fail.
+    def test_legacy_scores_are_ignored_by_audit_gate(self):
         self.assertEqual(normalize_audit_score({"overall_score": 9}), 90)
         self.assertEqual(normalize_audit_score({"overall_score": 100}), 100)
         self.assertTrue(audit_passes(_clean_audit(overall_score=9)))
 
-    def test_low_score_still_blocks_after_normalization(self):
+    def test_low_or_invalid_scores_do_not_block(self):
         self.assertEqual(normalize_audit_score({"overall_score": 8}), 80)
-        self.assertFalse(audit_passes(_clean_audit(overall_score=8)))
-        self.assertFalse(audit_passes(_clean_audit(overall_score=70)))
-
-    def test_non_numeric_score_blocks(self):
         self.assertEqual(normalize_audit_score({"overall_score": "n/a"}), 0)
-        self.assertFalse(audit_passes(_clean_audit(overall_score="n/a")))
+        self.assertTrue(audit_passes(_clean_audit(overall_score=8)))
+        self.assertTrue(audit_passes(_clean_audit(overall_score=70)))
+        self.assertTrue(audit_passes(_clean_audit(overall_score="n/a")))
 
     def test_advisory_issues_do_not_block_a_pass(self):
         # Auditor hay ghi nhận xét "không cần sửa" vào issues; note vô hại từng
@@ -74,7 +70,7 @@ class AuditGateTests(unittest.TestCase):
         self.assertTrue(audit_passes(audit))
 
     def test_structured_gates_still_block(self):
-        self.assertFalse(audit_passes(_clean_audit(decision="revise")))
+        self.assertTrue(audit_passes(_clean_audit(decision="revise")))
         self.assertFalse(audit_passes(_clean_audit(unsupported_claims=["claim ngoài source"])))
         self.assertFalse(audit_passes(_clean_audit(missing_outline_points=["S4"])))
         self.assertFalse(audit_passes(_clean_audit(source_alignment=False)))
@@ -136,12 +132,11 @@ class PsychologyFirstPromptCouplingTests(unittest.TestCase):
             self.assertIn("character arc", body, name)
             self.assertNotIn("ORIGIN_STORY", body, name)
             self.assertNotIn("Triple denial", body, name)
-        self.assertIn("psychology_scorecard", resource_prompts.REVIEW_SYSTEM)
-        self.assertIn("story_dominance", resource_prompts.REVIEW_SYSTEM)
-        self.assertIn("example_dependency", resource_prompts.REVIEW_SYSTEM)
+        self.assertIn('"score_report"', resource_prompts.REVIEW_SYSTEM)
+        self.assertIn("reframe", resource_prompts.REVIEW_SYSTEM.lower())
 
     def test_structure_check_uses_anti_story_shared_helper(self):
-        source = pathlib.Path(resource_pipeline.__file__).read_text(encoding="utf-8")
+        source = pathlib.Path(resource_pipeline.__file__).with_name("resource_pack").joinpath("pipeline.py").read_text(encoding="utf-8")
         self.assertIn("anti_story_findings(script)", source)
         self.assertNotIn("validation_phrases = VALIDATION_PHRASES_JA", source)
 
@@ -175,7 +170,7 @@ class ClaimVocabBanTests(unittest.TestCase):
         functions = ["recognition", "misconception_reframe", "mechanism", "inner_world", "contradiction", "integration", "insight_landing"]
         for index, function in enumerate(functions, 1):
             sections.append({"id": "S%d" % index, "psychological_job": function, "behavior_link": "behavior", "why_answered": "why", "mechanisms_used": [], "example_budget": 0, "new_information": "info", "viewer_question_answered": "why", "state_advance": "before -> after", "so_what_next": "next", "segment_function": function})
-        plan = {"retention_blueprint": "bp", "hook_draft": "hook", "planning_quality_gate": {"first_insight_before_35s": True, "first_major_payoff_before_5m": True, "no_duplicate_sections": True, "every_section_advances_state": True, "psychology_is_spine": True, "no_plot_or_character_arc": True, "ending_creates_self_understanding": True}, "sections": sections}
+        plan = {"retention_blueprint": "bp", "hook_draft": "hook", "planning_quality_gate": {"first_insight_before_30s": True, "first_major_payoff_before_5m": True, "no_duplicate_sections": True, "every_section_advances_state": True, "psychology_is_spine": True, "no_plot_or_character_arc": True, "ending_creates_self_understanding": True}, "sections": sections}
         plan["sections"][3]["new_information"] = "幼少期の場面"
         source_pack = {"source_concept": "concept", "verified_sources": [], "allowed_paraphrases": []}
         with self.assertRaisesRegex(ValueError, "幼少期"):

@@ -18,9 +18,12 @@ dependencies = [
   "uvicorn>=0.30.0",
 ]
 
-[project.scripts]
-youtube-pipeline = "youtube_pipeline.cli:main"
+[project.optional-dependencies]
+srt = [
+  "faster-whisper>=1.1,<2",
+  "rapidfuzz>=3.9,<4",
+  "stable-ts-whisperless @ git+https://github.com/jianfch/stable-ts.git@05e73bdff4eabda39d11e04e851baaa3bcd586a2",
+]
 
 [tool.setuptools.packages.find]
 include = ["youtube_pipeline*"]
-

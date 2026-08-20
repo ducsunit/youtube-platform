@@ -197,6 +197,20 @@ class TestStartBuild(BuildApiTestCase):
         self.assertIn("--dry-run", argv)
         self.assertIn("--subtitles", argv)
 
+    def test_start_logo_cleanup_flags(self) -> None:
+        with self._fake_start({"id": "job-logo"}) as start_mock, mock.patch.object(
+            build_runner, "_active_unlocked", return_value=None
+        ):
+            r = self.client.post(
+                "/api/build/runs/demo-run/build",
+                json={"logo_cleanup": True, "logo_mode": "blur"},
+            )
+        self.assertEqual(r.status_code, 200)
+        argv = start_mock.call_args.args[1]
+        self.assertIn("--logo-cleanup", argv)
+        self.assertIn("--logo-mode", argv)
+        self.assertIn("blur", argv)
+
 
 class TestBuildJobs(BuildApiTestCase):
     def _write_job_log(self, job_id: str, lines: list[str], exit_code: int | None = None) -> Path:
@@ -329,12 +343,14 @@ class TestSubStyle(BuildApiTestCase):
 class TestImportImages(BuildApiTestCase):
     """Import ảnh đã gen — chạy đúng mode --import-images của build-video.py."""
 
-    # _img_order_for_import đọc storyboard thật của demo-run (40 IMG).
-    # Các test này dùng fixture 3-IMG nên phải mock để tránh conflict.
+    IMAGE_COUNT = 42
+
     def setUp(self) -> None:
-        from youtube_pipeline import build_service as _bs
+        from youtube_pipeline.video import service as _service
         self._order_patcher = mock.patch.object(
-            _bs, "_img_order_for_import", return_value=[]
+            _service,
+            "_img_order_for_import",
+            return_value=["IMG-%02d" % index for index in range(1, self.IMAGE_COUNT + 1)],
         )
         self._order_patcher.start()
 
@@ -343,28 +359,54 @@ class TestImportImages(BuildApiTestCase):
 
     @staticmethod
     def _fake_pack(root: Path) -> Path:
-        """video-build/prompts-build.py giả: 3 IMG theo thứ tự beat B01→B03."""
+        """video-build/prompts-build.py giả: 42 IMG theo thứ tự beat."""
         build_dir = root / "runs/demo-run/video-build"
         build_dir.mkdir(parents=True, exist_ok=True)
+        rows = [
+            '    ("IMG-%02d","B%02d","0:00-0:05",%d),' % (index, index, index)
+            for index in range(1, 43)
+        ]
         (build_dir / "prompts-build.py").write_text(
-            "BEATS = [\n"
-            '    ("IMG-01","B01","0:00-0:05",1),\n'
-            '    ("IMG-02","B02","0:05-0:10",2),\n'
-            '    ("IMG-03","B03","0:10-0:15",3),\n'
-            "]\n",
+            "BEATS = [\n" + "\n".join(rows) + "\n]\n",
             encoding="utf-8",
         )
         return build_dir
 
-    def _images(self, dirname: str, names: list[str]) -> Path:
+    def _images(self, dirname: str, names: list[str], *, fill: bool = True) -> Path:
         """Thư mục ảnh nguồn — mtime tăng dần = thứ tự names."""
         source = self.root / dirname
         source.mkdir(parents=True, exist_ok=True)
+        names = list(names)
+        if fill:
+            names.extend(
+                "extra-%02d.jpg" % index
+                for index in range(len(names) + 1, self.IMAGE_COUNT + 1)
+            )
         for index, name in enumerate(names):
             path = source / name
             path.write_bytes(b"fake")
             os.utime(path, (1_600_000_000 + index, 1_600_000_000 + index))
         return source
+
+    @staticmethod
+    def _source_names(source: Path) -> list[str]:
+        return [
+            path.name
+            for path in sorted(source.iterdir(), key=lambda item: item.stat().st_mtime)
+            if path.suffix.lower() in {".jpg", ".jpeg", ".png", ".webp"}
+        ]
+
+    def _manifest(self, source: Path, overrides: dict[int, str] | None = None,
+                  omit: set[str] | None = None) -> str:
+        overrides = overrides or {}
+        omit = omit or set()
+        lines = []
+        for index, filename in enumerate(self._source_names(source), 1):
+            if filename in omit:
+                continue
+            filename = overrides.get(index, filename)
+            lines.append("IMG-%02d | %s | scene %02d" % (index, filename, index))
+        return "\n".join(lines) + "\n"
 
     def _clean_images(self, build_dir: Path) -> None:
         images_dir = build_dir / "images"
@@ -383,14 +425,16 @@ class TestImportImages(BuildApiTestCase):
         self.assertEqual(r.status_code, 200, r.text)
         body = r.json()
         self.assertTrue(body["ok"])
-        self.assertEqual([m["img"] for m in body["mapping"]],
+        self.assertEqual([m["img"] for m in body["mapping"]][:3],
                          ["IMG-01", "IMG-02", "IMG-03"])
-        self.assertEqual([m["file"] for m in body["mapping"]],
+        self.assertEqual([m["file"] for m in body["mapping"]][:3],
                          ["a.jpg", "b.jpg", "c.jpg"])
+        self.assertEqual(len(body["mapping"]), self.IMAGE_COUNT)
         self.assertFalse(body["apply"])
         # Xem trước — không move, không đổi tên ảnh (manifest khung được ghi thêm).
-        self.assertEqual(sorted(p.name for p in source.glob("*.jpg")),
-                         ["a.jpg", "b.jpg", "c.jpg"])
+        source_names = sorted(p.name for p in source.glob("*.jpg"))
+        self.assertEqual(source_names[:3], ["a.jpg", "b.jpg", "c.jpg"])
+        self.assertEqual(len(source_names), self.IMAGE_COUNT)
         self.assertFalse(list((build_dir / "images").glob("IMG-*")))
 
     def test_apply_moves_renamed_files_into_images(self) -> None:
@@ -405,9 +449,10 @@ class TestImportImages(BuildApiTestCase):
         body = r.json()
         self.assertTrue(body["ok"])
         self.assertTrue(body["apply"])
-        self.assertEqual(len(body["mapping"]), 3)
+        self.assertEqual(len(body["mapping"]), self.IMAGE_COUNT)
         images = sorted(p.name for p in (build_dir / "images").glob("IMG-*"))
-        self.assertEqual(images, ["IMG-01.jpg", "IMG-02.jpg", "IMG-03.jpg"])
+        self.assertEqual(len(images), self.IMAGE_COUNT)
+        self.assertEqual(images[:3], ["IMG-01.jpg", "IMG-02.jpg", "IMG-03.jpg"])
         self.assertEqual(list(source.iterdir()), [])  # đã move hết
 
     def test_insert_assigns_specific_image(self) -> None:
@@ -429,7 +474,7 @@ class TestImportImages(BuildApiTestCase):
 
     def test_missing_images_fails_with_error(self) -> None:
         self._fake_pack(self.root)
-        source = self._images("gen-missing", ["a.jpg", "b.jpg"])  # cần 3
+        source = self._images("gen-missing", ["a.jpg", "b.jpg"], fill=False)  # cần 42
         r = self.client.post(
             "/api/build/runs/demo-run/import-images",
             json={"source_dir": str(source), "apply": True},
@@ -458,12 +503,9 @@ class TestImportImages(BuildApiTestCase):
         build_dir = self._fake_pack(self.root)
         self._clean_images(build_dir)
         source = self._images("gen-manifest", ["a.jpg", "b.jpg", "c.jpg"])
-        # Mapping đảo: a->IMG-03, b->IMG-01, c->IMG-02
+        # Mapping đảo: a->IMG-03, b->IMG-01, c->IMG-02.
         (source / "IMPORT_MANIFEST.txt").write_text(
-            "# comment bị bỏ qua\n"
-            "IMG-01 | b.jpg | scene B\n"
-            "IMG-02 | c.jpg | scene C\n"
-            "IMG-03 | a.jpg | scene A  # ??? low confidence\n",
+            self._manifest(source, {1: "b.jpg", 2: "c.jpg", 3: "a.jpg"}),
             encoding="utf-8",
         )
         r = self.client.post(
@@ -484,7 +526,7 @@ class TestImportImages(BuildApiTestCase):
         self._clean_images(build_dir)
         source = self._images("gen-manifest-warn", ["a.jpg", "b.jpg", "c.jpg"])
         (source / "IMPORT_MANIFEST.txt").write_text(
-            "IMG-01 | a.jpg | scene A\nIMG-02 | b.jpg | scene B\n", encoding="utf-8"
+            self._manifest(source, omit={"c.jpg"}), encoding="utf-8"
         )
         r = self.client.post(
             "/api/build/runs/demo-run/import-images",
@@ -510,11 +552,12 @@ class TestImportImages(BuildApiTestCase):
         self.assertEqual(body.get("manifest_written"), "IMPORT_MANIFEST.txt")
         manifest = source / "IMPORT_MANIFEST.txt"
         self.assertTrue(manifest.is_file())
-        # Khung phải parse lại được và phủ đủ 3 ảnh.
-        from youtube_pipeline.build_service import _read_manifest
+        # Khung phải parse lại được và phủ đủ 42 ảnh.
+        from youtube_pipeline.video.service import _read_manifest
 
         order, warns = _read_manifest(source)
-        self.assertEqual(order, ["IMG-01", "IMG-02", "IMG-03"])
+        self.assertEqual(len(order), self.IMAGE_COUNT)
+        self.assertEqual(order[:3], ["IMG-01", "IMG-02", "IMG-03"])
         self.assertEqual(warns, [])
 
     def test_preview_does_not_overwrite_edited_manifest(self) -> None:
@@ -522,7 +565,7 @@ class TestImportImages(BuildApiTestCase):
         build_dir = self._fake_pack(self.root)
         self._clean_images(build_dir)
         source = self._images("gen-nooverwrite", ["a.jpg", "b.jpg", "c.jpg"])
-        edited = "IMG-01 | c.jpg | scene C\nIMG-02 | a.jpg | scene A\nIMG-03 | b.jpg | scene B\n"
+        edited = self._manifest(source, {1: "c.jpg", 2: "a.jpg", 3: "b.jpg"})
         (source / "IMPORT_MANIFEST.txt").write_text(edited, encoding="utf-8")
         r = self.client.post(
             "/api/build/runs/demo-run/import-images",

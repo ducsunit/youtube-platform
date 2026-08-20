@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Sliders, Film, Image as ImageIcon, Type, Play, CheckCircle2, RefreshCw, Square, Download, Sparkles } from '../components/Icons';
+import { Film, RefreshCw } from '../components/Icons';
 import {
   buildJobLogDownloadUrl,
   cancelBuildJob,
@@ -11,11 +11,17 @@ import {
   listRuns,
   putSubStyle,
   startBuild,
+  cancelSrtJob,
+  getSrtInputs,
+  getSrtJob,
+  getSrtJobLog,
+  getSrtStatus,
+  startSrtGenerate,
 } from '../api';
 import { LogViewer } from '../components/LogViewer';
 import { usePolling } from '../hooks/usePolling';
 import { useT } from '../i18n';
-import type { BuildImportResult, BuildJob, SubStyle } from '../types';
+import type { BuildImportResult, BuildJob, SrtJob, SubStyle } from '../types';
 import { formatDate } from '../utils';
 
 const STATUS_INTERVAL_MS = 5000;
@@ -113,7 +119,26 @@ export function BuildPage() {
   const [dryRun, setDryRun] = useState(false);
   const [subtitles, setSubtitles] = useState(false);
   const [render, setRender] = useState(true);
+  const [logoCleanup, setLogoCleanup] = useState(false);
+  const [logoMode, setLogoMode] = useState<'delogo' | 'blur'>('delogo');
   const [actionError, setActionError] = useState<string | null>(null);
+
+  // SRT is generated from the selected run's script and narration audio.
+  const srtStatusPoll = usePolling(() => getSrtStatus(), { enabled: true, intervalMs: STATUS_INTERVAL_MS * 2 });
+  const srtInputsPoll = usePolling(() => getSrtInputs(runId), { enabled: runId !== '', intervalMs: STATUS_INTERVAL_MS });
+  const [srtModel, setSrtModel] = useState('large-v3');
+  const [srtDevice, setSrtDevice] = useState('cpu');
+  const [srtMode, setSrtMode] = useState('accurate');
+  const [srtMaxChars, setSrtMaxChars] = useState(24);
+  const [srtJobId, setSrtJobId] = useState<string | null>(null);
+  const [srtJob, setSrtJob] = useState<SrtJob | null>(null);
+  const [srtError, setSrtError] = useState<string | null>(null);
+  const srtRunning = srtJobId !== null && (srtJob === null || srtJob.status === 'running');
+  const srtJobPoll = usePolling(() => getSrtJob(srtJobId ?? ''), { enabled: srtRunning, intervalMs: JOB_INTERVAL_MS });
+  useEffect(() => {
+    if (srtJobPoll.data) setSrtJob(srtJobPoll.data);
+    if (srtJobPoll.error) setSrtError(String(srtJobPoll.error));
+  }, [srtJobPoll.data, srtJobPoll.error]);
 
   // Style phụ đề — nạp từ server khi đổi run.
   const [subStyle, setSubStyle] = useState<SubStyle>(SUB_DEFAULTS);
@@ -174,7 +199,7 @@ export function BuildPage() {
         ...(importInsert.trim() ? { insert: importInsert.trim() } : {}),
         apply,
       });
-      setImportResult(r);
+      setImportResult({ ...r, apply });
       if (apply && r.ok) void statusPoll.refresh();
     } catch (e) {
       setImportError(String(e));
@@ -197,6 +222,7 @@ export function BuildPage() {
           : {}),
         dry_run: preview ? true : dryRun,
         ...(subtitles && !preview ? { subtitles: true } : {}),
+        ...(logoCleanup ? { logo_cleanup: true, logo_mode: logoMode } : {}),
       };
       const r = await startBuild(runId, body);
       setJobId(r.job_id);
@@ -218,6 +244,29 @@ export function BuildPage() {
       void jobPoll.refresh();
     } catch (e) {
       setActionError(String(e));
+    }
+  };
+
+  const doStartSrt = async () => {
+    if (!runId) return;
+    setSrtError(null);
+    try {
+      const result = await startSrtGenerate(runId, { model: srtModel, device: srtDevice, mode: srtMode, max_chars: srtMaxChars });
+      setSrtJobId(result.job_id);
+      setSrtJob(null);
+      void srtInputsPoll.refresh();
+    } catch (e) {
+      setSrtError(String(e));
+    }
+  };
+
+  const doCancelSrt = async () => {
+    if (!srtJobId) return;
+    try {
+      await cancelSrtJob(srtJobId);
+      void srtJobPoll.refresh();
+    } catch (e) {
+      setSrtError(String(e));
     }
   };
 
@@ -265,6 +314,7 @@ export function BuildPage() {
       {Boolean(jobError) && (
         <div className="error-text" style={{ marginBottom: 16 }}>{String(jobError)}</div>
       )}
+      {srtError && <div className="error-text" style={{ marginBottom: 16 }}>{srtError}</div>}
 
       {/* ------------------------------------------------ chọn run + trạng thái */}
       <div className="panel" style={{ marginBottom: 20 }}>
@@ -425,6 +475,70 @@ export function BuildPage() {
           )}
         </div>
       </div>
+
+      {/* ------------------------------------------------ gen SRT */}
+      <div className="panel" style={{ marginBottom: 20 }}>
+        <div className="panel-title">
+          <span>{t('srt.title')}</span>
+          <span className="spacer" />
+          {srtInputsPoll.data?.srt_exists && <span className="badge badge-complete">{t('srt.ready')}</span>}
+        </div>
+        <div className="panel-body">
+          <p style={{ fontSize: 13, color: 'var(--muted)', marginTop: 0 }}>{t('srt.desc')}</p>
+          {runId === '' ? <div className="empty-state">{t('build.run.none')}</div> : (
+            <>
+              <div className="toolbar" style={{ flexWrap: 'wrap', gap: 12 }}>
+                <span className={`badge ${srtInputsPoll.data?.script_exists ? 'badge-complete' : 'badge-unknown'}`}>
+                  {srtInputsPoll.data?.script_exists ? `✓ ${t('srt.script')}` : `✗ ${t('srt.scriptMissing')}`}
+                </span>
+                <span className={`badge ${srtInputsPoll.data?.audio_exists ? 'badge-complete' : 'badge-unknown'}`}>
+                  {srtInputsPoll.data?.audio_exists ? `✓ ${t('srt.audio')}` : `✗ ${t('srt.audioMissing')}`}
+                </span>
+                {srtInputsPoll.data?.srt_exists && <span className="mono" style={{ fontSize: 12 }}>{srtInputsPoll.data.srt_path}</span>}
+              </div>
+              <div className="toolbar" style={{ flexWrap: 'wrap', gap: 14, alignItems: 'flex-end', marginTop: 14 }}>
+                <div className="form-row" style={{ marginBottom: 0 }}>
+                  <label htmlFor="srt-model">{t('srt.model')}</label>
+                  <select id="srt-model" value={srtModel} onChange={(e) => setSrtModel(e.target.value)} disabled={srtRunning}>
+                    {(srtStatusPoll.data?.models ?? ['large-v3']).map((value) => <option key={value} value={value}>{value}</option>)}
+                  </select>
+                </div>
+                <div className="form-row" style={{ marginBottom: 0 }}>
+                  <label htmlFor="srt-device">{t('srt.device')}</label>
+                  <select id="srt-device" value={srtDevice} onChange={(e) => setSrtDevice(e.target.value)} disabled={srtRunning}>
+                    {(srtStatusPoll.data?.devices ?? ['cpu']).map((value) => <option key={value} value={value}>{value}</option>)}
+                  </select>
+                </div>
+                <div className="form-row" style={{ marginBottom: 0 }}>
+                  <label htmlFor="srt-mode">{t('srt.mode')}</label>
+                  <select id="srt-mode" value={srtMode} onChange={(e) => setSrtMode(e.target.value)} disabled={srtRunning}>
+                    <option value="accurate">{t('srt.accurate')}</option>
+                    <option value="fast">{t('srt.fast')}</option>
+                  </select>
+                </div>
+                <div className="form-row" style={{ marginBottom: 0 }}>
+                  <label htmlFor="srt-max-chars">{t('srt.maxChars')}</label>
+                  <input id="srt-max-chars" type="number" min={8} max={50} value={srtMaxChars} onChange={(e) => setSrtMaxChars(Number(e.target.value))} disabled={srtRunning} style={{ width: 80 }} />
+                </div>
+              </div>
+              {!srtStatusPoll.data?.sdk_ready && <p className="error-text" style={{ marginBottom: 8 }}>{t('srt.noSdk')}</p>}
+              {srtMode === 'accurate' && srtStatusPoll.data && !srtStatusPoll.data.accurate_ready && <p className="error-text" style={{ marginBottom: 8 }}>{t('srt.noAccurate')}</p>}
+              <div className="toolbar" style={{ marginTop: 14 }}>
+                <button type="button" className="btn btn-primary" onClick={() => void doStartSrt()} disabled={srtRunning || !srtInputsPoll.data?.script_exists || !srtInputsPoll.data?.audio_exists || !srtStatusPoll.data?.sdk_ready || (srtMode === 'accurate' && !srtStatusPoll.data?.accurate_ready)}>
+                  {srtRunning ? t('srt.running') : t('srt.generate')}
+                </button>
+                {srtRunning && <button type="button" className="btn btn-danger" onClick={() => void doCancelSrt()}>{t('srt.cancel')}</button>}
+                <span style={{ fontSize: 12, color: 'var(--muted)' }}>{t('srt.output')}</span>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      {srtJobId !== null && <div className="panel" style={{ marginBottom: 20 }}>
+        <div className="panel-title"><span>{t('srt.log')}</span><span className="spacer" /><span className={`badge badge-${srtJob?.status ?? 'running'}`}>{t(`srt.${srtJob?.status ?? 'running'}`)}</span></div>
+        <LogViewer logFetcher={(offset, limit) => getSrtJobLog(srtJobId, offset, limit)} running={srtRunning} intervalMs={JOB_INTERVAL_MS} />
+      </div>}
 
       {/* ------------------------------------------------ báo cáo gần nhất */}
       {status?.last_report && (
@@ -632,6 +746,17 @@ export function BuildPage() {
               />
               {t('build.option.subtitles')}
             </label>
+            <label className="checkbox-row">
+              <input type="checkbox" checked={logoCleanup} onChange={(e) => setLogoCleanup(e.target.checked)} disabled={busy} />
+              Xóa logo góc phải dưới
+            </label>
+            {logoCleanup && <div className="form-row" style={{ marginBottom: 0 }}>
+              <label htmlFor="build-logo-mode">Phương pháp</label>
+              <select id="build-logo-mode" value={logoMode} onChange={(e) => setLogoMode(e.target.value as 'delogo' | 'blur')} disabled={busy}>
+                <option value="delogo">Delogo (xóa nội suy)</option>
+                <option value="blur">Blur vùng logo</option>
+              </select>
+            </div>}
             <label className="checkbox-row">
               <input
                 type="checkbox"

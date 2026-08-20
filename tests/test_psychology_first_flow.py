@@ -16,7 +16,12 @@ from youtube_pipeline.resource_validation import (
     anti_story_findings,
     format_gate_verdict,
     generic_selfhelp_findings,
+    normalize_plan_example_budgets,
     psychology_format_metrics,
+    normalize_contract_format_lock,
+    normalize_contract_titles,
+    normalize_title_hook_contract,
+    title_hook_alignment,
     validate_contract,
     validate_plan,
     validate_psychology_brief,
@@ -54,6 +59,12 @@ class PsychologyFirstFlowTests(unittest.TestCase):
         self.assertNotIn("Triple denial", combined)
         self.assertIn("direct-to-viewer", ANTI_STORY_RULES)
 
+    def test_video_10_editorial_profile_is_a_quality_bar_not_a_copy_template(self):
+        self.assertIn("VIDEO-10 EDITORIAL PROFILE", PLANNING_SYSTEM)
+        self.assertIn("not a copied template", PLANNING_SYSTEM)
+        self.assertIn("VIDEO-10 QUALITY BAR", WRITING_SYSTEM)
+        self.assertIn("sourceが一つのmechanismしか支持しない場合", WRITING_SYSTEM)
+
     def test_psychology_brief_prompt_requires_core_and_tension(self):
         prompt = psychology_brief_prompt("topic", {}, {})
         self.assertIn("core_psychological_question", prompt)
@@ -68,13 +79,13 @@ class PsychologyFirstFlowTests(unittest.TestCase):
         self.assertEqual(anti_story_findings(good), [])
 
     def test_review_requires_reframe_signature_and_writing_cites_sparingly(self):
-        # Gap 1: REVIEW_SYSTEM bắt >= 2 landing "XではなくY" (1 sớm + 1 ending).
-        self.assertIn("REFRAME SIGNATURE", REVIEW_SYSTEM)
-        self.assertIn("ではなく", REVIEW_SYSTEM)
-        # Gap 2: WRITING_SYSTEM chốt chính sách citation — 1–2 study phản trực giác
-        # đọc tên + năm trong narration, còn lại để citation block.
+        # Current contract leaves reframe count adaptive: only useful landings
+        # should remain, instead of forcing a fixed template.
+        self.assertIn("không có số lần bắt buộc", REVIEW_SYSTEM)
+        self.assertIn("reframe", REVIEW_SYSTEM.lower())
+        # The current writer contract keeps research sparse and mechanism-led.
         self.assertIn("reframe", WRITING_SYSTEM.lower())
-        self.assertIn("引用", WRITING_SYSTEM)
+        self.assertIn("研究は1〜2個まで", WRITING_SYSTEM)
 
     def test_review_rule_md_documents_reframe_signature(self):
         rule_path = (
@@ -135,7 +146,7 @@ class PsychologyFirstFlowTests(unittest.TestCase):
             "retention_blueprint": [{}], "sections": sections, "hook_draft": "x",
             "redundancy_risks": ["nhắc lại 生存本能 gây trùng ý"],
             "planning_quality_gate": {
-                "first_insight_before_35s": True, "first_major_payoff_before_5m": True,
+                "first_insight_before_30s": True, "first_major_payoff_before_5m": True,
                 "no_duplicate_sections": True, "every_section_advances_state": True,
                 "psychology_is_spine": True, "no_plot_or_character_arc": True,
                 "ending_creates_self_understanding": True,
@@ -143,13 +154,27 @@ class PsychologyFirstFlowTests(unittest.TestCase):
         }
         validate_plan(plan, self._source_pack(), brief)
 
+    def test_plan_example_budget_overage_is_capped_deterministically(self):
+        plan = {
+            "sections": [
+                {"id": "S1", "example_budget": 1},
+                {"id": "S2", "example_budget": 1},
+                {"id": "S3", "example_budget": 1},
+                {"id": "S4", "example_budget": 1},
+                {"id": "S5", "example_budget": 1},
+            ]
+        }
+        self.assertTrue(normalize_plan_example_budgets(plan))
+        self.assertEqual(sum(section["example_budget"] for section in plan["sections"]), 4)
+        self.assertEqual(plan["sections"][-1]["example_budget"], 0)
+
     def test_plan_rejects_origin_when_brief_says_unsupported(self):
         brief = self._brief(origin="unsupported")
         sections = []
         functions = ["recognition", "misconception_reframe", "mechanism", "inner_world", "origin_development", "integration", "insight_landing"]
         for i, function in enumerate(functions, 1):
             sections.append({"id": f"S{i}", "psychological_job": function, "behavior_link": "行動", "why_answered": "why", "mechanisms_used": ["反芻"] if function == "mechanism" else [], "example_budget": 0, "new_information": str(i), "state_advance": "a -> b", "so_what_next": "next", "segment_function": function})
-        plan = {"retention_blueprint": [{}], "sections": sections, "hook_draft": "x", "planning_quality_gate": {"first_insight_before_35s": True, "first_major_payoff_before_5m": True, "no_duplicate_sections": True, "every_section_advances_state": True, "psychology_is_spine": True, "no_plot_or_character_arc": True, "ending_creates_self_understanding": True}}
+        plan = {"retention_blueprint": [{}], "sections": sections, "hook_draft": "x", "planning_quality_gate": {"first_insight_before_30s": True, "first_major_payoff_before_5m": True, "no_duplicate_sections": True, "every_section_advances_state": True, "psychology_is_spine": True, "no_plot_or_character_arc": True, "ending_creates_self_understanding": True}}
         with self.assertRaisesRegex(ValueError, "origin"):
             validate_plan(plan, psychology_brief=brief)
 
@@ -206,6 +231,64 @@ class PsychologyFormatCheckTests(unittest.TestCase):
         short_spine["format_lock"]["forbidden_spine"] = ["narrative story"]
         with self.assertRaisesRegex(ValueError, "forbidden_spine"):
             validate_contract(short_spine)
+
+    def test_format_lock_accepts_japanese_psychology_center(self):
+        contract = self._contract()
+        contract["format_lock"]["content_center"] = "繰り返される心理的パターンと行動傾向"
+        validate_contract(contract)
+
+        scene = self._contract()
+        scene["format_lock"]["content_center"] = "休日の部屋で通知を待つ人の物語"
+        with self.assertRaisesRegex(ValueError, "content_center"):
+            validate_contract(scene)
+
+    def test_format_lock_metadata_is_normalized_without_model_retry(self):
+        contract = self._contract()
+        contract["format_lock"]["secondary_device"] = "short illustrative situations only"
+        contract["format_lock"]["primary_narration"] = "narration"
+        self.assertTrue(normalize_contract_format_lock(contract))
+        validate_contract(contract)
+        self.assertEqual(
+            "behavioral micro-examples used only for recognition and evidence",
+            contract["format_lock"]["secondary_device"],
+        )
+
+    def test_contract_title_lengths_are_repaired_deterministically(self):
+        contract = self._contract()
+        contract["title_candidates"][0]["title"] = "短い"
+        contract["title_candidates"][1]["title"] = "このタイトルは長すぎるため二十八文字を超えています"
+        contract["title_candidates"][2]["title"] = "普通のタイトル"
+        contract["chosen_title"] = "短い"
+        normalize_contract_titles(contract)
+        validate_contract(contract)
+        self.assertTrue(all(18 <= len(item["title"]) <= 28 for item in contract["title_candidates"]))
+        self.assertTrue(18 <= len(contract["chosen_title"]) <= 28)
+
+    def test_title_hook_contract_uses_opening_anchors_without_verbatim_title(self):
+        contract = self._contract()
+        contract["title_hook_contract"] = {
+            "title_behavior": "考えが止まらない",
+            "title_pain": "頭の中で同じ会話を繰り返す",
+            "opening_anchors": ["会話", "繰り返す"],
+            "payoff_by_seconds": 20,
+        }
+        self.assertFalse(normalize_title_hook_contract(contract))
+        aligned = title_hook_alignment(
+            "寝る前に、昼の会話を何度も繰り返してしまうことがあります。", contract
+        )
+        self.assertTrue(aligned["passed"])
+        self.assertIn("会話", aligned["matched_anchors"])
+
+    def test_title_hook_alignment_ignores_japanese_punctuation(self):
+        contract = self._contract()
+        contract["title_hook_contract"] = {
+            "title_behavior": "返したいのにメッセージを開けない",
+            "title_pain": "返信の負担",
+            "opening_anchors": ["返したいのに、開けない"],
+            "payoff_by_seconds": 20,
+        }
+        aligned = title_hook_alignment("返したいのにメッセージを開けない。", contract)
+        self.assertTrue(aligned["passed"])
 
     def test_psychology_format_metrics_scores_japanese_brief(self):
         brief = {
@@ -294,7 +377,7 @@ class PsychologyFormatCheckTests(unittest.TestCase):
         # Sau structure_check để metric đo script CUỐI CÙNG (structure_check
         # được phép rewrite final_script khi repair) — lệch sơ đồ plan §17 có chủ đích.
         self.assertGreater(names.index("psychology_format_check"), names.index("structure_check"))
-        self.assertLess(names.index("psychology_format_check"), names.index("post_script_assets"))
+        self.assertLess(names.index("psychology_format_check"), names.index("sections"))
         stage = next(s for s in resource_pack_stages() if s.name == "psychology_format_check")
         self.assertIn("structure_check", stage.requires)
         self.assertIn("final_script", stage.requires)

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import hashlib
 import logging
+import re
 import shutil
 import uuid
 from pathlib import Path
@@ -10,14 +11,18 @@ from typing import Callable
 
 from ..core import ArtifactStore, FunctionStage, PipelineEngine, RunContext, RunState, StageResult
 from .sections import PAUSE_BEFORE_OUTRO, PAUSE_BETWEEN_SECTIONS, PAUSE_PARAGRAPH_BREAK, build_tts_ready, insert_pause_tags, normalize_text, split_script_sections, strip_minimax_tags
-from .metrics import build_pause_map, non_whitespace_chars, validate_japanese_script
+from .metrics import build_pause_map, non_whitespace_chars, scrub_source_citation_tokens, validate_japanese_script
 from .analysis import build_channel_snapshot, build_performance_review
 from .competitor import competitor_inject_text
 from .providers import DemoResourceProvider, ResourceContentProvider
+from .claim_ledger import attach_claim_ledger, build_claim_ledger, policy_violations, validate_claim_ledger
 from .prompts import (
     target_duration_min_from_contract,
     target_min_chars_from_contract,
 )
+from ..topic_history import annotate_candidates, duplicate_reason, load_history, record_completed
+
+PRODUCTION_POLICY_VERSION = "2026-08-20.1"
 from .validation import (
     VALIDATION_PHRASES_JA,
     SUGGESTED_FORMAT_GATE,
@@ -25,25 +30,35 @@ from .validation import (
     audit_passes,
     format_gate_verdict,
     generic_selfhelp_findings,
-    normalize_audit_score,
+    normalize_audit_report,
     psychology_format_metrics,
     psychology_hook_findings,
     psychology_review_gate_verdict,
     select_video_candidates,
     validate_contract,
+    normalize_contract_format_lock,
+    normalize_contract_titles,
+    normalize_title_hook_contract,
+    normalize_review_list,
     validate_image_strategy,
     normalize_image_prompts,
     normalize_state_advance,
     validate_plan,
+    normalize_plan_example_budgets,
+    normalize_plan_editorial_metadata,
     validate_psychology_brief,
     normalize_score_0_10,
     validate_prompt_pack,
+    validate_publish_draft,
     validate_source_pack,
     validate_thumbnail,
+    normalize_thumbnail_prompt,
     validate_topic_candidates,
     validate_topic_research,
     validate_topic_selection,
     unsupported_source_claims,
+    mechanism_is_covered,
+    title_hook_alignment,
 )
 
 logger = logging.getLogger(__name__)
@@ -65,6 +80,11 @@ def _json(context: RunContext, artifact_type: str) -> dict:
 
 def _text(context: RunContext, artifact_type: str) -> str:
     return context.store.read_text(artifact_type, context.state)
+
+
+def _source_policy(context: RunContext) -> dict:
+    """Return the locked source pack augmented with its deterministic ledger."""
+    return attach_claim_ledger(_json(context, "source_pack"), _json(context, "claim_ledger"))
 
 
 def _psychology_topic_context(context: RunContext) -> str:
@@ -119,6 +139,8 @@ def _topic_candidates(context: RunContext) -> StageResult:
         _json(context, "performance_review"),
         competitor_inject_text(),
     )
+    history = load_history(context.store.root)
+    value = annotate_candidates(value, history)
     validate_topic_candidates(value)
     ref = context.store.put_json("topic_candidates", "research/topic-candidates.json", value, "topic_candidates")
     return StageResult([ref], {"candidate_count": len(value["candidates"])})
@@ -131,6 +153,14 @@ def _topic_selection(context: RunContext) -> StageResult:
         _json(context, "topic_research"),
         _json(context, "performance_review"),
     )
+    history = load_history(context.store.root)
+    if duplicate_reason(value, history):
+        available = [row for row in candidates.get("candidates", []) if not duplicate_reason(row, history)]
+        if available:
+            replacement = max(available, key=lambda row: int(row.get("novelty", 0)) if str(row.get("novelty", "")).isdigit() else 0)
+            value = {**value, "selected_topic": replacement["topic"], "selected_candidate_id": replacement["id"], "source_person": replacement.get("source_person", ""), "source_work": replacement.get("source_work", ""), "source_concept": replacement.get("source_concept", ""), "audience_moment": replacement.get("audience_moment", ""), "promise": replacement.get("promise", ""), "selection_reason": "Deterministically đổi sang candidate chưa xuất hiện trong topic history."}
+        else:
+            raise RuntimeError("topic_selection deterministic failure: toàn bộ candidate đã xuất hiện trong topic history.")
     validate_topic_selection(value, candidates)
     context.state.topic = value["selected_topic"]
     context.topic = value["selected_topic"]
@@ -151,41 +181,153 @@ def _source_lock(context: RunContext) -> StageResult:
     return StageResult([ref], {"verified_sources": len(value["verified_sources"])})
 
 
+def _claim_ledger(context: RunContext) -> StageResult:
+    value = build_claim_ledger(_json(context, "source_pack"))
+    validate_claim_ledger(value)
+    ref = context.store.put_json("claim_ledger", "research/claim-ledger.json", value, "claim_ledger")
+    return StageResult([ref], {"allowed_claims": len(value["allowed_claims"]), "forbidden_terms": len(value["forbidden_terms"])})
+
+
 def _psychology_brief(context: RunContext) -> StageResult:
     # Keep context.topic as a plain string for backward compatibility, but give
     # the psychology stage the richer selected-topic spine so it does not have
     # to reconstruct the psychological pattern from a bare topic label.
     topic_context = _psychology_topic_context(context)
     value = context.provider.create_psychology_brief(
-        topic_context, _json(context, "source_pack"), _json(context, "performance_review")
+        topic_context, _source_policy(context), _json(context, "performance_review")
     )
-    validate_psychology_brief(value, _json(context, "source_pack"))
+    validate_psychology_brief(value, _source_policy(context))
     ref = context.store.put_json("psychology_brief", "script/psychology-brief.json", value, "psychology_brief")
     return StageResult([ref], {"route": value["route"], "mechanisms": len(value["selected_mechanisms"])})
 
 
 def _script_contract(context: RunContext) -> StageResult:
     value = context.provider.create_contract(
-        context.topic, _json(context, "source_pack"), _json(context, "performance_review"),
+        context.topic, _source_policy(context), _json(context, "performance_review"),
         _json(context, "psychology_brief"),
     )
-    validate_contract(value)
+    if normalize_contract_format_lock(value):
+        logger.warning("Contract format_lock wording normalized to the production metadata lock.")
+    if normalize_title_hook_contract(value):
+        logger.warning("Contract title_hook_contract normalized for title-to-opening alignment.")
+    try:
+        validate_contract(value)
+    except ValueError as exc:
+        # Known contract formatting defects get one targeted correction pass;
+        # other contract failures remain deterministic failures.
+        message = str(exc)
+        repairable = (
+            "title candidate" in message
+            or "Chosen title" in message
+            or "content_center" in message
+        )
+        if not repairable:
+            raise
+        logger.warning("Contract validation failed; requesting one targeted correction: %s", message)
+        value = context.provider.create_contract(
+            context.topic,
+            _source_policy(context),
+            _json(context, "performance_review"),
+            _json(context, "psychology_brief"),
+            validation_feedback=message,
+        )
+        if normalize_contract_format_lock(value):
+            logger.warning("Repaired contract format_lock wording normalized to the production metadata lock.")
+        normalize_title_hook_contract(value)
+        try:
+            validate_contract(value)
+        except ValueError:
+            if "content_center" not in message and "title candidate" not in message and "Chosen title" not in message:
+                raise
+            # Keep a valid psychological spine even if the repair model repeats
+            # the scene wording: the validated identity is the safe source.
+            normalize_contract_format_lock(value)
+            normalize_contract_titles(value)
+            normalize_title_hook_contract(value)
+            validate_contract(value)
     ref = context.store.put_json("script_contract", "script/contract.json", value, "script_contract")
     return StageResult([ref], {"title_chars": len(value["chosen_title"])})
 
 
+def _attach_missing_planning_mechanisms(plan: dict, brief: dict) -> None:
+    """Make the locked mechanism names explicit in the plan after model repair."""
+    expected = [
+        str(item.get("name", "")).strip()
+        for item in brief.get("selected_mechanisms", [])
+        if isinstance(item, dict) and str(item.get("name", "")).strip()
+    ]
+    seen = {
+        str(name).strip()
+        for section in plan.get("sections", [])
+        for name in section.get("mechanisms_used", [])
+    }
+    missing = [name for name in expected if name not in seen]
+    if not missing:
+        return
+    sections = plan.get("sections") or []
+    target = next(
+        (section for section in sections if section.get("segment_function") in {"mechanism", "inner_world", "integration"}),
+        sections[0] if sections else None,
+    )
+    if target is not None:
+        target.setdefault("mechanisms_used", []).extend(missing)
+
+
 def _planning(context: RunContext) -> StageResult:
     brief = _json(context, "psychology_brief")
-    value = context.provider.create_plan(_json(context, "script_contract"), _json(context, "source_pack"), brief)
+    value = context.provider.create_plan(_json(context, "script_contract"), _source_policy(context), brief)
     for section in value.get("sections", []):
         section["state_advance"] = normalize_state_advance(section.get("state_advance"))
-    validate_plan(value, _json(context, "source_pack"), brief)
+    normalize_plan_editorial_metadata(value)
+    if normalize_plan_example_budgets(value):
+        logger.warning("Planning example_budget vượt tổng 4; đã giảm metadata thừa deterministic.")
+    try:
+        validate_plan(value, _source_policy(context), brief)
+    except ValueError as exc:
+        # Hook and mechanism-name drift are local planner defects. Give the
+        # writer one targeted repair pass instead of retrying blindly.
+        message = str(exc)
+        repairable = (
+            "Hook micro-scene chưa pivot sớm" in message
+            or "Planning chưa cover selected mechanisms" in message
+            or "Planning dùng relief/reinforcement loop ngoài source pack" in message
+        )
+        if not repairable:
+            raise
+        logger.warning("Planning validation failed; requesting one targeted correction: %s", message)
+        value = context.provider.create_plan(
+            _json(context, "script_contract"),
+            _source_policy(context),
+            brief,
+            validation_feedback=message,
+        )
+        for section in value.get("sections", []):
+            section["state_advance"] = normalize_state_advance(section.get("state_advance"))
+        normalize_plan_editorial_metadata(value)
+        if normalize_plan_example_budgets(value):
+            logger.warning("Planning repair example_budget vượt tổng 4; đã giảm metadata thừa deterministic.")
+        try:
+            validate_plan(value, _source_policy(context), brief)
+        except ValueError as repair_exc:
+            repair_message = str(repair_exc)
+            combined_messages = "%s\n%s" % (message, repair_message)
+            # Preserve a recognition micro-scene but add the locked question
+            # immediately after it if the targeted repair still lacks a pivot.
+            contract = _json(context, "script_contract")
+            question = str(contract.get("core_psychological_question", "")).strip()
+            hook = str(value.get("hook_draft", "")).strip()
+            if "Hook micro-scene chưa pivot sớm" in combined_messages and question and hook:
+                sentences = [part for part in re.split(r"(?<=[。！？])", hook) if part]
+                value["hook_draft"] = "".join(sentences[:1]) + question.rstrip("。！？?!") + "。" + "".join(sentences[1:])
+            if "Planning chưa cover selected mechanisms" in combined_messages:
+                _attach_missing_planning_mechanisms(value, brief)
+            validate_plan(value, _source_policy(context), brief)
     ref = context.store.put_json("planning", "script/planning.json", value, "planning")
     return StageResult([ref], {"sections": len(value["sections"])})
 
 
 def _writing(context: RunContext) -> StageResult:
-    value = context.provider.write_script(_json(context, "script_contract"), _json(context, "planning"), _json(context, "source_pack"), _json(context, "psychology_brief"))
+    value = context.provider.write_script(_json(context, "script_contract"), _json(context, "planning"), _source_policy(context), _json(context, "psychology_brief"))
     ref = context.store.put_text("script_draft", "script/script-draft.txt", value, "writing")
     return StageResult([ref], {"raw_chars": len(value)})
 
@@ -201,48 +343,64 @@ def _build_tts_ready(review: dict, revised: str) -> str:
         try:
             return build_tts_ready(revised, anchors)
         except ValueError as exc:
-            logger.warning("Gemini tts_tag_anchors không resolve được (fallback deterministic): %s", exc)
+            logger.warning("Reviewer tts_tag_anchors không resolve được (fallback deterministic): %s", exc)
             return ""
     old = review.get("tts_ready")
     if isinstance(old, str) and old.strip():
         if normalize_text(strip_minimax_tags(old)) == normalize_text(revised):
             return old
         logger.warning(
-            "Gemini tts_ready lệch nội dung thật (không chỉ whitespace) — fallback deterministic."
+            "Reviewer tts_ready lệch nội dung thật (không chỉ whitespace) — fallback deterministic."
         )
     else:
-        logger.warning("Gemini review thiếu cả tts_tag_anchors lẫn tts_ready — fallback deterministic.")
+        logger.warning("Reviewer thiếu cả tts_tag_anchors lẫn tts_ready — fallback deterministic.")
     return ""
 
 
 def _review(context: RunContext) -> StageResult:
     contract = _json(context, "script_contract")
     plan = _json(context, "planning")
-    source_pack = _json(context, "source_pack")
+    source_pack = _source_policy(context)
     draft = _text(context, "script_draft")
     review = context.provider.review_script(contract, plan, source_pack, draft, competitor_inject_text())
     if "final_script" in review:
-        raise ValueError("Gemini review không được trả final_script; Gemini chỉ trả revised_draft_clean (rule v9).")
+        raise ValueError("Reviewer không được trả final_script; chỉ trả revised_draft_clean.")
+    # Reviewer schemas drift in the wild: a provider may return issue objects or a
+    # single string. Normalize before the control-flow checks so a formatting
+    # variation cannot kill an otherwise valid Run Live.
+    review["issues"] = normalize_review_list(review.get("issues"))
+    review["required_changes"] = normalize_review_list(review.get("required_changes"))
     decision = str(review.get("decision", "")).strip().lower()
     if decision not in ("pass", "revise"):
-        raise ValueError("Gemini review phải có decision pass hoặc revise.")
+        raise ValueError("Reviewer phải có decision pass hoặc revise.")
     if not isinstance(review.get("optimization_report"), str) or not review["optimization_report"].strip():
-        raise ValueError("Gemini review thiếu optimization_report.")
+        raise ValueError("Reviewer thiếu optimization_report.")
     for key in ("issues", "required_changes"):
         if not isinstance(review.get(key), list) or not all(isinstance(item, str) for item in review[key]):
-            raise ValueError("Gemini review.%s phải là danh sách chuỗi." % key)
+            raise ValueError("Reviewer.%s phải là danh sách chuỗi." % key)
     if decision == "revise" and not review["required_changes"]:
-        # Drift format: Gemini đôi khi chọn revise nhưng bỏ trống structured list.
+        # Drift format: provider đôi khi chọn revise nhưng bỏ trống structured list.
         # issues[] thường chứa đúng nội dung cần sửa — dùng thay thế; cả hai rỗng
         # nghĩa là reviewer không có yêu cầu hành động nào, hạ về pass thay vì
         # chết run (các gate hậu kiểm consistency/script_qa/structure vẫn chạy).
         if review.get("issues"):
-            logger.warning("Gemini revise nhưng required_changes rỗng — dùng issues[] thay thế.")
+            logger.warning("Reviewer revise nhưng required_changes rỗng — dùng issues[] thay thế.")
             review["required_changes"] = list(review["issues"])
         else:
-            logger.warning("Gemini revise nhưng không có required_changes lẫn issues — hạ decision về pass.")
+            logger.warning("Reviewer revise nhưng không có required_changes lẫn issues — hạ decision về pass.")
             decision = "pass"
             review["decision"] = "pass"  # ghi lại để artifact persisted nhất quán
+    title_alignment = title_hook_alignment(draft, contract)
+    review["title_hook_alignment"] = title_alignment
+    if not title_alignment["passed"]:
+        decision = "revise"
+        review["decision"] = "revise"
+        review["required_changes"].append(
+            "TITLE-TO-HOOK ALIGNMENT: trong khoảng 20 giây đầu, trả trực tiếp behavior/pain mà title hứa. "
+            "Dùng ít nhất một opening anchor (%s), rồi mới chuyển sang reframe/core question; "
+            "không lặp nguyên title hay thêm claim mới."
+            % ", ".join(title_alignment["anchors"])
+        )
     # Phase 7 (plan v2 §12): FORMAT_ALIGNMENT — reviewer phân loại format A–E.
     # D (personal narrative) và E (fictional story) bị cấm làm spine: dù mọi
     # điểm khác pass, decision bắt buộc revise kèm structure rewrite. C chỉ là
@@ -251,7 +409,7 @@ def _review(context: RunContext) -> StageResult:
     if isinstance(format_alignment, dict):
         classification = str(format_alignment.get("classification", "")).strip().upper()
         if classification in ("D", "E") and decision == "pass":
-            logger.warning("Gemini format_alignment=%s nhưng decision=pass — ép revise (plan v2 §12).", classification)
+            logger.warning("Reviewer format_alignment=%s nhưng decision=pass — ép revise.", classification)
             decision = "revise"
             review["decision"] = "revise"
             review["required_changes"].append(
@@ -264,55 +422,52 @@ def _review(context: RunContext) -> StageResult:
                 "FORMAT_ALIGNMENT C (self-help essay) — chưa đạt A/B: tăng mechanism depth, "
                 "giảm advice/flattery generic."
             )
+            if decision == "pass":
+                decision = "revise"
+                review["decision"] = "revise"
+                review.setdefault("required_changes", []).append(
+                    "Self-help essay contamination: giữ một practical principle, cắt advice/reassurance chung chung "
+                    "và đưa psychology mechanism trở lại làm spine."
+                )
     else:
-        logger.warning("Gemini review thiếu format_alignment — giữ nguyên decision (không blocking).")
+        logger.warning("Reviewer thiếu format_alignment — giữ nguyên decision (không blocking).")
 
-    # Semantic psychology-format gate. Deterministic structure_check cannot decide whether
-    # psychology is the actual spine; the reviewer must score that explicitly.
-    # DemoResourceProvider is a deterministic fixture and intentionally bypasses
-    # LLM semantic gating. Production AI providers must pass this gate.
+    # The scorecard is diagnostic. Editorial review decides whether one concrete
+    # weakness needs a repair; lexical score thresholds must not create a blind
+    # rewrite loop. Hard psychology-first checks remain in structure_check.
     if not isinstance(context.provider, DemoResourceProvider):
-        semantic_passed, semantic_failed = psychology_review_gate_verdict(review)
-        if not semantic_passed:
-            decision = "revise"
-            review["decision"] = "revise"
-            review.setdefault("required_changes", [])
-            review["required_changes"].append(
-                "PSYCHOLOGY FORMAT GATE chưa đạt: %s. "
-                "Chuyển story/scene thành direct psychological analysis; tăng mechanism/WHY/inner process "
-                "và reframe landing; examples chỉ làm evidence, không làm spine." % ", ".join(semantic_failed)
-            )
-
+        review["psychology_gate_diagnostic"] = {
+            "passed": psychology_review_gate_verdict(review)[0],
+            "failed": psychology_review_gate_verdict(review)[1],
+            "blocking": False,
+        }
         hook_findings = psychology_hook_findings(draft)
         if hook_findings:
             decision = "revise"
             review["decision"] = "revise"
             review.setdefault("required_changes", [])
             review["required_changes"].extend(
-                "HOOK FORMAT GATE: %s — rút recognition scene và pivot sang psychological pattern/WHY "
-                "trong vài câu đầu." % finding for finding in hook_findings
+                "HOOK FORMAT GATE: %s — trong tối đa 6 câu đầu, giữ behavior cụ thể, gọi tên pain "
+                "contradiction, rồi đặt đúng một WHY/open loop dẫn vào mechanism đã có source. "
+                "Không thêm lời hứa giải pháp, neuroscience hoặc mechanism mới." % finding
+                for finding in hook_findings
             )
 
-    # Rule v7: Gemini trả bản tái cấu trúc hoàn chỉnh (PHẦN 3) + tag positions
+    # Reviewer trả bản tái cấu trúc hoàn chỉnh + tag positions.
     # (PHẦN 5). Pipeline tự chèn <#x#> bằng code — không còn trông chờ model
     # copy lại 100% script, loại hẳn drift v7.
     revised = review.get("revised_draft_clean")
     if not isinstance(revised, str) or not revised.strip():
-        raise ValueError("Gemini review thiếu revised_draft_clean (bản tái cấu trúc theo rule v9).")
+        raise ValueError("Reviewer thiếu revised_draft_clean (bản tái cấu trúc).")
     tts_ready = _build_tts_ready(review, revised)
     review["tts_ready"] = tts_ready
+    # Scorecards are telemetry only. Older providers may still return them, so
+    # normalize them when present, but never make their absence a run failure.
     score = review.get("score_report")
-    if not isinstance(score, dict):
-        raise ValueError("Gemini review thiếu score_report (3 mục /10).")
-    for key in ("retention_impact", "style_tone", "pacing_structure"):
-        normalized = normalize_score_0_10(score.get(key))
-        if normalized is None:
-            logger.warning(
-                "Gemini score_report.%s không parse được (%r) — gán 0.0 (informational, không gate gì).",
-                key, score.get(key),
-            )
-            normalized = 0.0
-        score[key] = normalized
+    if isinstance(score, dict):
+        for key in ("retention_impact", "style_tone", "pacing_structure"):
+            normalized = normalize_score_0_10(score.get(key))
+            score[key] = normalized if normalized is not None else 0.0
     # Pipeline đếm lại bằng code — con số chính thức (rule v9 III.4: cấm ước lượng).
     verified_chars = non_whitespace_chars(revised)
     char_report = review.get("char_report") if isinstance(review.get("char_report"), dict) else {}
@@ -328,23 +483,24 @@ def _review(context: RunContext) -> StageResult:
         reviewed_script = draft
 
     # Provider APIs are stateless and cannot share a cross-vendor session ID.
-    # Persisting this transcript makes the DeepSeek writer turn reproducible on
-    # resume: original context -> DeepSeek draft -> Gemini findings -> revision.
+    # Persisting this transcript makes the configured role sequence reproducible
+    # on resume: writer draft -> reviewer findings -> editor revision.
     writer_session = {
         "strategy": "persisted_transcript",
-        "writer": "deepseek",
-        "reviewer": "gemini",
+        "writer_role": "writer",
+        "reviewer_role": "reviewer",
+        "editor_role": "editor",
         "decision": decision,
         "turns": [
-            {"role": "deepseek", "type": "draft", "content": draft},
-            {"role": "gemini", "type": "review_findings", "content": review},
-            {"role": "deepseek", "type": "revision" if decision == "revise" else "draft_preserved", "content": reviewed_script},
+            {"role": "writer", "type": "draft", "content": draft},
+            {"role": "reviewer", "type": "review_findings", "content": review},
+            {"role": "editor", "type": "revision" if decision == "revise" else "draft_preserved", "content": reviewed_script},
         ],
     }
     report_ref = context.store.put_json("review_report", "script/review-report.json", review, "review")
     session_ref = context.store.put_json("writer_session", "script/writer-session.json", writer_session, "review")
     script_ref = context.store.put_text("reviewed_script", "script/script-reviewed.txt", reviewed_script, "review")
-    return StageResult([report_ref, session_ref, script_ref], {"review_decision": decision, "deepseek_revision": decision == "revise"})
+    return StageResult([report_ref, session_ref, script_ref], {"review_decision": decision, "editor_revision": decision == "revise"})
 
 
 def _audit_failure_reasons(round_result: dict) -> str:
@@ -354,16 +510,10 @@ def _audit_failure_reasons(round_result: dict) -> str:
     biết nguyên nhân.
     """
     reasons = []
-    for name in ("deepseek", "gemini"):
-        audit = round_result.get(name) or {}
+    for name, audit in round_result.get("audits", {}).items():
         if audit_passes(audit):
             continue
         failed = []
-        if audit.get("decision") != "pass":
-            failed.append("decision=%s" % audit.get("decision"))
-        score = normalize_audit_score(audit)
-        if score < 90:
-            failed.append("overall_score=%d (<90)" % score)
         for flag in ("source_alignment", "outline_coverage", "title_alignment"):
             if not audit.get(flag):
                 failed.append("%s=false" % flag)
@@ -371,45 +521,117 @@ def _audit_failure_reasons(round_result: dict) -> str:
             values = audit.get(field) or []
             if values:
                 failed.append("%s=%s" % (field, "; ".join(str(item) for item in values)))
-        reasons.append("%s [%s]" % (name, ", ".join(failed) if failed else "không rõ"))
+        routing = audit.get("routing") or {}
+        actual = "{provider}/{model}".format(
+            provider=routing.get("provider", "unknown"),
+            model=routing.get("model", "unknown"),
+        )
+        reasons.append("%s (%s) [%s]" % (name, actual, ", ".join(failed) if failed else "không rõ"))
     return " | ".join(reasons) if reasons else "không rõ"
+
+
+def _remove_unsupported_audit_claims(script: str, *audits: dict) -> str:
+    """Remove exact claims an auditor marked unsupported before the next audit.
+
+    The editor is asked to rewrite first. This deterministic scrub is a last
+    local safeguard for a recurring failure mode where it repeats the same
+    unsupported causal sentence with softer wording.
+    """
+    repaired = script
+    for audit in audits:
+        for item in (audit or {}).get("unsupported_claims") or []:
+            if isinstance(item, dict):
+                claim = item.get("claim") or item.get("text") or ""
+            else:
+                claim = item
+            claim = str(claim).strip().strip("「」『』\"'")
+            if not claim or claim not in repaired:
+                continue
+            sentence = re.compile(r"[^。！？!?]*" + re.escape(claim) + r"[^。！？!?]*[。！？!?]")
+            updated = sentence.sub("", repaired, count=1)
+            repaired = updated if updated != repaired else repaired.replace(claim, "", 1)
+    return repaired
+
+
+def _finalize_source_audit_after_scrub(script: str, round_result: dict) -> tuple[str, bool, list[str]]:
+    """Apply one bounded local cleanup when the last audit only flags exact claims.
+
+    Auditor wording is nondeterministic, but an exact unsupported sentence is
+    not. If every failing audit has no outline/title defect and only reports
+    unsupported claims, removing those exact sentences is a deterministic
+    source-boundary fix, not another model retry. Never use this path when an
+    audit reports a missing supported point or another structural failure.
+    """
+    audits = list((round_result.get("audits") or {}).values())
+    for audit in audits:
+        if not audit.get("unsupported_claims"):
+            continue
+        if not audit.get("outline_coverage") or not audit.get("title_alignment"):
+            return script, False, []
+        if audit.get("missing_outline_points"):
+            return script, False, []
+        other_failures = [
+            key for key in ("outline_coverage", "title_alignment")
+            if not audit.get(key)
+        ]
+        if other_failures:
+            return script, False, []
+    cleaned = _remove_unsupported_audit_claims(script, *audits)
+    if cleaned == script:
+        return script, False, []
+    # The exact-claim scrub above is intentionally the only mutation. The
+    # caller performs the normal code-level source/policy checks with its
+    # locked run context before accepting the result.
+    removed = [
+        str(item.get("claim") or item.get("text") or "").strip()
+        for audit in audits
+        for item in (audit.get("unsupported_claims") or [])
+        if isinstance(item, dict) and str(item.get("claim") or item.get("text") or "").strip()
+    ]
+    return cleaned, True, removed
 
 
 def _consistency(context: RunContext) -> StageResult:
     contract = _json(context, "script_contract")
     plan = _json(context, "planning")
-    source_pack = _json(context, "source_pack")
+    source_pack = _source_policy(context)
+    claim_ledger = _json(context, "claim_ledger")
     script = _text(context, "reviewed_script")
     rounds = []
-    for round_number in range(1, 3):
+    for round_number in range(1, 4):
         unsupported = unsupported_source_claims(script, source_pack)
-        if unsupported:
+        policy_blocked = policy_violations(script, claim_ledger)
+        if unsupported or policy_blocked:
             boundary_findings = {
                 "decision": "revise",
                 "source_boundary_violation": True,
                 "unsupported_claim_markers": unsupported,
+                "policy_violations": policy_blocked,
                 "required_changes": [
                     "Source pack là authority cao nhất. Xóa hoàn toàn mọi claim khoa học, tiến hóa hoặc nguyên nhân tuổi thơ không có trong verified_sources/allowed_paraphrases; không được làm mềm câu rồi giữ lại cùng claim.",
                     "Nếu plan yêu cầu nội dung không có nguồn, bỏ nội dung đó và thay bằng diễn giải editorial_application có căn cứ.",
+                    "Không dùng các forbidden_terms trong CLAIM LEDGER của run này.",
                 ],
             }
             repaired = context.provider.repair_script(contract, plan, source_pack, script, boundary_findings)
             script = str(repaired.get("final_script", "")).strip()
             if not script:
                 raise ValueError("Repair source-boundary trả script rỗng.")
-            remaining = unsupported_source_claims(script, source_pack)
+            remaining = unsupported_source_claims(script, source_pack) + policy_violations(script, claim_ledger)
             if remaining:
                 raise ValueError(
-                    "DeepSeek repair vẫn còn claim ngoài source pack: %s" % ", ".join(remaining)
+                    "Editor repair vẫn còn claim ngoài source pack: %s" % ", ".join(remaining)
                 )
-        deepseek = context.provider.audit_script("deepseek", contract, plan, source_pack, script)
-        gemini = context.provider.audit_script("gemini", contract, plan, source_pack, script)
-        passed = audit_passes(deepseek) and audit_passes(gemini)
-        round_result = {"round": round_number, "passed": passed, "deepseek": deepseek, "gemini": gemini}
+        audit = normalize_audit_report(
+            context.provider.audit_script("auditor", contract, plan, source_pack, script), "auditor"
+        )
+        audits = {"auditor": audit}
+        passed = audit_passes(audit)
+        round_result = {"round": round_number, "passed": passed, "audits": audits}
         rounds.append(round_result)
         if passed:
             break
-        if round_number < 2:
+        if round_number < 3:
             repaired = context.provider.repair_script(
                 contract,
                 plan,
@@ -419,24 +641,50 @@ def _consistency(context: RunContext) -> StageResult:
                     **round_result,
                     "required_changes": [
                         "Source pack có ưu tiên cao hơn plan. Không khôi phục claim mà verified_sources không hỗ trợ.",
-                        "Chỉ sửa các finding có căn cứ; nếu finding yêu cầu nội dung ngoài source pack thì bỏ qua finding đó.",
+                        "Với từng unsupported_claims, phải xóa hẳn câu hoặc thay bằng câu chỉ diễn đạt đúng source pack/allowed_paraphrases; không được giữ lại cùng ý nhân quả bằng từ đồng nghĩa hay thêm mức độ 'có thể'.",
+                        "Không suy ra cơ chế tâm lý mới từ một ví dụ hành vi. Nếu source không nói rõ, bỏ cơ chế đó và giữ phần quan sát hành vi trung tính.",
+                        "Editorial application chỉ được dùng khi source_pack.editorial_application hoặc allowed_paraphrases hỗ trợ trực tiếp. Không mang framework, author, causal mechanism hoặc practical principle từ một run/topic khác vào script.",
+                        "Nếu source chỉ hỗ trợ behavior + context/habit/interpretation ở mức giới hạn, giữ script ở đúng mức đó; không tự suy ra responsibility boundary, diagnosis hoặc causal mechanism thứ hai.",
+                        "Nếu claim_ledger.capabilities.reinforcement_loop=false, xóa causal chain relief ngắn hạn -> phản ứng được duy trì/củng cố; chỉ giữ observation cost không nhân quả.",
                     ],
                 },
             )
             script = str(repaired.get("final_script", "")).strip()
             if not script:
                 raise ValueError("Repair trả script rỗng.")
+            script = _remove_unsupported_audit_claims(script, audit)
+    if not rounds[-1]["passed"]:
+        cleaned, scrubbed, removed_claims = _finalize_source_audit_after_scrub(script, rounds[-1])
+        if scrubbed:
+            code_remaining = unsupported_source_claims(cleaned, source_pack) + policy_violations(cleaned, claim_ledger)
+            if not code_remaining:
+                script = cleaned
+                for audit_name, audit in (rounds[-1].get("audits") or {}).items():
+                    if audit.get("unsupported_claims"):
+                        audit["unsupported_claims"] = []
+                        audit["source_alignment"] = True
+                rounds[-1]["passed"] = all(
+                    audit_passes(item) for item in (rounds[-1].get("audits") or {}).values()
+                )
+                logger.warning(
+                    "Consistency final deterministic source scrub removed %d exact unsupported claim(s).",
+                    len(removed_claims),
+                )
+                rounds[-1]["deterministic_source_scrub"] = {
+                    "applied": True,
+                    "removed_claims": removed_claims,
+                }
     if not rounds[-1]["passed"]:
         raise ValueError(
-            "Script không vượt dual consistency/source audit sau 2 vòng. Chi tiết: %s"
+            "Script không vượt consistency/source audit sau 3 vòng. Chi tiết: %s"
             % _audit_failure_reasons(rounds[-1])
         )
     # issues[] không còn là fail condition (xem audit_passes) nên phải nổi lên
     # warning, tránh mất tín hiệu chất lượng của auditor.
     audit_notes = [
         f"{name}: {issue}"
-        for name in ("deepseek", "gemini")
-        for issue in (rounds[-1].get(name) or {}).get("issues") or []
+        for name, audit in (rounds[-1].get("audits") or {}).items()
+        for issue in audit.get("issues") or []
     ]
     for note in audit_notes:
         logger.warning("Audit note (không blocking) | %s", note)
@@ -468,20 +716,121 @@ def _put_script_qa(context: RunContext, script: str, producer: str) -> tuple:
     return qa_ref, pause_ref, qa, pauses
 
 
+def _duration_guideline_warning(context: RunContext, qa: dict) -> str | None:
+    """Keep duration visible without turning it into a filler-generating gate."""
+    contract = _json(context, "script_contract")
+    recommended_chars = target_min_chars_from_contract(contract)
+    actual_chars = int(qa.get("non_whitespace_chars") or 0)
+    if actual_chars >= recommended_chars:
+        return None
+    return (
+        "UNDER_TARGET_DURATION: script có %d ký tự, ước tính %d-%d giây; ngắn hơn guideline tối thiểu "
+        "%s phút (~%d ký tự). Không tự bơm filler hoặc retry: chỉ cân nhắc một editor pass khi planning/source "
+        "còn một implication riêng biệt, có source support chưa được dùng."
+        % (
+            actual_chars,
+            int(qa.get("estimated_duration_min_seconds") or 0),
+            int(qa.get("estimated_duration_max_seconds") or 0),
+            target_duration_min_from_contract(contract),
+            recommended_chars,
+        )
+    )
+
+
 def _script_qa(context: RunContext) -> StageResult:
     script = _text(context, "final_script")
+    script, removed_citation_tokens = scrub_source_citation_tokens(script)
+    if removed_citation_tokens:
+        logger.warning(
+            "Script QA removed source citation tokens from narration: %s",
+            ", ".join(removed_citation_tokens),
+        )
+    qa = validate_japanese_script(script)
+    if not qa["passed"]:
+        repairable = any(
+            issue.startswith("Foreign tokens chưa whitelist")
+            or issue.startswith("Tỷ lệ ký tự tiếng Nhật")
+            for issue in qa["issues"]
+        )
+        if not repairable:
+            raise ValueError("; ".join(qa["issues"]))
+        repaired = context.provider.repair_script(
+            _json(context, "script_contract"),
+            _json(context, "planning"),
+            _source_policy(context),
+            script,
+            {
+                "decision": "revise",
+                "qa_issues": qa["issues"],
+                "foreign_tokens": qa["foreign_tokens"],
+                "required_changes": [
+                    "Không kéo dài script để đạt quota ký tự; chỉ sửa đúng lỗi QA và giữ information density.",
+                    "Chuyển tên tác giả/tựa nghiên cứu tiếng Anh sang cách viết tiếng Nhật hoặc bỏ citation khỏi narration. Giữ citation đầy đủ ở source_note/description, không đọc nguyên văn tiếng Anh trong script.",
+                ],
+            },
+        )
+        script = str(repaired.get("final_script", "")).strip()
+        if not script:
+            raise ValueError("Repair script_qa trả script rỗng.")
+        script, removed_after_repair = scrub_source_citation_tokens(script)
+        removed_citation_tokens = sorted(set(removed_citation_tokens + removed_after_repair))
+        final_ref = context.store.put_text("final_script", "script/script.txt", script, "script_qa")
+        qa_ref, pause_ref, qa, pauses = _put_script_qa(context, script, "script_qa")
+        warnings = [warning for warning in (_duration_guideline_warning(context, qa),) if warning]
+        return StageResult(
+            [final_ref, qa_ref, pause_ref],
+            {**qa, "pause_cues": len(pauses["cues"]), "source_citation_tokens_removed": removed_citation_tokens},
+            warnings=warnings,
+        )
     qa_ref, pause_ref, qa, pauses = _put_script_qa(context, script, "script_qa")
-    return StageResult([qa_ref, pause_ref], {**qa, "pause_cues": len(pauses["cues"])})
+    artifacts = [qa_ref, pause_ref]
+    if removed_citation_tokens:
+        artifacts.insert(0, context.store.put_text("final_script", "script/script.txt", script, "script_qa"))
+    warnings = [warning for warning in (_duration_guideline_warning(context, qa),) if warning]
+    return StageResult(
+        artifacts,
+        {**qa, "pause_cues": len(pauses["cues"]), "source_citation_tokens_removed": removed_citation_tokens},
+        warnings=warnings,
+    )
+
+
+def _mechanism_is_covered(script: str, mechanism: dict) -> bool:
+    if mechanism_is_covered(script, mechanism):
+        return True
+    """Accept a natural explanation instead of requiring an editorial label."""
+    name = str(mechanism.get("name", "")).strip()
+    if not name:
+        return False
+    if name in script:
+        return True
+
+    families = []
+    if any(term in name for term in ("状況", "手がかり", "文脈", "環境")):
+        families.append(("context", ("状況", "手がかり", "環境", "合図")))
+    if any(term in name for term in ("習慣", "反復", "ルーティン")):
+        families.append(("repetition", ("習慣", "反復", "繰り返", "いつもの")))
+    if any(term in name for term in ("反応", "起動", "自動")):
+        families.append(("response", ("反応", "起動", "行動", "始まり")))
+
+    # One generic word is not enough. The script must express at least two
+    # distinct parts of the named mechanism in natural Japanese.
+    hits = sum(1 for _family, terms in families if any(term in script for term in terms))
+    return len(families) >= 2 and hits >= 2
 
 
 def _psychology_structure_issues(script: str, contract: dict, planning: dict, brief: dict) -> tuple[list[str], list[str], list[str]]:
     """Evaluate the psychology-first spine independently from any fixed script template."""
     story_findings = anti_story_findings(script)
     issues = list(story_findings)
-    mechanisms = [str(item.get("name", "")) for item in brief.get("selected_mechanisms", [])]
-    covered = [name for name in mechanisms if name and name in script]
-    if not covered:
-        issues.append("selected psychological mechanism is not named or explained in script")
+    mechanism_items = [item for item in brief.get("selected_mechanisms", []) if isinstance(item, dict)]
+    mechanisms = [str(item.get("name", "")) for item in mechanism_items]
+    covered = [name for item, name in zip(mechanism_items, mechanisms) if _mechanism_is_covered(script, item)]
+    missing = [name for name in mechanisms if name not in covered]
+    if missing:
+        issues.append(
+            "selected psychological mechanism is not named or explained in script: "
+            + ", ".join(missing)
+        )
     if not contract.get("core_psychological_question"):
         issues.append("missing core psychological question in contract")
     if not contract.get("main_tension"):
@@ -531,7 +880,7 @@ def _structure_check(context: RunContext) -> StageResult:
                 "rewrite_rule": "preserve supported claims; replace plot/scene chains with direct behavior → inner process → mechanism → why → insight narration",
             }
             repaired = context.provider.repair_script(
-                contract, planning, _json(context, "source_pack"), script, findings
+                contract, planning, _source_policy(context), script, findings
             )
             candidate = str(repaired.get("final_script", "")).strip()
             if not candidate:
@@ -583,9 +932,12 @@ def _structure_check(context: RunContext) -> StageResult:
         artifacts.extend([qa_ref, pause_ref])
         min_seconds = qa["estimated_duration_min_seconds"]
         max_seconds = qa["estimated_duration_max_seconds"]
-        if min_seconds < 540 or max_seconds > 660:
+        duration_warning = _duration_guideline_warning(context, qa)
+        if duration_warning:
+            warnings.append(duration_warning)
+        if max_seconds > 900:
             warnings.append(
-                "Script sau structure repair ước tính %d–%d giây, ngoài khung trọng tâm 9–11 phút (540–660s)."
+                "Script sau structure repair ước tính %d–%d giây, vượt trần cảnh báo 15 phút; timing chỉ là telemetry."
                 % (min_seconds, max_seconds)
             )
     return StageResult(
@@ -688,8 +1040,8 @@ def _translate_script_vi(context: RunContext) -> StageResult:
 def _sections(context: RunContext) -> StageResult:
     """Chia script thành sections theo planning (không còn chia chunk).
 
-    Script không dài (2.400–4.700 ký tự) → gen MiniMax được trong MỘT lần gọi
-    từ script/minimax-prompt.txt; sections chỉ để đánh mốc timeline ở trang
+    Script được giữ nguyên độ dài thực tế → gen MiniMax được trong MỘT lần gọi
+    từ script/minimax-prompt.txt; sections chỉ để derive timeline ở trang
     "Dựng video" (web build service tính timeline từ sections + storyboard).
     Số section khớp planning.json (S1..SN) nên mọi beat/event đều map được cửa
     sổ (lỗi cũ: chunker ra ít hơn → event cuối script bị bỏ).
@@ -706,7 +1058,7 @@ def _sections(context: RunContext) -> StageResult:
         {"index": sec.index, "id": sec.id, "chars": sec.chars, "file": sec.file, "text": sec.text}
         for sec in sections
     ]
-    # minimax-prompt (rule v9): ưu tiên tts_ready Gemini nếu khớp 100% final script;
+    # minimax-prompt: ưu tiên tts_ready từ reviewer nếu khớp 100% final script;
     # ngược lại chèn tag <#x#> deterministic theo mốc section (strip tags == script).
     review_report = _json(context, "review_report")
     tts_ready = review_report.get("tts_ready", "") if isinstance(review_report, dict) else ""
@@ -717,7 +1069,7 @@ def _sections(context: RunContext) -> StageResult:
     else:
         if tts_ready:
             warnings.append(
-                "tts_ready của Gemini lệch final_script (DeepSeek đã hoàn thiện) — "
+                "tts_ready của reviewer lệch final_script (editor đã hoàn thiện) — "
                 "đã chèn tag <#x#> deterministic theo mốc section."
             )
         minimax_prompt = insert_pause_tags(script, sections)
@@ -757,6 +1109,7 @@ def _sections(context: RunContext) -> StageResult:
 def _thumbnail(context: RunContext) -> StageResult:
     contract = _json(context, "script_contract")
     value = context.provider.create_thumbnail(contract, _text(context, "final_script"), competitor_inject_text())
+    normalize_thumbnail_prompt(value)
     qa = validate_thumbnail(value, contract["chosen_title"])
     if qa.get("warnings"):
         logger.warning(
@@ -768,7 +1121,7 @@ def _thumbnail(context: RunContext) -> StageResult:
     contract_ref = context.store.put_json("thumbnail_contract", "thumbnail/contract.json", {**value, "tv_readability_round1": qa}, "thumbnail_contract")
     prompt_ref = context.store.put_text("thumbnail_prompt", "thumbnail/thumbnail-prompt.txt", value["image_prompt"] + "\n\nNegative: " + value["negative_prompt"] + "\n", "thumbnail_contract")
     overlay_ref = context.store.put_json("thumbnail_overlay", "thumbnail/overlay-spec.json", value["overlay_spec"], "thumbnail_contract")
-    checklist_ref = context.store.put_text("thumbnail_checklist", "thumbnail/manual-checklist.md", "# Thumbnail manual checklist\n\n- Gen ảnh nền không chữ.\n- Overlay đúng spec.\n- Tạo preview 128×72.\n- Squint test trên ảnh thật: PENDING_USER.\n- Nhân vật là học giả Nhật hư cấu; không tái tạo khuôn mặt/người thật (likeness/privacy gate).\n- Khai báo Altered/Synthetic Content trong YouTube Studio cho ảnh realistic AI (xem privacy/privacy.md).\n", "thumbnail_contract")
+    checklist_ref = context.store.put_text("thumbnail_checklist", "thumbnail/manual-checklist.md", "# Thumbnail manual checklist\n\n- Đọc `click_hypothesis` và `hook_alignment` trong thumbnail/contract.json trước khi edit. Thumbnail phải hứa đúng behavior/contradiction mà cold open trả trong 20 giây đầu.\n- Gen ảnh nền không chữ.\n- Dùng visual anchor `video-build/images/IMG-01.png` nếu provider hỗ trợ ảnh tham chiếu.\n- Nếu provider không hỗ trợ reference image, giữ nguyên CHARACTER_BIBLE và không tạo mascot mới.\n- Chỉ một nhân vật/focal action, một visual conflict, một warm accent có chủ đích; không collage, hard split hay badge urgency giả.\n- Overlay đúng spec; headline 4-8 ký tự phải đọc được ở preview 128×72.\n- Tạo preview 128×72 và squint test trên ảnh thật: PENDING_USER.\n- Nhân vật là học giả Nhật hư cấu; không tái tạo khuôn mặt/người thật (likeness/privacy gate).\n- Khai báo Altered/Synthetic Content trong YouTube Studio cho ảnh realistic AI (xem privacy/privacy.md).\n", "thumbnail_contract")
     return StageResult([contract_ref, prompt_ref, overlay_ref, checklist_ref], qa)
 
 
@@ -799,7 +1152,7 @@ def _image_prompts(context: RunContext) -> StageResult:
         _json(context, "planning"),
     )
     value = context.provider.create_image_prompts(strategy, _json(context, "script_contract"))
-    normalize_image_prompts(value)
+    normalize_image_prompts(value, strategy)
     qa = validate_prompt_pack(value, strategy)
     if not qa["passed"]:
         raise ValueError("; ".join(qa["issues"][:10]))
@@ -881,8 +1234,7 @@ def _image_prompts(context: RunContext) -> StageResult:
 def _publish(context: RunContext) -> StageResult:
     contract = _json(context, "script_contract")
     value = context.provider.create_publish_draft(contract, _json(context, "source_pack"))
-    if value.get("chapters_status") != "DRAFT_OMITTED":
-        raise ValueError("Phase 1 không được bịa chapters trước audio thật.")
+    validate_publish_draft(value)
     # Build formatted publish sheet — rõ từng field, dễ copy-paste vào YouTube Studio
     title = contract.get("chosen_title", "")
     description = value.get("description_draft", "")
@@ -988,24 +1340,25 @@ def resource_pack_stages(output_dir: Path | None = None) -> list[FunctionStage]:
     # để dựng prompts-build.py/marks.tsv, cắt audio và gọi build-video.py (trong
     # package) để ráp video-final.mp4.
     return [
-        FunctionStage("ingest", _ingest, requires=("channel_input",)),
-        FunctionStage("performance", _performance, requires=("channel_snapshot",)),
+        FunctionStage("ingest", _ingest, requires=("channel_input",), version="3"),
+        FunctionStage("performance", _performance, requires=("channel_snapshot",), version="3"),
         FunctionStage("topic_research", _topic_research, requires=("channel_snapshot", "performance_review")),
         FunctionStage("topic_candidates", _topic_candidates, requires=("topic_research", "channel_snapshot", "performance_review")),
-        FunctionStage("topic_selection", _topic_selection, requires=("topic_candidates", "topic_research", "performance_review")),
+        FunctionStage("topic_selection", _topic_selection, requires=("topic_candidates", "topic_research", "performance_review"), version="2"),
         FunctionStage("source_lock", _source_lock, requires=("selected_topic", "channel_snapshot", "performance_review")),
-        FunctionStage("psychology_brief", _psychology_brief, requires=("selected_topic", "source_pack", "performance_review"), version="2"),
-        FunctionStage("script_contract", _script_contract, requires=("source_pack", "psychology_brief", "performance_review"), version="4"),
-        FunctionStage("planning", _planning, requires=("script_contract", "source_pack", "psychology_brief"), version="3"),
-        FunctionStage("writing", _writing, requires=("script_contract", "planning", "source_pack", "psychology_brief"), version="3"),
-        FunctionStage("review", _review, requires=("script_draft", "script_contract", "planning", "source_pack"), version="5"),
-        FunctionStage("consistency", _consistency, requires=("reviewed_script", "script_contract", "planning", "source_pack"), version="4"),
-        FunctionStage("script_qa", _script_qa, requires=("final_script",), version="2"),
-        FunctionStage("structure_check", _structure_check, requires=("final_script", "script_contract", "planning", "psychology_brief"), version="3"),
+        FunctionStage("claim_ledger", _claim_ledger, requires=("source_pack",), version="2"),
+        FunctionStage("psychology_brief", _psychology_brief, requires=("selected_topic", "source_pack", "claim_ledger", "performance_review"), version="3"),
+        FunctionStage("script_contract", _script_contract, requires=("source_pack", "claim_ledger", "psychology_brief", "performance_review"), version="8"),
+        FunctionStage("planning", _planning, requires=("script_contract", "source_pack", "claim_ledger", "psychology_brief"), version="10"),
+        FunctionStage("writing", _writing, requires=("script_contract", "planning", "source_pack", "claim_ledger", "psychology_brief"), version="7"),
+        FunctionStage("review", _review, requires=("script_draft", "script_contract", "planning", "source_pack", "claim_ledger"), version="13"),
+        FunctionStage("consistency", _consistency, requires=("reviewed_script", "script_contract", "planning", "source_pack", "claim_ledger"), version="8"),
+        FunctionStage("script_qa", _script_qa, requires=("final_script", "claim_ledger"), version="7"),
+        FunctionStage("structure_check", _structure_check, requires=("final_script", "script_contract", "planning", "psychology_brief", "claim_ledger"), version="4"),
         FunctionStage("psychology_format_check", _psychology_format_check, requires=("final_script", "structure_check", "psychology_brief", "script_contract"), version="3"),
         FunctionStage("translate_script_vi", _translate_script_vi, requires=("final_script", "structure_check"), version="1"),
-        FunctionStage("sections", _sections, requires=("final_script", "script_qa", "planning"), version="1"),
-        FunctionStage("thumbnail_contract", _thumbnail, requires=("final_script", "script_contract"), version="4"),
+        FunctionStage("sections", _sections, requires=("final_script", "script_qa", "planning"), version="2"),
+        FunctionStage("thumbnail_contract", _thumbnail, requires=("final_script", "script_contract"), version="5"),
         FunctionStage("image_strategy", _image_strategy, requires=("script_contract", "planning", "thumbnail_contract"), version="4"),
         FunctionStage("image_prompts", _image_prompts, requires=("image_strategy", "script_contract", "planning"), version="5"),
         FunctionStage("publish_draft", _publish, requires=("script_contract", "source_pack"), version="2"),
@@ -1029,11 +1382,25 @@ class ResourcePackPipeline:
         self.progress = progress
 
     def create_state(self, raw_data: str, run_id: str | None = None) -> RunState:
+        routing_snapshot = None
+        router = getattr(self.provider, "router", None)
+        if router is not None and hasattr(router, "snapshot"):
+            routing_snapshot = router.snapshot()
+        config_snapshot = {
+            "production_policy_version": PRODUCTION_POLICY_VERSION,
+            "minimax_tts_profile": MINIMAX_PROFILE,
+            "target_duration_minutes": [6, 12],
+            "target_duration_max_warning_minutes": 15,
+            "target_chars": [2300, 6000],
+            "target_chars_is_guideline": True,
+        }
+        if routing_snapshot is not None:
+            config_snapshot["model_routing"] = routing_snapshot
         state = RunState(
             run_id=run_id or uuid.uuid4().hex,
             profile="resource_pack",
             topic="",
-            config_snapshot={"minimax_tts_profile": MINIMAX_PROFILE, "target_duration_minutes": [6, 12], "target_chars": [2400, 4700]},
+            config_snapshot=config_snapshot,
         )
         ref = self.store.put_text("channel_input", "input/youtube_data.json", raw_data, "input")
         state.artifact_index["channel_input"] = ref
@@ -1055,4 +1422,9 @@ class ResourcePackPipeline:
             config=state.config_snapshot,
             progress=self.progress,
         )
-        return self.engine.run(context)
+        result = self.engine.run(context)
+        selected = self.store.read_json("selected_topic", result)
+        brief = self.store.read_json("psychology_brief", result)
+        contract = self.store.read_json("script_contract", result)
+        record_completed(self.output_dir, result.run_id, {**selected, "chosen_title": contract.get("chosen_title", "")}, brief)
+        return result

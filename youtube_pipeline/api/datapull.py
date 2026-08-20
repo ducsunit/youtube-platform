@@ -1,4 +1,4 @@
-"""Kéo data YouTube — spawn `youtube_pull.py` (project youtube_pipeline.analysis
+"""Kéo data YouTube — spawn `youtube_pull.py` (project data-analysis-youtube
 ngoài repo này) làm subprocess và theo dõi giống PipelineRunner.
 
 Luật bất biến: KHÔNG sửa/copy puller. Chỉ spawn với `cwd = thư mục puller`
@@ -39,8 +39,8 @@ _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 # Thư mục mặc định của puller (đảo ngược theo thứ tự ưu tiên).
 FALLBACK_PULL_DIRS = (
-    Path.home() / "Data/youtube/video-youtube/external/youtube_pipeline.analysis",
-    Path.home() / "Data/youtube/youtube-v2/youtube_pipeline.analysis",
+    Path.home() / "Data/youtube/video-youtube/external/data-analysis-youtube",
+    Path.home() / "Data/youtube/youtube-v2/data-analysis-youtube",
 )
 
 
@@ -52,16 +52,18 @@ def _now_iso() -> str:
 
 
 def resolve_pull_dir() -> Optional[Path]:
-    """Resolve collector directory.
+    """Thư mục chứa youtube_pull.py: env YT_DATA_PULL_DIR -> mặc định 2 nơi.
 
-    The integrated collector is the default. `YT_DATA_PULL_DIR` remains a
-    deliberate compatibility escape hatch for a separately managed collector.
+    Env được tin tưởng dù thư mục không tồn tại (để UI hiện đường dẫn sai
+    thay vì báo "chưa đặt env"); availability kiểm tra is_dir() ở route.
     """
     env = os.environ.get("YT_DATA_PULL_DIR")
     if env:
         return Path(env).expanduser()
-    root = paths.backend_root()
-    return root if root.is_dir() else None
+    for cand in FALLBACK_PULL_DIRS:
+        if cand.is_dir():
+            return cand
+    return None
 
 
 def _venv_has_googleapiclient(py: str) -> bool:
@@ -78,12 +80,25 @@ def _venv_has_googleapiclient(py: str) -> bool:
 
 
 @lru_cache(maxsize=8)
-def resolve_pull_python(pull_dir: str = "") -> str:
-    """Resolve the Python interpreter used by the collector."""
+def resolve_pull_python(pull_dir: str) -> str:
+    """Python chạy puller: env YT_DATA_PULL_PYTHON -> .venv quanh pull_dir.
+
+    Kiểm tra `import googleapiclient` với từng ứng viên, fallback sys.executable
+    (python của API server). Cached theo pull_dir — server thường chạy lâu.
+    """
+    candidates: list[Path] = []
     env = os.environ.get("YT_DATA_PULL_PYTHON")
-    if env and Path(env).is_file() and _venv_has_googleapiclient(env):
-        return env
-    candidates = [paths.backend_root() / ".venv" / "bin" / "python", Path(sys.executable)]
+    if env:
+        candidates.append(Path(env))
+    if pull_dir:
+        root = Path(pull_dir)
+        candidates.extend(
+            [
+                root / "../../.venv/bin/python",  # video-youtube/.venv (GUI dùng)
+                root / "../.venv/bin/python",
+                root / ".venv/bin/python",
+            ]
+        )
     for cand in candidates:
         if cand.is_file() and _venv_has_googleapiclient(str(cand)):
             return str(cand)
@@ -99,9 +114,7 @@ def build_connect_command(python: str) -> list[str]:
     `-u` (unbuffered): stdout khi redirect vào file log bị block-buffer 8KB —
     không có `-u` thì URL xác nhận trong browser không hiện ra log kịp.
     """
-    if os.environ.get("YT_DATA_PULL_DIR"):
-        return [python, "-u", "-c", "import youtube_pull; youtube_pull.get_credentials()"]
-    return [python, "-u", "-m", "youtube_pipeline.analysis.youtube_pull", "--connect"]
+    return [python, "-u", "-c", "import youtube_pull; youtube_pull.get_credentials()"]
 
 
 def build_pull_command(
@@ -116,16 +129,16 @@ def build_pull_command(
     no_replies: bool = False,
 ) -> list[str]:
     # `-u`: unbuffered stdout khi log vào file (xem build_connect_command).
-    if os.environ.get("YT_DATA_PULL_DIR"):
-        argv = [python, "-u", "youtube_pull.py", "--out", str(out)]
-    else:
-        argv = [python, "-u", "-m", "youtube_pipeline.analysis.youtube_pull", "--out", str(out)]
+    argv = [python, "-u", "youtube_pull.py", "--out", str(out)]
     if mode == "video_ids":
         argv += ["--videos"] + list(video_ids or [])
     elif mode == "range":
         argv += ["--start-date", str(start_date), "--end-date", str(end_date)]
     elif mode == "all":
-        argv.append("--all-videos")
+        # Puller tự động tìm toàn bộ video trong analytics window mặc định
+        # khi không truyền --videos/--start-date/--end-date. Không dùng
+        # --all-videos vì youtube_pull.py không có flag này.
+        pass
     else:
         raise ValueError("mode không hợp lệ: %s" % mode)
     if max_comments is not None:
@@ -139,14 +152,10 @@ def build_pull_command(
 
 def build_reporting_command(python: str, action: str, out: Path) -> list[str]:
     if action == "setup":
-        if os.environ.get("YT_DATA_PULL_DIR"):
-            return [python, "-u", "youtube_pull.py", "--setup-reporting"]
-        return [python, "-u", "-m", "youtube_pipeline.analysis.youtube_pull", "--setup-reporting"]
+        return [python, "-u", "youtube_pull.py", "--setup-reporting"]
     if action == "sync":
         # sync đọc job reporting sẵn có và ghi kết quả vào file --out đã tồn tại.
-        if os.environ.get("YT_DATA_PULL_DIR"):
-            return [python, "-u", "youtube_pull.py", "--sync-reporting", "--out", str(out)]
-        return [python, "-u", "-m", "youtube_pipeline.analysis.youtube_pull", "--sync-reporting", "--out", str(out)]
+        return [python, "-u", "youtube_pull.py", "--sync-reporting", "--out", str(out)]
     raise ValueError("action không hợp lệ: %s" % action)
 
 
@@ -175,24 +184,21 @@ def validate_dates(start_date, end_date) -> tuple[str, str]:
 
 
 def resolve_out_file(out_file: Optional[str] = None) -> Path:
-    """Resolve a collector output under data/channels (path traversal blocked)."""
-    default_name = (
-        "youtube_data.json" if os.environ.get("YT_DATA_PULL_DIR")
-        else "data/channels/youtube_data.json"
-    )
-    name = (out_file or default_name).strip()
+    """Tên file output — bắt buộc .json, nằm ở gốc backend (không có /).
+
+    Gốc backend là nơi GET /api/config quét `*.json` nên file kéo về xuất hiện
+    ngay trong dropdown "Tạo run mới" — không cần copy thủ công.
+    """
+    name = (out_file or "youtube_data.json").strip()
     if not name.endswith(".json"):
         raise ValueError("out_file phải kết thúc bằng .json")
+    if "/" in name or "\\" in name:
+        raise ValueError("out_file phải là tên file ở gốc thư mục backend (không có /)")
     root = paths.backend_root().resolve()
-    data_root = (root / "data" / "channels").resolve()
-    candidate = (root / name).resolve()
-    if os.environ.get("YT_DATA_PULL_DIR"):
-        if not candidate.is_relative_to(root):
-            raise ValueError("out_file phải nằm trong backend root")
-    elif not candidate.is_relative_to(data_root):
-        raise ValueError("out_file phải nằm trong data/channels")
-    candidate.parent.mkdir(parents=True, exist_ok=True)
-    return candidate
+    out = (root / name).resolve()
+    if not out.is_relative_to(root):
+        raise ValueError("out_file phải nằm trong thư mục backend")
+    return out
 
 
 # ------------------------------------------------------------------ token
@@ -228,8 +234,8 @@ def token_status(pull_dir: Path) -> dict:
 
 def last_result() -> Optional[dict]:
     """Đọc file kéo gần nhất ở gốc backend -> {file, generated_at, ...}."""
-    out_name = data_runner.last_out_file() or "data/channels/youtube_data.json"
-    path = (paths.backend_root() / out_name).resolve()
+    out_name = data_runner.last_out_file() or "youtube_data.json"
+    path = paths.backend_root() / out_name
     if not path.is_file():
         return None
     try:
@@ -429,10 +435,7 @@ class DataPullRunner:
                 "log_path": str(log_file),
             }
             if out_file is not None:
-                try:
-                    self._last_out = str(out_file.resolve().relative_to(paths.backend_root().resolve()))
-                except ValueError:
-                    self._last_out = out_file.name
+                self._last_out = out_file.name
             threading.Thread(
                 target=self._waiter, args=(proc, job_id, kind, started_at), daemon=True
             ).start()

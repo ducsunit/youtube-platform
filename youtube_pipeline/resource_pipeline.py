@@ -1,6 +1,15 @@
-"""Compatibility shim; canonical resource-pack pipeline lives in resource_pack.
+"""Compatibility imports for the canonical resource-pack production pipeline.
 
-The canonical implementation keeps the deterministic anti-story gate:
-`anti_story_findings(script)` and the psychology-first structure repair loop.
+Older integrations imported ``youtube_pipeline.resource_pipeline`` directly.
+Keep that import path, but never keep a second implementation: all callers now
+receive the same UI/API production stages from ``resource_pack.pipeline``.
 """
-from .resource_pack.pipeline import *  # noqa: F401,F403
+
+from .resource_pack.pipeline import MINIMAX_PROFILE, RESOURCE_PACK_REQUIRED, ResourcePackPipeline, resource_pack_stages
+
+__all__ = [
+    "MINIMAX_PROFILE",
+    "RESOURCE_PACK_REQUIRED",
+    "ResourcePackPipeline",
+    "resource_pack_stages",
+]

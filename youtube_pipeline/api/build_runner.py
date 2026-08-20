@@ -46,6 +46,9 @@ def build_job_command(run_dir: Path, options: dict) -> list[str]:
         argv.append("--dry-run")
     if options.get("subtitles"):
         argv.append("--subtitles")
+    if options.get("logo_cleanup"):
+        argv.append("--logo-cleanup")
+        argv += ["--logo-mode", str(options.get("logo_mode", "delogo"))]
     return argv
 
 

@@ -3,12 +3,35 @@ from __future__ import annotations
 import re
 from typing import Any, Dict
 
+from .source_catalog import APPROVED_SOURCE_CATALOG
+
 
 WHITESPACE_RE = re.compile(r"\s+")
 JAPANESE_RE = re.compile(r"[\u3040-\u30ff\u3400-\u9fff々〆ヶ]")
 LATIN_TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z0-9_-]*")
-SCRIPT_TARGET_MIN_CHARS = 2400
-SCRIPT_TARGET_MAX_CHARS = 4700
+# Advisory Japanese narration range for the unified editorial flow. Fifteen
+# minutes is a review warning, never a quota that triggers filler.
+SCRIPT_TARGET_MIN_CHARS = 2300
+SCRIPT_TARGET_MAX_CHARS = 6000
+
+
+def _source_citation_tokens() -> set[str]:
+    """Collect English tokens that belong in source metadata, not narration."""
+    fields = []
+    for row in APPROVED_SOURCE_CATALOG:
+        fields.extend([row.get("title", ""), row.get("citation_hint", "")])
+        fields.extend(row.get("authors", []))
+    return {token.lower() for value in fields for token in LATIN_TOKEN_RE.findall(str(value))}
+
+
+SOURCE_CITATION_TOKENS = _source_citation_tokens()
+SOURCE_CITATION_REPLACEMENTS = (
+    ("Everyday temptations", "日常の誘惑"),
+    ("Psychology of Habit", "習慣の心理学"),
+    ("Dennis Runger", "デニス・ランガー"),
+    ("Wendy Wood", "ウェンディ・ウッド"),
+    ("self-control", "自己コントロール"),
+)
 
 
 def non_whitespace_chars(text: str) -> int:
@@ -29,6 +52,23 @@ def foreign_tokens(text: str, whitelist: set[str] | None = None) -> list[str]:
     return sorted({token for token in LATIN_TOKEN_RE.findall(text) if token not in allowed})
 
 
+def scrub_source_citation_tokens(text: str) -> tuple[str, list[str]]:
+    """Remove catalog citation words accidentally leaked into Japanese narration."""
+    for source_phrase, japanese_phrase in SOURCE_CITATION_REPLACEMENTS:
+        text = re.sub(re.escape(source_phrase), japanese_phrase, text, flags=re.IGNORECASE)
+    removed = sorted({token for token in foreign_tokens(text) if token.lower() in SOURCE_CITATION_TOKENS})
+    if not removed:
+        return text, []
+    removed_set = {token.lower() for token in removed}
+    cleaned = LATIN_TOKEN_RE.sub(
+        lambda match: "" if match.group(0).lower() in removed_set else match.group(0),
+        text,
+    )
+    cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
+    cleaned = re.sub(r"[ \t]+([、。！？!?」』）])", r"\1", cleaned)
+    return cleaned.strip(), removed
+
+
 def japanese_script_metrics(
     script: str,
     cpm_min: int = 380,
@@ -37,6 +77,12 @@ def japanese_script_metrics(
     target_max_chars: int = SCRIPT_TARGET_MAX_CHARS,
 ) -> Dict[str, Any]:
     count = non_whitespace_chars(script)
+    if count < target_min_chars:
+        length_status = "short_but_allowed"
+    elif count > target_max_chars:
+        length_status = "long"
+    else:
+        length_status = "within_guideline"
     return {
         "non_whitespace_chars": count,
         "japanese_character_ratio": round(japanese_character_ratio(script), 4),
@@ -47,14 +93,16 @@ def japanese_script_metrics(
         "target_min_chars": target_min_chars,
         "target_max_chars": target_max_chars,
         "target_char_gate_passed": target_min_chars <= count <= target_max_chars,
+        "length_status": length_status,
+        "length_is_advisory": True,
     }
 
 
 def validate_japanese_script(script: str) -> Dict[str, Any]:
     metrics = japanese_script_metrics(script)
     issues = []
-    if not metrics["target_char_gate_passed"]:
-        issues.append("Script phải nằm trong 2.400–4.700 ký tự không tính whitespace cho duration 9-11 phút.")
+    # Length is a production guideline, not a blocking quota. A concise script
+    # is valid when it completes the editorial argument without filler.
     if metrics["japanese_character_ratio"] < 0.80:
         issues.append("Tỷ lệ ký tự tiếng Nhật quá thấp.")
     invalid_tokens = foreign_tokens(script)

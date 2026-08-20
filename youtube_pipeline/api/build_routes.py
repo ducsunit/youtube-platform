@@ -166,6 +166,14 @@ def _validated_options(body: dict) -> dict:
         if not isinstance(body["subtitles"], bool):
             raise ValueError("subtitles phải là boolean")
         options["subtitles"] = body["subtitles"]
+    if "logo_cleanup" in body:
+        if not isinstance(body["logo_cleanup"], bool):
+            raise ValueError("logo_cleanup phải là boolean")
+        options["logo_cleanup"] = body["logo_cleanup"]
+    if "logo_mode" in body:
+        if body["logo_mode"] not in ("delogo", "blur"):
+            raise ValueError("logo_mode phải là delogo hoặc blur")
+        options["logo_mode"] = body["logo_mode"]
     if "transition" in body:
         transition = body["transition"]
         if not isinstance(transition, (int, float)) or isinstance(transition, bool):

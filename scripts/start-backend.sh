@@ -32,4 +32,4 @@ echo ""
 echo "Press Ctrl+C to stop"
 echo ""
 
-exec .venv/bin/python -m youtube_pipeline api-server
+exec .venv/bin/python -m youtube_pipeline

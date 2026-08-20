@@ -14,6 +14,15 @@ def test_unified_script_quality_gate_clean_fixture_passes():
     assert "issues" in report and "warnings" in report
 
 
+def test_low_proxy_score_is_diagnostic_not_repair_trigger():
+    script = "帰宅するとスマホを開いてしまう。"
+    review = {"psychology_scorecard": {"psychology_spine": 1, "mechanism_depth": 1}}
+    report = script_quality_gate_report(script, {}, {}, review)
+    assert report["decision"] == "pass"
+    assert report["issues"] == []
+    assert report["warnings"]
+
+
 def test_llm_cache_hit_stats(tmp_path):
     cache = LLMResponseCache(tmp_path / "llm", enabled=True, schema_version="10")
     key = cache.build_key(

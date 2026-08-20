@@ -7,11 +7,56 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Iterable, Protocol
 
+
+class RetryableStageError(Exception):
+    """Marker for errors safe to retry at the stage boundary."""
+
+
+class QualityGateError(Exception):
+    """Deterministic quality/validation failure; do not blind-retry."""
+
+
 from .artifacts import ArtifactStore
 from .state import ArtifactRef, RunState, StageRecord, utc_now
-from .timing import ElapsedTimer, elapsed_seconds, format_duration
 
 logger = logging.getLogger(__name__)
+
+
+def _classify_retry(exc: Exception) -> str:
+    """Classify failures so deterministic bugs are not blindly retried."""
+    name = type(exc).__name__
+    module = type(exc).__module__
+    message = str(exc).lower()
+
+    if "deterministic failure" in message or "no blind retry" in message:
+        return "deterministic"
+
+    if isinstance(exc, QualityGateError):
+        return "quality_gate"
+    if isinstance(exc, RetryableStageError):
+        return "explicit_retryable"
+    if name in {"ValidationError", "JSONDecodeError"} or "invalid json" in message or "json hợp lệ" in message:
+        return "model_validation"
+    if name in {"TimeoutError", "ReadTimeout", "ConnectTimeout"} or "timeout" in message:
+        return "timeout"
+    code = getattr(exc, "code", None)
+    try:
+        numeric_code = int(code) if code is not None else None
+    except (TypeError, ValueError):
+        numeric_code = None
+    if numeric_code in {408, 409, 425, 429} or numeric_code is not None and 500 <= numeric_code <= 599:
+        return "provider_transient"
+    if numeric_code is not None and 400 <= numeric_code <= 499:
+        return "provider_configuration"
+    if "429" in message or "rate limit" in message or "too many requests" in message:
+        return "provider_transient"
+    if "503" in message or "service unavailable" in message or "high demand" in message:
+        return "provider_transient"
+    if any(marker in message for marker in ("401", "403", "404", "invalid api key", "model not found", "not found")):
+        return "provider_configuration"
+    if isinstance(exc, (ValueError, KeyError, TypeError, AttributeError, AssertionError)):
+        return "deterministic"
+    return "unknown"
 
 
 def run_with_retry(
@@ -21,24 +66,85 @@ def run_with_retry(
     retry_delay: float,
     progress: Callable[[str], None] | None = None,
     on_error: Callable[[int, Exception], None] | None = None,
-) -> Any:
+) -> tuple[Any, dict[str, Any]]:
     last_error: Exception | None = None
-    for attempt in range(1, max_retries + 1):
+    attempt_elapsed: list[float] = []
+    failure_categories: list[str] = []
+    attempt_limit = max(1, max_retries)
+
+    for attempt in range(1, attempt_limit + 1):
+        attempt_started = time.perf_counter()
         try:
             result = operation()
-            logger.info("%s | success attempt %d/%d", step_name, attempt, max_retries)
-            return result
-        except Exception as exc:
+            elapsed = time.perf_counter() - attempt_started
+            attempt_elapsed.append(round(elapsed, 3))
+            logger.info(
+                "%s | success attempt %d/%d | elapsed=%.2fs | retry_category=%s",
+                step_name, attempt, attempt_limit, elapsed,
+                failure_categories[-1] if failure_categories else "none",
+            )
+            return result, {
+                "attempt_count": attempt,
+                "retry_count": max(0, attempt - 1),
+                "attempt_elapsed_seconds": attempt_elapsed,
+                "failure_categories": failure_categories,
+            }
+        except QualityGateError as exc:
             last_error = exc
+            category = "quality_gate"
+            failure_categories.append(category)
+            elapsed = time.perf_counter() - attempt_started
+            attempt_elapsed.append(round(elapsed, 3))
             if on_error:
                 on_error(attempt, exc)
-            logger.exception("%s | failed attempt %d/%d", step_name, attempt, max_retries)
-            if attempt == max_retries:
+            logger.error(
+                "%s | quality gate failed attempt %d/%d | elapsed=%.2fs",
+                step_name, attempt, attempt_limit, elapsed,
+            )
+            raise RuntimeError("%s quality gate failed: %s" % (step_name, exc)) from exc
+        except Exception as exc:
+            last_error = exc
+            category = _classify_retry(exc)
+            failure_categories.append(category)
+            elapsed = time.perf_counter() - attempt_started
+            attempt_elapsed.append(round(elapsed, 3))
+            if on_error:
+                on_error(attempt, exc)
+            logger.exception(
+                "%s | failed attempt %d/%d | category=%s | elapsed=%.2fs",
+                step_name, attempt, attempt_limit, category, elapsed,
+            )
+
+            # Deterministic validation/programming errors should never burn all retries.
+            if category in {"deterministic", "provider_configuration"}:
+                # Keep the stable phrase used by run logs and compatibility
+                # checks: deterministic failure (no blind retry).
+                raise RuntimeError(
+                    "%s %s failure (no blind retry): %s" % (
+                        step_name,
+                        "deterministic" if category == "deterministic" else "provider configuration",
+                        exc,
+                    )
+                ) from exc
+
+            # Malformed model output gets at most one fresh attempt.
+            if category == "model_validation" and attempt >= 2:
+                break
+
+            if attempt == attempt_limit:
                 break
             if progress:
-                progress("%s lỗi (lần %d/%d), đang thử lại..." % (step_name, attempt, max_retries))
+                progress(
+                    "%s lỗi category=%s (lần %d/%d), đang thử lại..."
+                    % (step_name, category, attempt, attempt_limit)
+                )
             time.sleep(retry_delay * attempt)
-    raise RuntimeError("%s failed after %d attempts: %s" % (step_name, max_retries, last_error)) from last_error
+
+    category = failure_categories[-1] if failure_categories else "unknown"
+    raise RuntimeError(
+        "%s failed after %d attempts: category=%s: %s" %
+        (step_name, len(attempt_elapsed), category, last_error)
+    ) from last_error
 
 
 @dataclass
@@ -57,11 +163,6 @@ class RunContext:
     topic: str
     config: dict[str, Any]
     progress: Callable[[str], None] = print
-    cache: dict[str, Any] = field(default_factory=dict)
-
-    def invalidate_artifacts(self, artifact_types: Iterable[str]) -> None:
-        for artifact_type in artifact_types:
-            self.cache.pop(artifact_type, None)
 
 
 class Stage(Protocol):
@@ -122,23 +223,25 @@ class PipelineEngine:
 
     def run(self, context: RunContext) -> RunState:
         state = context.state
+        # Run-level clock: one current execution plus cumulative time across resume.
         execution_started_at = utc_now()
-        timer = ElapsedTimer()
-        state.status = "running"
+        previous_total = float(state.total_elapsed_seconds or 0.0)
+        execution_started_perf = time.perf_counter()
+        if state.total_started_at is None:
+            state.total_started_at = state.created_at or execution_started_at
         state.execution_started_at = execution_started_at
         state.execution_finished_at = None
         state.execution_elapsed_seconds = None
-        if not state.total_started_at:
-            state.total_started_at = execution_started_at
+        state.status = "running"
+        state.updated_at = execution_started_at
         context.store.save_state(state)
-        context.progress("[timer 00:00:00] Pipeline bắt đầu")
         for position, stage in enumerate(self.stages, start=1):
             for requirement in stage.requires:
                 state.artifact(requirement)
             fingerprint = self._fingerprint(stage, context)
             record = state.stage_records.get(stage.name)
             if record and self._reusable(record, fingerprint, context):
-                context.progress("[timer %s] [%d/%d] %s: dùng lại artifact đã pass" % (timer.formatted, position, len(self.stages), stage.name))
+                context.progress("[%d/%d] %s: dùng lại artifact đã pass" % (position, len(self.stages), stage.name))
                 continue
             previous_artifact_types = list(record.artifacts) if record else []
             record = StageRecord(
@@ -151,13 +254,15 @@ class PipelineEngine:
             )
             state.stage_records[stage.name] = record
             context.store.save_state(state)
-            context.progress("[timer %s] [%d/%d] %s" % (timer.formatted, position, len(self.stages), stage.name))
+            context.progress("[%d/%d] %s" % (position, len(self.stages), stage.name))
             try:
+                stage_started_perf = time.perf_counter()
+
                 def operation() -> StageResult:
                     record.attempts += 1
                     return stage.execute(context)
 
-                result = run_with_retry(
+                result, retry_meta = run_with_retry(
                     stage.name,
                     operation,
                     self.max_retries,
@@ -185,7 +290,12 @@ class PipelineEngine:
                 record.status = "passed"
                 record.finished_at = utc_now()
                 record.artifacts = [ref.artifact_type for ref in result.artifacts]
-                record.metrics = result.metrics
+                record.metrics = {
+                    **result.metrics,
+                    "attempts": record.attempts,
+                    "elapsed_seconds": round(time.perf_counter() - stage_started_perf, 3),
+                    **retry_meta,
+                }
                 record.warnings = result.warnings
                 context.store.save_state(state)
             except Exception as exc:
@@ -194,20 +304,22 @@ class PipelineEngine:
                 record.error = "%s: %s" % (type(exc).__name__, exc)
                 state.status = "failed"
                 state.errors.append(record.error)
-                execution_finished_at = utc_now()
-                state.execution_finished_at = execution_finished_at
-                state.execution_elapsed_seconds = elapsed_seconds(state.execution_started_at, execution_finished_at)
-                state.total_finished_at = execution_finished_at
-                state.total_elapsed_seconds = elapsed_seconds(state.total_started_at, execution_finished_at)
+                finished_at = utc_now()
+                elapsed = round(time.perf_counter() - execution_started_perf, 3)
+                state.execution_finished_at = finished_at
+                state.execution_elapsed_seconds = elapsed
+                state.total_finished_at = finished_at
+                state.total_elapsed_seconds = round(previous_total + elapsed, 3)
+                state.updated_at = finished_at
                 context.store.save_state(state)
-                context.progress("[timer %s] Pipeline thất bại sau %s" % (timer.formatted, format_duration(state.execution_elapsed_seconds)))
                 raise
-        execution_finished_at = utc_now()
-        state.execution_finished_at = execution_finished_at
-        state.execution_elapsed_seconds = elapsed_seconds(state.execution_started_at, execution_finished_at)
-        state.total_finished_at = execution_finished_at
-        state.total_elapsed_seconds = elapsed_seconds(state.total_started_at, execution_finished_at)
         state.status = "complete"
+        finished_at = utc_now()
+        elapsed = round(time.perf_counter() - execution_started_perf, 3)
+        state.execution_finished_at = finished_at
+        state.execution_elapsed_seconds = elapsed
+        state.total_finished_at = finished_at
+        state.total_elapsed_seconds = round(previous_total + elapsed, 3)
+        state.updated_at = finished_at
         context.store.save_state(state)
-        context.progress("[timer %s] Pipeline hoàn thành | tổng thời gian %s" % (timer.formatted, format_duration(state.total_elapsed_seconds)))
         return state

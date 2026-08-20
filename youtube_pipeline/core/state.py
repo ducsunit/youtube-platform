@@ -84,12 +84,13 @@ class RunState:
     status: str = "pending"
     created_at: str = field(default_factory=utc_now)
     updated_at: str = field(default_factory=utc_now)
-    execution_started_at: Optional[str] = None
-    execution_finished_at: Optional[str] = None
-    execution_elapsed_seconds: Optional[float] = None
-    total_started_at: Optional[str] = None
-    total_finished_at: Optional[str] = None
-    total_elapsed_seconds: Optional[float] = None
+    # Run-level execution timing. Keeps current execution separate from cumulative resume time.
+    execution_started_at: str | None = None
+    execution_finished_at: str | None = None
+    execution_elapsed_seconds: float | None = None
+    total_started_at: str | None = None
+    total_finished_at: str | None = None
+    total_elapsed_seconds: float = 0.0
     config_snapshot: Dict[str, Any] = field(default_factory=dict)
     input_artifacts: Dict[str, str] = field(default_factory=dict)
     stage_records: Dict[str, StageRecord] = field(default_factory=dict)
@@ -146,9 +147,9 @@ class RunState:
             execution_started_at=data.get("execution_started_at"),
             execution_finished_at=data.get("execution_finished_at"),
             execution_elapsed_seconds=(float(data["execution_elapsed_seconds"]) if data.get("execution_elapsed_seconds") is not None else None),
-            total_started_at=data.get("total_started_at") or data.get("created_at"),
+            total_started_at=data.get("total_started_at"),
             total_finished_at=data.get("total_finished_at"),
-            total_elapsed_seconds=(float(data["total_elapsed_seconds"]) if data.get("total_elapsed_seconds") is not None else None),
+            total_elapsed_seconds=float(data.get("total_elapsed_seconds", 0.0) or 0.0),
             config_snapshot=dict(data.get("config_snapshot", {})),
             input_artifacts=dict(data.get("input_artifacts", {})),
             stage_records={

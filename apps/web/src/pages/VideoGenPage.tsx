@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Video, Sparkles, Film, CheckSquare, Square, PlayCircle, RefreshCw, CheckCircle2, Download, AlertCircle } from '../components/Icons';
+import { Video, Sparkles, Film, CheckSquare, Square } from '../components/Icons';
 import {
   ApiError,
   artifactUrl,
@@ -380,4 +380,3 @@ export function VideoGenPage() {
     </div>
   );
 }
-

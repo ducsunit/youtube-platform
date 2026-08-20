@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import os
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
@@ -23,10 +24,11 @@ from youtube_pipeline.api.runner import (
 
 STAGE_NAMES = [
     "ingest", "performance", "topic_research", "topic_candidates", "topic_selection",
-    "source_lock", "psychology_brief", "script_contract", "planning", "writing",
-    "review", "consistency", "script_qa", "structure_check", "psychology_format_check",
-    "post_script_assets", "image_strategy", "image_prompts", "resource_pack",
+    "source_lock", "claim_ledger", "psychology_brief", "script_contract", "planning", "writing", "review", "consistency",
+    "script_qa", "structure_check", "psychology_format_check", "translate_script_vi", "sections", "thumbnail_contract", "image_strategy", "image_prompts",
+    "publish_draft", "resource_pack",
 ]
+
 
 def _make_state(
     run_id: str,
@@ -63,8 +65,7 @@ def _make_state(
         "config_snapshot": {
             "minimax_tts_profile": {"speed": 1.02, "pitch": -1, "volume": 1.02},
             "target_duration_minutes": [6, 12],
-            "target_chars": [2400, 4700],
-            "quality_mode": "balanced",
+            "target_chars": [2300, 6000],
         },
         "input_artifacts": {"channel_input": "abc"},
         "stage_records": records,
@@ -128,6 +129,17 @@ class TestSystem(ApiServerTestCase):
         r = self.client.get("/api/health", headers={"Origin": "http://localhost:5173"})
         self.assertIn("access-control-allow-origin", r.headers)
 
+    def test_platform_reindex_rebuilds_sqlite_from_run_state(self) -> None:
+        _write_state(self.root, "completed-run", status="complete", stage_statuses={"ingest": "passed"})
+        _write_file(self.root, "completed-run", "research/topic-selection.json", {"selected_topic": "旧テーマ"})
+        _write_file(self.root, "completed-run", "script/contract.json", {"chosen_title": "旧タイトル"})
+        r = self.client.post("/api/platform/reindex")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["indexed"], 1)
+        database = sqlite3.connect(self.root / "runtime/platform.sqlite3")
+        self.assertEqual(database.execute("SELECT run_id FROM runs").fetchone()[0], "completed-run")
+        self.assertEqual(database.execute("SELECT topic FROM topic_history").fetchone()[0], "旧テーマ")
+
 
 class TestRuns(ApiServerTestCase):
     def test_list_runs_empty(self) -> None:
@@ -179,6 +191,38 @@ class TestRuns(ApiServerTestCase):
         # %2F có thể 404 (route không match) hoặc 400 (regex) — cả hai đều chặn được
         r = self.client.get("/api/runs/bad%2Fid")
         self.assertIn(r.status_code, (400, 404))
+
+    def test_run_diagnostics_falls_back_to_state_without_creating_db(self) -> None:
+        _write_state(self.root, "run-a", stage_statuses={"ingest": "passed"})
+        r = self.client.get("/api/runs/run-a/diagnostics")
+        self.assertEqual(r.status_code, 200)
+        body = r.json()
+        self.assertEqual(body["source"], "run_state")
+        self.assertFalse(body["indexed"])
+        self.assertFalse((self.root / "runtime" / "platform.sqlite3").exists())
+
+    def test_run_diagnostics_reads_sqlite_metadata_without_model_content(self) -> None:
+        from youtube_pipeline.core.artifacts import ArtifactStore
+        from youtube_pipeline.core.state import RunState
+        from youtube_pipeline.infrastructure.model_trace import start_run, trace_parsed_response, trace_request
+
+        root = self.root / "runs" / "indexed-run"
+        store = ArtifactStore(root)
+        store.save_state(RunState(
+            run_id="indexed-run", profile="resource_pack", topic="",
+            config_snapshot={"model_routing": {"profiles": {"writer": {"model": "frozen-model"}}}},
+        ))
+        start_run("indexed-run", {"output_dir": str(root)})
+        trace_request("RP_TEST", "test", "openai_compatible", "frozen-model", "private system", "private prompt", 0.2)
+        trace_parsed_response("RP_TEST", "test", {"private": "response"})
+
+        r = self.client.get("/api/runs/indexed-run/diagnostics")
+        self.assertEqual(r.status_code, 200)
+        body = r.json()
+        self.assertEqual(body["source"], "sqlite")
+        self.assertEqual(body["routing_snapshot"]["profiles"]["writer"]["model"], "frozen-model")
+        self.assertEqual(body["model_calls"]["calls"][0]["label"], "RP_TEST")
+        self.assertNotIn("private prompt", json.dumps(body))
 
     def test_run_status_active_stage(self) -> None:
         _write_state(
@@ -316,6 +360,12 @@ class TestStartResumeCancel(ApiServerTestCase):
         self.assertEqual(r.status_code, 400)
         r = self.client.post("/api/runs", json={"mode": "demo", "run_id": "x", "output_dir": "../evil"})
         self.assertEqual(r.status_code, 400)
+        r = self.client.post("/api/runs", json={"mode": "demo", "run_id": "x", "output_dir": "runs/not-x"})
+        self.assertEqual(r.status_code, 400)
+        outside = self.root.parent / "outside-input.json"
+        outside.write_text("{}", encoding="utf-8")
+        r = self.client.post("/api/runs", json={"mode": "production", "run_id": "x", "input_file": "../outside-input.json"})
+        self.assertEqual(r.status_code, 400)
 
     def test_start_run_existing_run_id_400(self) -> None:
         _write_state(self.root, "run-a")
@@ -344,12 +394,10 @@ class TestStartResumeCancel(ApiServerTestCase):
     def test_command_builders(self) -> None:
         demo = build_new_run_command("r1", Path("/abs/runs/r1"), "demo")
         self.assertIn("--demo", demo)
-        self.assertNotIn("--quality", demo)
         self.assertNotIn("--input-file", demo)
         prod = build_new_run_command("r2", Path("/abs/runs/r2"), "production", Path("/abs/input.json"))
         self.assertIn("--input-file", prod)
         self.assertIn("/abs/input.json", prod)
-        self.assertNotIn("--quality", prod)
         self.assertNotIn("--demo", prod)
         resume = build_resume_command("r3", Path("/abs/runs/r3"))
         self.assertIn("--resume", resume)

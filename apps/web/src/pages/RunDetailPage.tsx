@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -9,19 +9,20 @@ import {
   AlertTriangle,
   AlertOctagon,
   Download,
-  Terminal,
-  FolderOpen
 } from '../components/Icons';
 import {
   ApiError,
   artifactUrl,
   cancelRun,
   getConfig,
+  getRunDiagnostics,
   getLog,
   getRun,
   getRunStatus,
   logDownloadUrl,
 } from '../api';
+import { connectRunEvents } from '../services/runsService';
+import type { RunDiagnostics, RunStatus } from '../types';
 import { ArtifactBrowser } from '../components/ArtifactBrowser';
 import { ArtifactViewer } from '../components/ArtifactViewer';
 import { LogViewer } from '../components/LogViewer';
@@ -33,16 +34,21 @@ import { useT } from '../i18n';
 import type { RunDetail } from '../types';
 import { formatDate, strField } from '../utils';
 
-
-function formatElapsed(totalSeconds: number | null | undefined): string {
-  if (totalSeconds == null || !Number.isFinite(totalSeconds)) return '—';
-  const whole = Math.max(0, Math.floor(totalSeconds));
-  const hours = Math.floor(whole / 3600);
-  const minutes = Math.floor((whole % 3600) / 60);
-  const seconds = whole % 60;
+function formatElapsed(seconds: number | null | undefined): string {
+  const total = Math.max(0, Math.floor(Number(seconds ?? 0)));
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const secs = total % 60;
   return hours > 0
-    ? `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
-    : `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+    ? `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
+    : `${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+}
+
+function liveElapsed(startedAt: string | null, persisted: number | null | undefined, finished: boolean): number {
+  if (finished || !startedAt) return Number(persisted ?? 0);
+  const start = Date.parse(startedAt);
+  if (!Number.isFinite(start)) return Number(persisted ?? 0);
+  return Math.max(0, (Date.now() - start) / 1000);
 }
 
 function snapshotProfile(snapshot: Record<string, unknown>) {
@@ -65,9 +71,11 @@ export function RunDetailPage() {
   const [detail, setDetail] = useState<RunDetail | null>(null);
   const [detailError, setDetailError] = useState<unknown>(null);
   const [finished, setFinished] = useState(false);
+  const [sseConnected, setSseConnected] = useState(false);
+  const [streamStatus, setStreamStatus] = useState<RunStatus | null>(null);
+  const [now, setNow] = useState(() => Date.now());
   const [selected, setSelected] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [clockMs, setClockMs] = useState(() => Date.now());
 
   const configPoll = usePolling(() => getConfig(), {
     enabled: true,
@@ -96,27 +104,76 @@ export function RunDetailPage() {
   }, [detailPoll.data, detailPoll.error]);
 
   const statusPoll = usePolling(() => getRunStatus(runId), {
-    enabled: detail !== null && !finished,
-    intervalMs,
+    enabled: detail !== null && !finished && !sseConnected,
+    intervalMs: Math.max(intervalMs, 5000),
+  });
+  const diagnosticsPoll = usePolling(() => getRunDiagnostics(runId), {
+    enabled: detail !== null,
+    intervalMs: finished ? 60000 : 5000,
   });
 
   useEffect(() => {
-    if (statusPoll.data) setFinished(statusPoll.data.finished);
+    if (!detail || finished) {
+      setSseConnected(false);
+      return;
+    }
+    const source = connectRunEvents(
+      runId,
+      (event) => {
+        setSseConnected(true);
+        const nextStatus: RunStatus = event;
+        setStreamStatus(nextStatus);
+        setFinished(nextStatus.finished);
+        if (event.state) {
+          setDetail((current) => current ? { ...current, state: event.state! } : current);
+        }
+      },
+      () => setSseConnected(true),
+      () => setSseConnected(false),
+    );
+    return () => {
+      source.close();
+      setSseConnected(false);
+    };
+  }, [detail?.run_id, finished, runId]);
+
+  useEffect(() => {
+    if (finished) return;
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [finished]);
+
+  useEffect(() => {
+    if (statusPoll.data?.finished) setFinished(true);
   }, [statusPoll.data]);
 
   const running = !finished;
-
-  useEffect(() => {
-    if (!running) return;
-    const timer = window.setInterval(() => setClockMs(Date.now()), 1000);
-    return () => window.clearInterval(timer);
-  }, [running]);
-  const status = statusPoll.data;
+  const status = streamStatus ?? statusPoll.data;
+  const effectiveStatus = streamStatus ?? statusPoll.data;
+  const executionSeconds = useMemo(() => {
+    if (effectiveStatus) {
+      return liveElapsed(effectiveStatus.execution_started_at, effectiveStatus.execution_elapsed_seconds, effectiveStatus.finished);
+    }
+    return liveElapsed(
+      detail?.state.execution_started_at ?? null,
+      detail?.state.execution_elapsed_seconds ?? 0,
+      finished,
+    );
+  }, [effectiveStatus, detail?.state.execution_started_at, detail?.state.execution_elapsed_seconds, finished, now]);
+  const totalSeconds = useMemo(() => {
+    const persisted = Number(effectiveStatus?.total_elapsed_seconds ?? detail?.state.total_elapsed_seconds ?? 0);
+    if (finished) return persisted;
+    const started = effectiveStatus?.execution_started_at ?? detail?.state.execution_started_at ?? null;
+    const current = liveElapsed(started, effectiveStatus?.execution_elapsed_seconds ?? detail?.state.execution_elapsed_seconds ?? 0, false);
+    const previous = Math.max(0, persisted - Number(effectiveStatus?.execution_elapsed_seconds ?? detail?.state.execution_elapsed_seconds ?? 0));
+    return previous + current;
+  }, [effectiveStatus, detail?.state, finished, now]);
   const orphaned = running && (Boolean(status?.orphaned) || Boolean(detail?.orphaned));
 
   const refreshAll = () => {
     void detailPoll.refresh();
     void statusPoll.refresh();
+    void diagnosticsPoll.refresh();
   };
 
   const doCancel = async () => {
@@ -155,22 +212,13 @@ export function RunDetailPage() {
   }
 
   const profile = snapshotProfile(detail.state.config_snapshot);
-  const executionStartedMs = detail.state.execution_started_at ? Date.parse(detail.state.execution_started_at) : NaN;
-  const totalStartedMs = detail.state.total_started_at ? Date.parse(detail.state.total_started_at) : NaN;
-  const executionBaseSeconds = detail.state.execution_elapsed_seconds ?? null;
-  const totalBaseSeconds = detail.state.total_elapsed_seconds ?? null;
-  const liveExecutionSeconds =
-    running && Number.isFinite(executionStartedMs)
-      ? Math.max(0, (clockMs - executionStartedMs) / 1000)
-      : executionBaseSeconds;
-  const totalElapsedSeconds =
-    running && Number.isFinite(totalStartedMs)
-      ? Math.max(0, (clockMs - totalStartedMs) / 1000)
-      : totalBaseSeconds ?? liveExecutionSeconds;
   const timelineStatus = strField(detail.manifest, 'timeline_status');
   const nextSteps = strField(detail.manifest, 'manual_next_steps');
   const warnings = detail.state.warnings ?? [];
   const errors = detail.state.errors ?? [];
+  const diagnostics: RunDiagnostics | null = diagnosticsPoll.data;
+  const routingProfiles = diagnostics?.routing_snapshot?.profiles;
+  const calls = diagnostics?.model_calls.calls ?? [];
 
   return (
     <div className="page">
@@ -196,6 +244,7 @@ export function RunDetailPage() {
           disabled={running}
           onResumed={() => {
             setFinished(false);
+            setStreamStatus(null);
             refreshAll();
           }}
         />
@@ -217,6 +266,23 @@ export function RunDetailPage() {
       {actionError && <div className="error-text" style={{ marginBottom: 16, padding: '10px 14px', background: 'rgba(239,68,68,0.1)', borderRadius: 8 }}>{actionError}</div>}
       {orphaned && <div className="orphan-banner">{t('detail.orphaned')}</div>}
 
+      <div className="panel" style={{ marginBottom: 20 }}>
+        <div className="panel-body" style={{ display: 'flex', alignItems: 'center', gap: 24, flexWrap: 'wrap' }}>
+          <div>
+            <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 0.6 }}>Run time</div>
+            <div className="mono" style={{ fontSize: 24, fontWeight: 700, color: 'var(--text-heading)' }}>{formatElapsed(executionSeconds)}</div>
+          </div>
+          <div>
+            <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 0.6 }}>Total</div>
+            <div className="mono" style={{ fontSize: 18, fontWeight: 600 }}>{formatElapsed(totalSeconds)}</div>
+          </div>
+          <div className="spacer" />
+          <span className={sseConnected ? 'badge badge-passed' : 'badge badge-running'}>
+            {sseConnected ? 'LIVE · realtime' : 'SYNC · fallback polling'}
+          </span>
+        </div>
+      </div>
+
       <div className="grid-detail">
         <div>
           <div className="panel" style={{ marginBottom: 20 }}>
@@ -231,31 +297,6 @@ export function RunDetailPage() {
               records={detail.state.stage_records}
               activeStage={status?.active_stage ?? null}
             />
-          </div>
-
-          <div className="panel" style={{ marginBottom: 20 }}>
-            <div className="panel-title">
-              <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <RefreshCw size={16} style={{ color: 'var(--accent)' }} />
-                <span>Thời gian chạy</span>
-              </span>
-            </div>
-            <div className="panel-body">
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 12 }}>
-                <div style={{ padding: '12px 14px', borderRadius: 10, background: 'var(--bg)' }}>
-                  <div style={{ color: 'var(--muted)', fontSize: 12 }}>Lần chạy hiện tại</div>
-                  <div className="mono" style={{ fontSize: 24, fontWeight: 700, marginTop: 4, color: running ? 'var(--accent)' : 'var(--text-heading)' }}>
-                    {formatElapsed(liveExecutionSeconds)}
-                  </div>
-                </div>
-                <div style={{ padding: '12px 14px', borderRadius: 10, background: 'var(--bg)' }}>
-                  <div style={{ color: 'var(--muted)', fontSize: 12 }}>Tổng từ lần chạy đầu</div>
-                  <div className="mono" style={{ fontSize: 24, fontWeight: 700, marginTop: 4 }}>
-                    {formatElapsed(totalElapsedSeconds)}
-                  </div>
-                </div>
-              </div>
-            </div>
           </div>
 
           <div className="panel">
@@ -332,6 +373,52 @@ export function RunDetailPage() {
               )}
             </div>
           </div>
+
+          <div className="panel" style={{ marginTop: 20 }}>
+            <div className="panel-title">
+              <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Info size={16} style={{ color: 'var(--accent)' }} />
+                <span>Run diagnostics</span>
+              </span>
+              <span className={diagnostics?.indexed ? 'badge badge-passed' : 'badge badge-running'}>
+                {diagnostics?.indexed ? 'SQLite index' : 'run_state fallback'}
+              </span>
+            </div>
+            <div className="panel-body">
+              {!diagnostics ? (
+                <div style={{ color: 'var(--muted)', fontSize: 13 }}>Đang tải diagnostics...</div>
+              ) : (
+                <>
+                  <div className="kv" style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '6px 14px', marginBottom: 12 }}>
+                    <span style={{ color: 'var(--muted)' }}>Model calls</span>
+                    <span className="mono">{diagnostics.model_calls.total} · {Math.round(diagnostics.model_calls.duration_ms)} ms</span>
+                    <span style={{ color: 'var(--muted)' }}>Failed calls</span>
+                    <span className="mono" style={{ color: diagnostics.model_calls.failed ? 'var(--err)' : undefined }}>{diagnostics.model_calls.failed}</span>
+                  </div>
+                  {routingProfiles && typeof routingProfiles === 'object' && (
+                    <details>
+                      <summary style={{ cursor: 'pointer', fontSize: 13, color: 'var(--text-heading)' }}>Routing snapshot đã khóa</summary>
+                      <pre style={{ margin: '8px 0 0', maxHeight: 180, overflow: 'auto', fontSize: 11.5 }}>{JSON.stringify(routingProfiles, null, 2)}</pre>
+                    </details>
+                  )}
+                  {calls.length > 0 && (
+                    <div style={{ marginTop: 12, maxHeight: 230, overflow: 'auto' }}>
+                      {calls.map((call, index) => (
+                        <div key={`${call.label}-${call.started_at}-${index}`} style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8, padding: '7px 0', borderTop: '1px solid var(--border)', fontSize: 12 }}>
+                          <div>
+                            <span className="mono">{call.label}</span>
+                            <span style={{ color: 'var(--muted)' }}> · {call.provider} / {call.model} · T {call.temperature}</span>
+                            {call.error_type && <span style={{ color: 'var(--err)' }}> · {call.error_type}</span>}
+                          </div>
+                          <span className={call.status === 'failed' ? 'badge badge-failed' : 'badge badge-passed'}>{call.duration_ms === null ? 'running' : `${Math.round(call.duration_ms)} ms`}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
         </div>
 
         <ArtifactBrowser
@@ -356,4 +443,3 @@ export function RunDetailPage() {
     </div>
   );
 }
-

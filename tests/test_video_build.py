@@ -204,6 +204,23 @@ class RenderVideoTest(unittest.TestCase):
         )
 
 
+class LogoCleanupTest(unittest.TestCase):
+    def test_invalid_mode_is_rejected(self):
+        from youtube_pipeline.video.logo_cleanup import _filter
+
+        with self.assertRaises(ValueError):
+            _filter({"x": 0, "y": 0, "width": 10, "height": 10}, "inpaint")
+
+    def test_filter_contains_fixed_watermark_region(self):
+        from youtube_pipeline.video.logo_cleanup import _filter
+
+        value = _filter({"x": 1120, "y": 570, "width": 120, "height": 75}, "delogo")
+        self.assertIn("x=1120", value)
+        self.assertIn("y=570", value)
+        self.assertIn("w=120", value)
+        self.assertIn("h=75", value)
+
+
 class ImagesDigestTest(unittest.TestCase):
     def test_digest_changes_when_images_appear(self):
         with tempfile.TemporaryDirectory() as tmp:

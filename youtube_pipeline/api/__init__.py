@@ -1,4 +1,4 @@
-"""API server cho resource pack pipeline (chạy: python -m youtube_pipeline api-server).
+"""API server cho resource pack pipeline (chạy: python -m youtube_pipeline).
 
 App FastAPI + CORS cho Vite dev. Tuỳ chọn serve luôn bản build frontend từ
 `YT_SERVE_FRONTEND=<đường dẫn thư mục dist>` (mount StaticFiles tại / sau router).
@@ -15,10 +15,11 @@ from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException
 
 from .build_routes import router as build_router
-from .content_routes import router as content_router
 from .data_routes import router as data_router
 from .routes import router
 from .veo_routes import router as veo_router
+from .image_routes import router as image_router
+from .srt_routes import router as srt_router
 
 
 class _SpaStaticFiles(StaticFiles):
@@ -48,7 +49,8 @@ def create_app() -> FastAPI:
     app.include_router(data_router)
     app.include_router(build_router)
     app.include_router(veo_router)
-    app.include_router(content_router)
+    app.include_router(image_router)
+    app.include_router(srt_router)
     dist = os.environ.get("YT_SERVE_FRONTEND")
     if dist:
         app.mount("/", _SpaStaticFiles(directory=dist, html=True), name="frontend")
@@ -60,7 +62,7 @@ app = create_app()
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = argparse.ArgumentParser(
-        prog="youtube-pipeline api-server",
+        prog="youtube-pipeline-ui",
         description="Web API cho resource pack pipeline.",
     )
     parser.add_argument("--host", default="127.0.0.1", help="Địa chỉ bind (mặc định 127.0.0.1).")

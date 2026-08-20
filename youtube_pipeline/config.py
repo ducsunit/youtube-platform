@@ -29,28 +29,27 @@ class Settings:
     consistency_min_score: int = 90
     consistency_max_rounds: int = 2
     duration_tolerance: float = 0.25
-    quality_mode: str = "production"
-    llm_cache_dir: Path = Path(".cache/llm")
-    llm_cache_enabled: bool = True
-    llm_cache_schema_version: str = "2"
 
     @classmethod
-    def from_env(cls) -> "Settings":
+    def from_env(cls, require_keys: bool = True) -> "Settings":
         gemini_key = os.getenv("GEMINI_API_KEY", "").strip()
         deepseek_key = os.getenv("DEEPSEEK_API_KEY", "").strip()
-        missing = [
-            name
-            for name, value in (
-                ("GEMINI_API_KEY", gemini_key),
-                ("DEEPSEEK_API_KEY", deepseek_key),
-            )
-            if not value
-        ]
-        if missing:
-            raise ConfigurationError(
-                "Thieu bien moi truong: %s. Hay tao file .env tu .env.example."
-                % ", ".join(missing)
-            )
+        # Runtime routing resolves credentials per profile; the resource-pack CLI
+        # therefore calls this with require_keys=False when keys live in routing.
+        if require_keys:
+            missing = [
+                name
+                for name, value in (
+                    ("GEMINI_API_KEY", gemini_key),
+                    ("DEEPSEEK_API_KEY", deepseek_key),
+                )
+                if not value
+            ]
+            if missing:
+                raise ConfigurationError(
+                    "Thieu bien moi truong: %s. Hay tao file .env tu .env.example."
+                    % ", ".join(missing)
+                )
         try:
             max_retries = int(os.getenv("API_MAX_RETRIES", "3"))
         except ValueError as exc:
@@ -59,19 +58,16 @@ class Settings:
             raise ConfigurationError("API_MAX_RETRIES phai lon hon hoac bang 1.")
         try:
             consistency_min_score = int(os.getenv("CONSISTENCY_MIN_SCORE", "90"))
-            consistency_max_rounds = 1
+            consistency_max_rounds = int(os.getenv("CONSISTENCY_MAX_ROUNDS", "2"))
             duration_tolerance = float(os.getenv("DURATION_TOLERANCE", "0.25"))
         except ValueError as exc:
             raise ConfigurationError("Cấu hình consistency phải là số hợp lệ.") from exc
         if not 0 <= consistency_min_score <= 100:
             raise ConfigurationError("CONSISTENCY_MIN_SCORE phải từ 0 đến 100.")
+        if consistency_max_rounds < 1:
+            raise ConfigurationError("CONSISTENCY_MAX_ROUNDS phải lớn hơn hoặc bằng 1.")
         if not 0 <= duration_tolerance <= 1:
             raise ConfigurationError("DURATION_TOLERANCE phải từ 0 đến 1.")
-        # One production quality policy: always optimize for latency/cost while retaining quality gates.
-        quality_mode = "production"
-        llm_cache_enabled = os.getenv("LLM_CACHE_ENABLED", "1").strip().lower() not in {"0", "false", "no", "off"}
-        llm_cache_dir = Path(os.getenv("LLM_CACHE_DIR", ".cache/llm")).expanduser()
-        llm_cache_schema_version = os.getenv("LLM_CACHE_SCHEMA_VERSION", "2").strip() or "2"
         return cls(
             gemini_api_key=gemini_key,
             deepseek_api_key=deepseek_key,
@@ -94,8 +90,4 @@ class Settings:
             consistency_min_score=consistency_min_score,
             consistency_max_rounds=consistency_max_rounds,
             duration_tolerance=duration_tolerance,
-            quality_mode=quality_mode,
-            llm_cache_dir=llm_cache_dir,
-            llm_cache_enabled=llm_cache_enabled,
-            llm_cache_schema_version=llm_cache_schema_version,
         )

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Link2, DownloadCloud, BarChart3, ArrowRight, PlayCircle, RefreshCw, Square, CheckCircle2 } from '../components/Icons';
+import { Link2, DownloadCloud, BarChart3, PlayCircle, RefreshCw, Square, CheckCircle2 } from '../components/Icons';
 import {
   cancelDataJob,
   connectData,
@@ -484,4 +484,3 @@ export function DataPage() {
     </div>
   );
 }
-

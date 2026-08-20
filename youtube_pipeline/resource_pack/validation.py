@@ -5,6 +5,8 @@ import re
 import unicodedata
 from typing import Any
 
+from .claim_ledger import source_supports_reinforcement_loop
+
 from .metrics import non_whitespace_chars
 from .source_catalog import KNOWN_SOURCE_URLS
 
@@ -48,6 +50,43 @@ PSYCHOLOGY_ROUTES = {
     "EXPLANATION", "PROFILE_SIGNS", "PARADOX", "PROCESS", "RELATIONAL"
 }
 OPTIONAL_STATUSES = {"required", "useful", "unsupported", "irrelevant", "skip"}
+
+# Briefs may use Vietnamese labels while the spoken production script uses
+# Japanese. Localized aliases keep the contract stable without foreign tokens
+# leaking into narration.
+MECHANISM_ALIASES = {
+    "phantachnhiemvu": ("課題の分離", "課題を分ける", "相手の課題", "自分の課題"),
+    "課題の分離": ("課題の分離", "課題を分ける", "相手の課題", "自分の課題"),
+    "responsibilityseparation": ("課題の分離", "責任を分ける", "相手の責任", "自分の責任"),
+}
+
+
+def _mechanism_key(value: object) -> str:
+    normalized = unicodedata.normalize("NFKD", str(value or ""))
+    ascii_text = normalized.encode("ascii", "ignore").decode("ascii")
+    return re.sub(r"[^0-9a-zA-Zぁ-んァ-ン一-龯]", "", ascii_text or normalized).lower()
+
+
+def mechanism_terms(item: dict[str, Any]) -> tuple[str, ...]:
+    name = str(item.get("name", "")).strip()
+    return tuple(dict.fromkeys((name, *MECHANISM_ALIASES.get(_mechanism_key(name), ())))) if name else ()
+
+
+def mechanism_is_covered(script: str, item: dict[str, Any]) -> bool:
+    """Accept a localized mechanism label when its canonical alias is explained."""
+    terms = mechanism_terms(item)
+    if any(term and term in script for term in terms):
+        return True
+    name = str(item.get("name", ""))
+    families = []
+    if any(term in name for term in ("状況", "手がかり", "文脈", "環境")):
+        families.append(("context", ("状況", "手がかり", "環境", "合図")))
+    if any(term in name for term in ("習慣", "反復", "ルーティン")):
+        families.append(("repetition", ("習慣", "反復", "繰り返", "いつもの")))
+    if any(term in name for term in ("反応", "起動", "自動")):
+        families.append(("response", ("反応", "起動", "行動", "始まり")))
+    hits = sum(1 for _family, terms in families if any(term in script for term in terms))
+    return len(families) >= 2 and hits >= 2
 
 # Deterministic warning signals, deliberately narrow to avoid flagging ordinary
 # behavioral examples. Semantic review remains the authoritative story-dominance gate.
@@ -111,8 +150,8 @@ def validate_psychology_brief(value: dict, source_pack: dict | None = None) -> N
     if not 3 <= len(value["recognizable_behavior_signals"]) <= 6:
         raise ValueError("Psychology brief phải có 3-6 behavior signals.")
     selected = value["selected_mechanisms"]
-    if not 1 <= len(selected) <= 3:
-        raise ValueError("Chỉ chọn 1-3 psychological mechanisms cho một video.")
+    if not 1 <= len(selected) <= 2:
+        raise ValueError("Chỉ chọn 1-2 psychological mechanisms cho một video.")
     for mechanism in selected:
         require_fields(
             mechanism,
@@ -140,8 +179,10 @@ def anti_story_findings(text: str) -> list[str]:
     hits = [marker for marker in STORY_SEQUENCE_MARKERS_JA if marker in text]
     if len(hits) >= 3:
         findings.append("sequential_story_markers: " + ", ".join(hits))
-    # Japanese dialogue quotes: a long chain is usually a scene, one quoted thought is fine.
-    if text.count("「") >= 8:
+    # Count substantial quoted utterances, not short labels such as 「課題の分離」
+    # or 「いいですよ」. The old raw quote counter rejected valid direct narration.
+    quoted_utterances = re.findall(r"「([^」]*)」", text)
+    if sum(1 for utterance in quoted_utterances if len(utterance.strip()) >= 15) >= 8:
         findings.append("dialogue_chain: quoted utterances exceed micro-example budget")
     return findings
 
@@ -201,8 +242,9 @@ SUGGESTED_FORMAT_GATE = {
     "narrative_contamination": 3.0,
 }
 
-# Blocking semantic review gate. LLM review supplies these scores; deterministic
-# metrics remain diagnostic because lexical density alone cannot define format.
+# Diagnostic semantic scorecard. Production review uses concrete editorial
+# findings; these thresholds are retained for telemetry/backward compatibility
+# and are not a rewrite quota.
 PSYCHOLOGY_REVIEW_GATE = {
     "psychology_spine_min": 7.0,
     "mechanism_depth_min": 7.0,
@@ -210,7 +252,7 @@ PSYCHOLOGY_REVIEW_GATE = {
     "recognition_min": 6.0,
     "story_dominance_max": 3.0,
     "example_dependency_max": 3.0,
-    "reframe_signature_min": 2,
+    "reframe_signature_min": 0,
 }
 
 _KANJI_RUN_RE = re.compile(r"[一-鿿々-〇々]{2,}|[゠-ヿ]{2,}")
@@ -295,7 +337,10 @@ def psychology_format_metrics(script: str, brief: dict, contract: dict | None = 
         for item in brief.get("selected_mechanisms", [])
         if isinstance(item, dict) and str(item.get("name", "")).strip()
     ]
-    mechanism_hits = _term_hits(script, mechanism_names)
+    mechanism_hits = [
+        name for item, name in zip(brief.get("selected_mechanisms", []), mechanism_names)
+        if isinstance(item, dict) and mechanism_is_covered(script, item)
+    ]
     mechanism_depth = round(len(mechanism_hits) / len(mechanism_names) * 10, 1) if mechanism_names else 0.0
 
     # self_recognition: mật độ trực xưng người xem ("That's me." journey).
@@ -348,11 +393,12 @@ def psychology_format_metrics(script: str, brief: dict, contract: dict | None = 
 
 
 def psychology_review_gate_verdict(review: dict) -> tuple[bool, list[str]]:
-    """Blocking semantic gate for the target A/B psychology-first format.
+    """Return a diagnostic semantic scorecard verdict for compatibility.
 
     Scores come from the LLM reviewer because deterministic lexical metrics cannot
     reliably distinguish a psychology explanation from a story with psychology
-    commentary. Missing scorecard fields fail closed.
+    commentary. Missing scorecard fields fail closed; production does not use
+    this verdict as an automatic rewrite trigger.
     """
     scorecard = review.get("psychology_scorecard")
     if not isinstance(scorecard, dict):
@@ -400,7 +446,7 @@ def psychology_review_gate_verdict(review: dict) -> tuple[bool, list[str]]:
 
 
 def psychology_hook_findings(text: str) -> list[str]:
-    """Detect a scene-led opening that has not pivoted to psychology quickly enough."""
+    """Detect a slow hook before review, without turning lexical style into a hard gate."""
     opening = str(text or "").strip()[:420]
     if not opening:
         return ["empty_opening"]
@@ -411,6 +457,15 @@ def psychology_hook_findings(text: str) -> list[str]:
     psychology_hits = [line for line in lines[:4] if any(marker in line for marker in HOOK_PSYCHOLOGY_MARKERS_JA)]
     if len(scene_hits) >= 2 and not psychology_hits:
         return ["opening_scene_led_without_early_psychological_pivot"]
+    # Psychology Direct needs more than recognition: the first few lines must
+    # expose the felt contradiction and leave one mechanism-led question open.
+    # This only requests the editor's single targeted polish pass; it never
+    # blocks production because Japanese can express the same idea many ways.
+    early = "。".join(lines[:6])
+    has_contradiction = any(marker in early for marker in ("のに", "なのに", "それでも", "本当は", "なのに"))
+    has_open_loop = any(marker in early for marker in ("なぜ", "どうして", "でしょうか", "のか"))
+    if not (has_contradiction and has_open_loop):
+        return ["opening_lacks_pain_contradiction_or_open_loop"]
     return []
 
 
@@ -430,6 +485,34 @@ def format_gate_verdict(metrics: dict) -> tuple[bool, list[str]]:
         elif value < threshold:
             failed.append(key)
     return (not failed, failed)
+
+
+def script_quality_gate_report(
+    script: str,
+    brief: dict | None = None,
+    contract: dict | None = None,
+    review: dict | None = None,
+) -> dict[str, Any]:
+    """Return the unified post-review quality report used by integrations.
+
+    Deterministic format metrics are advisory. Story-sequence findings are the
+    only blocking condition because they directly violate the psychology-first
+    format and can be acted on without inventing new claims.
+    """
+    text = str(script or "")
+    brief = brief if isinstance(brief, dict) else {}
+    contract = contract if isinstance(contract, dict) else {}
+    metrics = psychology_format_metrics(text, brief, contract)
+    _format_ok, format_warnings = format_gate_verdict(metrics)
+    issues = anti_story_findings(text)
+    # LLM scorecards and lexical metrics are diagnostics only. They must not
+    # turn a low proxy score into an automatic rewrite request.
+    return {
+        "decision": "repair" if issues else "pass",
+        "issues": issues,
+        "warnings": format_warnings,
+        "metrics": metrics,
+    }
 
 
 def require_fields(value: dict, fields: tuple[str, ...], label: str) -> None:
@@ -490,15 +573,18 @@ def validate_topic_selection(value: dict, candidates: dict) -> None:
     selected = next((row for row in rows if row["id"] == value["selected_candidate_id"]), None)
     if selected is None or selected["topic"] != value["selected_topic"]:
         raise ValueError("Topic được chọn phải tồn tại và khớp candidate ID.")
+    scores = value["scores"]
+    # Migrate artifacts generated before retention became duration-neutral.
+    if "retention_fit" not in scores and "retention_8_10m" in scores:
+        scores["retention_fit"] = scores.pop("retention_8_10m")
     weights = {
         "channel_fit": 25,
         "audience_pain": 20,
         "packaging_potential": 20,
-        "retention_8_10m": 15,
+        "retention_fit": 15,
         "source_strength": 10,
         "novelty": 10,
     }
-    scores = value["scores"]
     for name, maximum in weights.items():
         score = int(scores.get(name, -1))
         if not 0 <= score <= maximum:
@@ -525,10 +611,29 @@ def validate_source_pack(value: dict) -> None:
         "source_pack",
     )
     for source in value["verified_sources"]:
-        if not isinstance(source, dict) or not source.get("url"):
-            raise ValueError("Mỗi verified source phải có URL.")
+        if not isinstance(source, dict) or not source.get("title") or not source.get("url"):
+            raise ValueError("Mỗi verified source phải có title và URL.")
+        if not str(source.get("supports", "")).strip():
+            raise ValueError("Mỗi verified source phải mô tả claim được hỗ trợ trong supports.")
         if source["url"] not in KNOWN_SOURCE_URLS:
             raise ValueError("Source URL chưa nằm trong catalog đã xác minh: %s" % source["url"])
+
+
+def validate_publish_draft(value: dict) -> None:
+    """Validate the copy package before it is written to the publish sheet."""
+    require_fields(
+        value,
+        ("description_draft", "chapters_status", "pinned_comment", "hashtags", "tags", "source_note"),
+        "publish_draft",
+    )
+    if value["chapters_status"] != "DRAFT_OMITTED":
+        raise ValueError("Phase 1 không được bịa chapters trước audio thật.")
+    if len(str(value["description_draft"]).strip()) < 120:
+        raise ValueError("Description draft phải có ít nhất 120 ký tự tiếng Nhật.")
+    if len(value["hashtags"]) > 5:
+        raise ValueError("Description chỉ được tối đa 5 hashtags.")
+    if not isinstance(value["tags"], list) or not value["tags"]:
+        raise ValueError("Publish draft phải có tags tiếng Nhật.")
 
 
 def validate_contract(value: dict) -> None:
@@ -559,7 +664,14 @@ def validate_contract(value: dict) -> None:
     content_center = str(lock["content_center"]).lower()
     primary_narration = str(lock["primary_narration"]).lower()
     secondary_device = str(lock["secondary_device"]).lower()
-    if not any(term in content_center for term in ("behavior", "pattern", "kiểu người", "psychological")):
+    # Japanese providers often express the same lock as 心理的パターン or
+    # 行動傾向. Accept those semantic anchors without accepting a bare scene.
+    content_center_markers = (
+        "behavior", "pattern", "kiểu người", "psychological",
+        "心理", "行動傾向", "行動パターン", "思考パターン",
+        "認知パターン", "心理傾向", "心理構造", "内的プロセス",
+    )
+    if not any(term in content_center for term in content_center_markers):
         raise ValueError("format_lock.content_center phải khóa psychological pattern/behavior, không phải scene/story.")
     if not any(term in primary_narration for term in ("direct", "psychological", "explanation", "analysis")):
         raise ValueError("format_lock.primary_narration phải là direct psychological explanation/analysis.")
@@ -578,8 +690,196 @@ def validate_contract(value: dict) -> None:
     if not 18 <= title_count <= 28:
         raise ValueError("Chosen title phải dài 18-28 ký tự; hiện tại %d." % title_count)
     value["chosen_title_char_count"] = title_count
-    if int(value["target_char_min"]) != 2400 or int(value["target_char_max"]) != 4700:
-        raise ValueError("Target ký tự Phase 1 phải là 2400-4700 theo 9-11 phút và 380-400 CPM (calibrated).")
+    try:
+        target_min = int(value["target_char_min"])
+        target_max = int(value["target_char_max"])
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Target ký tự phải là số nguyên dương.") from exc
+    if target_min <= 0 or target_max < target_min:
+        raise ValueError("Target ký tự không hợp lệ.")
+
+
+def normalize_contract_format_lock(value: dict) -> bool:
+    """Make format-lock metadata deterministic rather than provider-wording fragile.
+
+    ``format_lock`` constrains downstream writing; it is not creative content.
+    A provider may describe the exact intended constraint as e.g. "short
+    illustrative situations", which should never terminate a Run Live merely
+    because it omits the English token ``example``. Preserve valid wording and
+    normalize only missing/invalid metadata to the safe production lock.
+    """
+    lock = value.get("format_lock")
+    if not isinstance(lock, dict):
+        lock = {}
+        value["format_lock"] = lock
+    changed = False
+
+    def set_if_invalid(key: str, valid: bool, fallback: object) -> None:
+        nonlocal changed
+        if not valid:
+            lock[key] = fallback
+            changed = True
+
+    primary = str(lock.get("primary_format", "")).lower()
+    set_if_invalid(
+        "primary_format",
+        "psychological" in primary,
+        "psychological profile / psychological deep-dive",
+    )
+    content = str(lock.get("content_center", "")).lower()
+    content_markers = (
+        "behavior", "pattern", "kiểu người", "psychological", "心理", "行動傾向",
+        "行動パターン", "思考パターン", "認知パターン", "心理傾向", "心理構造", "内的プロセス",
+    )
+    identity = str(value.get("psychological_identity", "")).strip()
+    set_if_invalid(
+        "content_center",
+        any(term in content for term in content_markers),
+        "心理的パターン: " + identity if identity else "心理的パターンと行動傾向",
+    )
+    narration = str(lock.get("primary_narration", "")).lower()
+    set_if_invalid(
+        "primary_narration",
+        any(term in narration for term in ("direct", "psychological", "explanation", "analysis")),
+        "direct psychological explanation / analysis",
+    )
+    secondary = str(lock.get("secondary_device", "")).lower()
+    set_if_invalid(
+        "secondary_device",
+        any(term in secondary for term in ("example", "behavior", "micro")),
+        "behavioral micro-examples used only for recognition and evidence",
+    )
+    forbidden = lock.get("forbidden_spine")
+    set_if_invalid(
+        "forbidden_spine",
+        isinstance(forbidden, list) and len(forbidden) >= 3,
+        ["narrative story", "personal anecdote", "cinematic monologue", "fictional character journey"],
+    )
+    return changed
+
+
+def normalize_review_list(value: object) -> list[str]:
+    """Coerce reviewer list drift into the stable ``list[str]`` contract.
+
+    Gemini sometimes returns ``issues``/``required_changes`` as objects such
+    as ``{"issue": "...", "reason": "..."}``, or as one string. These are
+    still usable editorial findings; rejecting the whole run is unnecessary
+    schema brittleness. Preserve the useful text deterministically and leave
+    content/source decisions to the existing audit stages.
+    """
+    if value is None:
+        return []
+    items = value if isinstance(value, list) else [value]
+    normalized: list[str] = []
+    for item in items:
+        if isinstance(item, str):
+            text = item.strip()
+        elif isinstance(item, dict):
+            parts = []
+            for key in ("issue", "claim", "reason", "message", "description", "text"):
+                candidate = item.get(key)
+                if candidate is not None and str(candidate).strip():
+                    parts.append(str(candidate).strip())
+            text = " — ".join(dict.fromkeys(parts))
+            if not text:
+                text = json.dumps(item, ensure_ascii=False, sort_keys=True)
+        else:
+            text = str(item).strip()
+        if text:
+            normalized.append(text)
+    return normalized
+
+
+def normalize_contract_titles(value: dict) -> None:
+    """Repair title packaging length after the model's targeted correction."""
+    minimum, maximum = 18, 28
+    suffix = "の心理とは？その理由"
+
+    def _normalize(raw: object) -> str:
+        title = str(raw or "").strip()
+        if len(title) > maximum:
+            return title[:maximum].rstrip()
+        if len(title) < minimum:
+            title = (title + suffix)[:maximum]
+            while len(title) < minimum:
+                title += "？"
+        return title
+
+    candidates = value.get("title_candidates")
+    if isinstance(candidates, list):
+        for candidate in candidates:
+            if isinstance(candidate, dict):
+                candidate["title"] = _normalize(candidate.get("title"))
+                candidate["char_count"] = len(candidate["title"])
+    if "chosen_title" in value:
+        value["chosen_title"] = _normalize(value.get("chosen_title"))
+        value["chosen_title_char_count"] = len(value["chosen_title"])
+
+
+def normalize_title_hook_contract(value: dict) -> bool:
+    """Ensure the packaging promise has inspectable anchors for the cold open."""
+    raw = value.get("title_hook_contract")
+    changed = not isinstance(raw, dict)
+    previous = dict(raw) if isinstance(raw, dict) else {}
+    title = str(value.get("chosen_title", "")).strip()
+    packaging = value.get("packaging_layer") if isinstance(value.get("packaging_layer"), dict) else {}
+    behavior = str(previous.get("title_behavior") or packaging.get("title_question") or title).strip()
+    pain = str(previous.get("title_pain") or value.get("main_tension") or title).strip()
+    anchors = previous.get("opening_anchors")
+    if not isinstance(anchors, list):
+        anchors = []
+        changed = True
+    cleaned = [str(item).strip() for item in anchors if len(str(item).strip()) >= 2]
+    if not cleaned:
+        candidates = re.findall(r"[一-鿿々-〇ァ-ヿ]{2,}", behavior + " " + title)
+        cleaned = [item for item in candidates if item not in {"心理", "理由", "人の", "こと"}][:3]
+        changed = True
+    normalized = {
+        "title_behavior": behavior,
+        "title_pain": pain,
+        "opening_anchors": cleaned[:3],
+        "payoff_by_seconds": 20,
+    }
+    if previous != normalized:
+        changed = True
+    value["title_hook_contract"] = normalized
+    return changed
+
+
+def title_hook_alignment(script: str, contract: dict) -> dict[str, object]:
+    """Check title-to-opening alignment without requiring a verbatim title."""
+    title_contract = contract.get("title_hook_contract") or {}
+    anchors = title_contract.get("opening_anchors") if isinstance(title_contract, dict) else []
+    anchors = [str(item).strip() for item in anchors if len(str(item).strip()) >= 2]
+    opening = str(script or "")[:650]
+
+    def comparable(text: str) -> str:
+        # Japanese narration naturally changes commas, quotes, and spacing. The
+        # contract checks the promised content phrase, not typography.
+        return re.sub(r"[\s、。！？!？『』「」\"'（）()・…]", "", text)
+
+    compact_opening = comparable(opening)
+
+    def appears_naturally(anchor: str) -> bool:
+        compact_anchor = comparable(anchor)
+        if compact_anchor in compact_opening:
+            return True
+        # Allow a short inserted noun such as メッセージ in
+        # 「返したいのに、開けない」 -> 「返したいのにメッセージを開けない」,
+        # but preserve character order so unrelated opening text cannot pass.
+        if len(compact_anchor) < 5:
+            return False
+        pattern = "[ぁ-ゟ一-鿿々-〇ァ-ヿ]{0,8}".join(map(re.escape, compact_anchor))
+        return re.search(pattern, compact_opening) is not None
+
+    matched = [anchor for anchor in anchors if appears_naturally(anchor)]
+    return {
+        "checked": bool(anchors),
+        "anchors": anchors,
+        "matched_anchors": matched,
+        "opening_char_window": len(opening),
+        "passed": bool(matched) if anchors else True,
+    }
 
 
 def unsupported_source_claims(text: str, source_pack: dict) -> list[str]:
@@ -655,8 +955,8 @@ def validate_plan(
 ) -> None:
     require_fields(value, ("retention_blueprint", "sections", "hook_draft", "planning_quality_gate"), "planning")
     sections = value["sections"]
-    if not 6 <= len(sections) <= 8:
-        raise ValueError("Planning phải có 6-8 sections.")
+    if not 3 <= len(sections) <= 7:
+        raise ValueError("Planning phải có 3-7 movements; ưu tiên 5-6 khi nội dung thực sự cần.")
     mechanisms_seen: set[str] = set()
     for section in sections:
         require_fields(
@@ -683,9 +983,19 @@ def validate_plan(
         budget = section["example_budget"]
         if not isinstance(budget, int) or not 0 <= budget <= 2:
             raise ValueError("example_budget mỗi section phải là số nguyên 0-2.")
+        weight = section.get("relative_weight", 1.0)
+        if isinstance(weight, bool):
+            raise ValueError("relative_weight phải là số dương.")
+        try:
+            weight = float(weight)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("relative_weight phải là số dương.") from exc
+        if weight <= 0:
+            raise ValueError("relative_weight phải là số dương.")
+        section["relative_weight"] = weight
         mechanisms_seen.update(str(item) for item in section["mechanisms_used"])
+    # Clock placement is derived from the final script, not from planner guesses.
     gates = (
-        "first_insight_before_35s", "first_major_payoff_before_5m",
         "no_duplicate_sections", "every_section_advances_state",
         "psychology_is_spine", "no_plot_or_character_arc", "ending_creates_self_understanding",
     )
@@ -693,7 +1003,7 @@ def validate_plan(
         raise ValueError("Planning psychology-first quality gate chưa pass.")
 
     total_example_budget = sum(int(section["example_budget"]) for section in sections)
-    if total_example_budget > 6:
+    if total_example_budget > 4:
         raise ValueError(
             "Planning dành quá nhiều ngân sách cho examples (%d). Example phải là evidence phụ, "
             "không được trở thành content spine." % total_example_budget
@@ -707,16 +1017,45 @@ def validate_plan(
             raise ValueError("Planning không được có recognition nối tiếp; phải chuyển sang psychology.")
     hook = str(value.get("hook_draft", "")).strip()
     if hook:
-        opening = hook[:140]
-        scene_first = any(marker in opening for marker in HOOK_SCENE_START_MARKERS_JA)
-        psychology_first = any(marker in opening for marker in HOOK_PSYCHOLOGY_MARKERS_JA)
-        if scene_first and not psychology_first:
+        opening_lines = [line.strip() for line in re.split(r"[。！？\n]", hook[:240]) if line.strip()]
+        scene_first = bool(opening_lines) and any(marker in opening_lines[0] for marker in HOOK_SCENE_START_MARKERS_JA)
+        early_pivot = any(
+            marker in line
+            for line in opening_lines[:3]
+            for marker in HOOK_PSYCHOLOGY_MARKERS_JA
+        )
+        if scene_first and not early_pivot:
             raise ValueError(
-                "Hook đang scene-first: phải giới thiệu psychological pattern/question trước, "
-                "sau đó mới dùng situation làm recognition."
+                "Hook micro-scene chưa pivot sớm: trong 1-2 câu phải chuyển sang psychological pattern, misconception, reframe hoặc question."
             )
+    continuity = value.get("continuity_map")
+    if continuity is not None:
+        if not isinstance(continuity, dict):
+            raise ValueError("continuity_map phải là object khi được khai báo.")
+        if not str(continuity.get("big_open_loop", "")).strip():
+            raise ValueError("continuity_map.big_open_loop không được rỗng.")
+        payoff_path = continuity.get("payoff_path", [])
+        turns = continuity.get("retention_turns", [])
+        if not isinstance(payoff_path, list) or not payoff_path:
+            raise ValueError("continuity_map.payoff_path phải có ít nhất một payoff source-backed.")
+        if not isinstance(turns, list) or len(turns) > 3:
+            raise ValueError("continuity_map.retention_turns chỉ được có 0-3 turns.")
+        for turn in turns:
+            if not isinstance(turn, dict) or not str(turn.get("new_information", "")).strip():
+                raise ValueError("Mỗi continuity retention turn phải mô tả new_information.")
+            if any(key in turn for key in ("time", "timestamp", "seconds")):
+                raise ValueError("continuity retention turn không được khóa timestamp; timing derive từ script.")
 
     if psychology_brief is not None:
+        # The core question is one editorial anchor, not a new section. Older
+        # plans omitted it, so migrate from the validated brief in place.
+        core_question = str(value.get("core_question", "")).strip()
+        if not core_question:
+            core_question = str(psychology_brief.get("core_psychological_question", "")).strip()
+            if core_question:
+                value["core_question"] = core_question
+        if not core_question:
+            raise ValueError("Planning phải khóa đúng một core_question.")
         expected = {str(item["name"]) for item in psychology_brief["selected_mechanisms"]}
         if not expected.issubset(mechanisms_seen):
             raise ValueError("Planning chưa cover selected mechanisms: %s" % ", ".join(sorted(expected - mechanisms_seen)))
@@ -739,6 +1078,85 @@ def validate_plan(
                 "Source pack phải được mở rộng trước, hoặc bỏ cơ chế này khỏi plan."
                 % ", ".join(unsupported)
             )
+        if not source_supports_reinforcement_loop(source_pack):
+            plan_text = json.dumps(plan_copy, ensure_ascii=False).lower()
+            reinforcement_markers = (
+                "負の強化", "強化され", "一時的な安心", "短期的な安心",
+                "一時的に不安を下げ", "反応が維持", "維持される",
+                "negative reinforcement", "short-term relief", "reinforcement loop",
+            )
+            found = [marker for marker in reinforcement_markers if marker in plan_text]
+            if found:
+                raise ValueError(
+                    "Planning dùng relief/reinforcement loop ngoài source pack: %s. "
+                    "Chỉ mô tả cost quan sát được, không nói relief ngắn hạn duy trì phản ứng."
+                    % ", ".join(found)
+                )
+
+
+def normalize_plan_example_budgets(value: dict, maximum: int = 4) -> bool:
+    """Cap example metadata without changing the psychological argument.
+
+    Example budget is editorial planning metadata, not generated content. Keep
+    the earliest recognition/mechanism allowance and remove excess allowances
+    from later sections so a model returning 5 does not trigger a blind retry.
+    """
+    sections = value.get("sections") or []
+    total = sum(
+        int(section.get("example_budget", 0))
+        for section in sections
+        if isinstance(section, dict) and isinstance(section.get("example_budget", 0), int)
+    )
+    changed = False
+    for section in reversed(sections):
+        if total <= maximum:
+            break
+        if not isinstance(section, dict):
+            continue
+        budget = section.get("example_budget")
+        if not isinstance(budget, int):
+            continue
+        reduction = min(budget, total - maximum)
+        if reduction:
+            section["example_budget"] = budget - reduction
+            total -= reduction
+            changed = True
+    return changed
+
+
+def normalize_plan_editorial_metadata(value: dict) -> bool:
+    """Migrate clock-based plans to relative editorial weights."""
+    changed = False
+    for section in value.get("sections") or []:
+        if not isinstance(section, dict):
+            continue
+        if "relative_weight" not in section:
+            section["relative_weight"] = 1.0
+            changed = True
+        if "estimated_seconds" in section:
+            section.pop("estimated_seconds", None)
+            changed = True
+    blueprint = value.get("retention_blueprint")
+    if isinstance(blueprint, list):
+        for movement in blueprint:
+            if isinstance(movement, dict) and "time" in movement:
+                movement.pop("time", None)
+                changed = True
+    continuity = value.get("continuity_map")
+    if isinstance(continuity, dict):
+        for key in ("time", "timestamp", "target_minutes"):
+            if key in continuity:
+                continuity.pop(key, None)
+                changed = True
+        turns = continuity.get("retention_turns")
+        if isinstance(turns, list):
+            for turn in turns:
+                if isinstance(turn, dict):
+                    for key in ("time", "timestamp", "seconds"):
+                        if key in turn:
+                            turn.pop(key, None)
+                            changed = True
+    return changed
 
 
 def normalize_audit_score(value: dict) -> int:
@@ -775,24 +1193,54 @@ def normalize_score_0_10(raw: Any) -> float | None:
     return max(0.0, min(10.0, value))
 
 
-def audit_passes(value: dict, minimum_score: int = 90) -> bool:
-    # language_alignment KHÔNG còn là fail condition: script tiếng Nhật là thiết
-    # kế chủ đạo của kênh còn contract/plan/title viết tiếng Việt — auditor dễ
-    # đánh dấu false chỉ vì khác ngôn ngữ, làm chết chuỗi repair vô nghĩa.
-    #
-    # issues[] cũng KHÔNG còn là fail condition: auditor thường viết nhận xét
-    # "không cần sửa" vào đây (vd "hơi chung chung, nhưng không gây hiểu lầm"),
-    # và một note vô hại như vậy từng làm chết cả run dù chính auditor kết luận
-    # pass. Chốt chặn thật là decision + các list có cấu trúc bên dưới.
+def audit_passes(value: dict) -> bool:
+    """Pass only from explicit, inspectable audit rules.
+
+    An LLM's score and bare pass/revise preference are subjective signals, so
+    neither may block production. Only structured contract/source findings can.
+    """
     return (
-        value.get("decision") == "pass"
-        and normalize_audit_score(value) >= minimum_score
-        and bool(value.get("source_alignment"))
+        bool(value.get("source_alignment"))
         and bool(value.get("outline_coverage"))
         and bool(value.get("title_alignment"))
         and not value.get("unsupported_claims")
         and not value.get("missing_outline_points")
     )
+
+
+def normalize_audit_report(value: Any, auditor: str = "unknown") -> dict[str, Any]:
+    """Normalize an auditor response before it can influence control flow.
+
+    A syntactically valid JSON object is not necessarily an audit contract. A
+    malformed report becomes a deterministic revise result, so DeepSeek and
+    Gemini follow the same branch and no missing/null field is interpreted
+    differently by the pipeline.
+    """
+    report = dict(value) if isinstance(value, dict) else {}
+    report["auditor"] = str(report.get("auditor") or auditor)
+    decision = str(report.get("decision") or "revise").strip().lower()
+    report["decision"] = decision if decision in {"pass", "revise"} else "revise"
+    # Accept old artifacts that still contain a score, but never preserve or
+    # use it in the production audit contract.
+    report.pop("overall_score", None)
+    for field in ("source_alignment", "outline_coverage", "title_alignment", "language_alignment"):
+        report[field] = report.get(field) is True
+    for field in ("unsupported_claims", "missing_outline_points", "issues"):
+        raw = report.get(field)
+        if raw is None:
+            report[field] = []
+        elif isinstance(raw, list):
+            report[field] = raw
+        else:
+            report[field] = [raw]
+    if not isinstance(value, dict):
+        report["issues"].append("Audit response phải là JSON object.")
+    required = ("source_alignment", "outline_coverage", "title_alignment")
+    if not isinstance(value, dict) or any(key not in value for key in required):
+        report["issues"].append("Audit response thiếu field contract bắt buộc.")
+    if report["issues"] and report["decision"] == "pass":
+        report["decision"] = "revise"
+    return report
 
 
 def _luminance(hex_color: str) -> float:
@@ -846,6 +1294,40 @@ def thumbnail_text_duplication(title: str, thumbnail_text: str) -> tuple[bool, s
     return False, ""
 
 
+def normalize_thumbnail_prompt(value: dict) -> None:
+    """Complete literal thumbnail contract tokens without another model retry."""
+    prompt = str(value.get("image_prompt", "")).strip()
+    lowered = prompt.lower()
+    additions = []
+    if "16:9" not in lowered:
+        additions.append("16:9 full bleed composition.")
+    if "no text" not in lowered:
+        additions.append("No text in base image.")
+    if "flat illustrated" not in lowered:
+        additions.append("Flat illustrated cartoon style.")
+    if "thick black outline" not in lowered:
+        additions.append("Thick black outline.")
+    if "navy" not in lowered:
+        additions.append("Navy #1A2332 background.")
+    if "fictional" not in lowered:
+        additions.append("Fictional anonymous character.")
+    if "full-bleed" not in lowered and "full bleed" not in lowered:
+        additions.append("Full-bleed scene across the entire 16:9 frame.")
+    if "gradient" not in lowered:
+        additions.append("Soft atmospheric gradient into the manual text zone; no hard split.")
+    if "identity lock" not in lowered:
+        additions.append("Identity lock: exact recurring mascot, unchanged face, outfit, proportions, and colors.")
+    if "visual identity anchor" not in lowered:
+        additions.append("Visual identity anchor: use the canonical mascot reference image when supported; match its face, outfit, colors, proportions, and thick outline exactly.")
+    value.setdefault("character_reference", {
+        "role": "canonical_mascot_visual_anchor",
+        "preferred_image": "video-build/images/IMG-01.png",
+        "fallback": "CHARACTER_BIBLE text lock",
+        "instruction": "Use the reference for identity only; vary pose, expression, crop, and scene."
+    })
+    value["image_prompt"] = " ".join([prompt, *additions]).strip()
+
+
 def validate_thumbnail(value: dict, title: str) -> dict[str, Any]:
     require_fields(value, ("concepts", "chosen_mode", "thumbnail_text", "text_color", "background_color", "image_prompt", "negative_prompt", "overlay_spec"), "thumbnail")
     text_count = len(value["thumbnail_text"])
@@ -886,14 +1368,17 @@ def validate_thumbnail(value: dict, title: str) -> dict[str, Any]:
 
 def derive_visual_density_targets(contract: dict, plan: dict) -> dict[str, int]:
     """Derive minimum coverage from duration instead of a fixed image quota."""
-    duration_text = str(contract.get("target_duration_minutes", "9-11"))
-    numbers = [int(item) for item in re.findall(r"\d+", duration_text)]
-    if len(numbers) >= 2:
-        duration_minutes = (numbers[0] + numbers[1]) / 2
-    elif numbers:
-        duration_minutes = float(numbers[0])
-    else:
-        duration_minutes = 9.0
+    duration_text = str(contract.get("target_duration_minutes", "6-12"))
+    def _minutes(value: str) -> float | None:
+        match = re.fullmatch(r"(\d+)(?::(\d{1,2}))?", value.strip())
+        if not match:
+            return None
+        return float(match.group(1)) + float(match.group(2) or 0) / 60.0
+
+    parts = re.split(r"\s*[-–]\s*", duration_text)
+    parsed = [_minutes(part) for part in parts]
+    parsed = [value for value in parsed if value is not None]
+    duration_minutes = sum(parsed) / len(parsed) if parsed else 9.0
     duration_seconds = max(60, int(round(duration_minutes * 60)))
 
     # Front-loaded schedule: denser opening, progressively slower later.
@@ -913,9 +1398,15 @@ def derive_visual_density_targets(contract: dict, plan: dict) -> dict[str, int]:
     section_floor = len(plan.get("sections", [])) * 5
     # Unique-image ratio is dynamic. This is a soft planning hint, not a hard quota.
     unique_images = max(1, math.ceil(visual_events * 0.70))
+    # Keep the recommendation compatible with the compact visual strategy
+    # prompt. The minimum is the only hard floor; recommendations must not
+    # silently turn into an 80-140 beat generation quota.
+    recommended_events_min = max(visual_events, int(round(duration_minutes * 5.5)))
+    recommended_events_max = max(recommended_events_min, int(round(duration_minutes * 7)))
     return {
         "duration_seconds_reference": duration_seconds,
         "minimum_visual_events": visual_events,
+        "recommended_visual_events": [recommended_events_min, recommended_events_max],
         "minimum_unique_images_soft": unique_images,
         "unique_ratio_target": [0.70, 0.90],
     }
@@ -1005,7 +1496,13 @@ def validate_image_strategy(
         raise ValueError("Image strategy density/no-filler gate chưa pass.")
 
 
-def normalize_image_prompts(value: dict) -> None:
+def normalize_image_prompts(value: dict, strategy: dict | None = None) -> None:
+    """Normalize provider output and deterministically complete missing beats.
+
+    Large image-prompt responses are sometimes truncated by the provider. The
+    strategy is already authoritative, so missing prompts/storyboard rows can
+    be completed locally without another blind model retry.
+    """
     for image in value.get("images", []):
         prompt = str(image.get("prompt", "")).strip()
         lowered = prompt.lower()
@@ -1017,6 +1514,59 @@ def normalize_image_prompts(value: dict) -> None:
         if "negative:" not in lowered:
             additions.append("Negative: text, logo, watermark, extra fingers, distorted hands, duplicate subjects.")
         image["prompt"] = " ".join([prompt, *additions]).strip()
+    if not isinstance(strategy, dict):
+        return
+
+    beats = strategy.get("visual_beats") or []
+    expected_images = [beat for beat in beats if bool(beat.get("new_image"))]
+    existing = {
+        str(image.get("image_id")): image
+        for image in value.get("images", [])
+        if str(image.get("image_id", ""))
+    }
+    images = []
+    for beat in expected_images:
+        image_id = str(beat["image_id"])
+        image = existing.get(image_id)
+        if image is None:
+            visual = str(beat.get("visual_information", "psychology visual beat")).strip()
+            image = {
+                "image_id": image_id,
+                "beat_ids": [str(beat["id"])],
+                "prompt": (
+                    "Japanese psychology illustration: %s. Anonymous recurring character or simple visual metaphor, "
+                    "clear readable action, flat illustrated cartoon, thick black outline, solid colors, no gradients, "
+                    "navy #1A2332 background, 16:9 full bleed. Negative: text, logo, watermark, photorealism, clutter."
+                ) % visual,
+            }
+        image.setdefault("beat_ids", [str(beat["id"])])
+        images.append(image)
+    value["images"] = images
+
+    existing_storyboard = {
+        str(row.get("beat_id")): row
+        for row in value.get("storyboard", [])
+        if str(row.get("beat_id", ""))
+    }
+    image_by_beat = {
+        str(beat["id"]): str(beat["image_id"])
+        for beat in beats
+    }
+    storyboard = []
+    for index, beat in enumerate(beats, start=1):
+        beat_id = str(beat["id"])
+        row = dict(existing_storyboard.get(beat_id) or {})
+        row.update({
+            "event_id": "E%02d" % index,
+            "time": row.get("time") or beat.get("time", "DRAFT_TIMING"),
+            "beat_id": beat_id,
+            "image_id": image_by_beat[beat_id],
+            "new_image": bool(beat.get("new_image")),
+            "motion": row.get("motion") or ("slow push-in" if index % 2 else "gentle pan"),
+            "visual_information": row.get("visual_information") or str(beat.get("visual_information", "psychology visual beat")),
+        })
+        storyboard.append(row)
+    value["storyboard"] = storyboard
 
 
 def validate_prompt_pack(value: dict, strategy: dict) -> dict[str, Any]:

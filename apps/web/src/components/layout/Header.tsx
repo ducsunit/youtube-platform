@@ -3,7 +3,6 @@ import { Link, useLocation } from 'react-router-dom';
 import {
   PlayCircle,
   Database,
-  FileText,
   Sliders,
   Video,
   Sun,
@@ -65,10 +64,6 @@ export function Header() {
           <Database size={16} />
           <span>{t('nav.data')}</span>
         </Link>
-        <Link to="/content" className={location.pathname === '/content' ? 'active' : ''}>
-          <FileText size={16} />
-          <span>{t('nav.content')}</span>
-        </Link>
         <Link to="/build" className={location.pathname === '/build' ? 'active' : ''}>
           <Sliders size={16} />
           <span>{t('nav.build')}</span>
@@ -76,6 +71,14 @@ export function Header() {
         <Link to="/video-gen" className={location.pathname === '/video-gen' ? 'active' : ''}>
           <Video size={16} />
           <span>{t('nav.videoGen')}</span>
+        </Link>
+        <Link to="/image-gen" className={location.pathname === '/image-gen' ? 'active' : ''}>
+          <Sparkles size={16} />
+          <span>{t('nav.imageGen')}</span>
+        </Link>
+        <Link to="/settings/providers" className={location.pathname.startsWith('/settings') ? 'active' : ''}>
+          <Sliders size={16} />
+          <span>{t('nav.providers')}</span>
         </Link>
       </nav>
 

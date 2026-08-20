@@ -37,6 +37,26 @@ export interface ServerConfig {
   poll_interval_ms: number;
 }
 
+export type ModelProviderType = 'gemini' | 'openai_compatible';
+
+export interface ModelProfileConfig {
+  provider: ModelProviderType;
+  model: string;
+  base_url: string;
+  api_key_env: string;
+  api_key_configured: boolean;
+  temperature: number;
+  max_output_tokens: number | null;
+}
+
+export interface ModelConfig {
+  version: number;
+  profiles: Record<string, ModelProfileConfig>;
+  role_profiles: Record<string, string>;
+  roles: string[];
+  provider_types: ModelProviderType[];
+}
+
 export type StageStatus = 'pending' | 'running' | 'passed' | 'failed';
 
 export interface StageRecord {
@@ -91,17 +111,17 @@ export interface RunState {
   status: string;
   created_at: string;
   updated_at: string;
+  execution_started_at: string | null;
+  execution_finished_at: string | null;
+  execution_elapsed_seconds: number | null;
+  total_started_at: string | null;
+  total_finished_at: string | null;
+  total_elapsed_seconds: number;
   config_snapshot: Record<string, unknown>;
   stage_records: Record<string, StageRecord>;
   artifact_index: Record<string, ArtifactRef>;
   warnings: unknown[];
   errors: unknown[];
-  execution_started_at?: string | null;
-  execution_finished_at?: string | null;
-  execution_elapsed_seconds?: number | null;
-  total_started_at?: string | null;
-  total_finished_at?: string | null;
-  total_elapsed_seconds?: number | null;
 }
 
 export interface RunDetail {
@@ -111,6 +131,35 @@ export interface RunDetail {
   manifest: Record<string, unknown> | null;
   active: boolean;
   orphaned: boolean;
+}
+
+export interface ModelCallDiagnostic {
+  label: string;
+  provider: string;
+  model: string;
+  temperature: number;
+  started_at: string | null;
+  finished_at: string | null;
+  duration_ms: number | null;
+  status: string;
+  error_type: string | null;
+}
+
+export interface RunDiagnostics {
+  run_id: string;
+  source: 'sqlite' | 'run_state';
+  indexed: boolean;
+  run_status: string;
+  updated_at: string | null;
+  routing_snapshot: Record<string, unknown> | null;
+  stages: unknown[];
+  model_calls: {
+    total: number;
+    succeeded: number;
+    failed: number;
+    duration_ms: number;
+    calls: ModelCallDiagnostic[];
+  };
 }
 
 export interface ActiveStage {
@@ -128,6 +177,16 @@ export interface RunStatus {
   finished: boolean;
   executing: boolean;
   orphaned: boolean;
+  execution_started_at: string | null;
+  execution_finished_at: string | null;
+  execution_elapsed_seconds: number | null;
+  total_started_at: string | null;
+  total_finished_at: string | null;
+  total_elapsed_seconds: number;
+}
+
+export interface RunEvent extends RunStatus {
+  state?: RunState;
 }
 
 export interface LogPage {
@@ -292,6 +351,8 @@ export interface BuildStartBody {
   resolution?: [number, number];
   dry_run?: boolean;
   subtitles?: boolean;
+  logo_cleanup?: boolean;
+  logo_mode?: 'delogo' | 'blur';
 }
 
 export interface BuildJobStarted {
@@ -398,54 +459,85 @@ export interface VeoJob {
   finished_at: string | null;
 }
 
-// ---- Nội dung content/ (youtube_pipeline/api/content_routes.py) -------------
-
-export interface QueueTopic {
-  queue_no: number;
-  hien_tuong: string;
-  primary_core: string;
-  mechanism: string;
-  backup_mechanism: string;
-  cultural_frame: string;
-  status: string; // queued | in_progress | published
-  title_vn?: string;
-  title_jp?: string;
-  central_emotion?: string;
-  notes?: string;
+export interface ImageStatus {
+  available: boolean;
+  has_api_key: boolean;
+  sdk_ready: boolean;
+  model: string;
+  models: string[];
+  sizes: string[];
+  qualities: string[];
+  active_job: { id: string; run_id?: string; status: string } | null;
+  busy: boolean;
 }
 
-export interface DiaryEntry {
-  ngay: string;
-  video: string;
-  mechanism: string;
-  frame: string;
-  video_id: string;
+export interface ImageConfig {
+  model: string;
+  base_url: string;
+  api_key_env: string;
+  api_key_configured: boolean;
+  default_size: string;
+  default_quality: string;
+  models: string[];
+  sizes: string[];
+  qualities: string[];
 }
 
-export interface ContentQueue {
-  topics: QueueTopic[];
-  diary: DiaryEntry[];
-  recent_mechanisms: string[];
+export interface ImagePrompt {
+  image_id: string;
+  prompt: string;
+  exists: boolean;
+  path: string | null;
+  size_bytes: number | null;
 }
 
-export interface MechanismInfo {
-  paused: boolean;
-  raw_name: string;
-  author_year?: string;
-  source?: string;
-  hook?: string;
-  core_idea?: string;
+export interface ImagePrompts {
+  run_id: string;
+  prompt_pack_exists: boolean;
+  images_dir: string;
+  total: number;
+  generated: number;
+  prompts: ImagePrompt[];
+  active_job: { id: string; run_id?: string; status: string } | null;
+  busy: boolean;
 }
 
-export interface CulturalFrameInfo {
-  raw_name: string;
-  concept?: string;
-  usage_step?: string;
-  pair_mechanisms?: string;
+export interface ImageJob {
+  id: string;
+  run_id?: string;
+  status: 'running' | 'complete' | 'failed';
+  exit_code: number | null;
+  started_at?: string;
+  finished_at?: string;
 }
 
-export interface QueueActionResult {
-  queue_no: number;
-  status: string;
-  changed: boolean;
+export interface SrtStatus {
+  sdk_ready: boolean;
+  accurate_ready: boolean;
+  models: string[];
+  devices: string[];
+  modes: string[];
+  active_job: { id: string; run_id?: string; status: string } | null;
+  busy: boolean;
+}
+
+export interface SrtInputs {
+  run_id: string;
+  script_exists: boolean;
+  script_path: string | null;
+  audio_exists: boolean;
+  audio_path: string | null;
+  audio_size_bytes: number | null;
+  srt_exists: boolean;
+  srt_path: string | null;
+  active_job: { id: string; run_id?: string; status: string } | null;
+  busy: boolean;
+}
+
+export interface SrtJob {
+  id: string;
+  run_id?: string;
+  status: 'running' | 'complete' | 'failed';
+  exit_code: number | null;
+  output_path?: string;
 }

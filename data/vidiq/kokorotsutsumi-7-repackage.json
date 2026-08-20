@@ -1,0 +1,179 @@
+{
+  "source": {
+    "provider": "vidiq",
+    "channel": "https://www.youtube.com/@kokorotsutsumi",
+    "channel_id": "UCL3xuEku7ezoFg2C9pwcTXg",
+    "channel_title": "こころ包み - 静かな人のための心理学",
+    "retrieved_at": "2026-08-19",
+    "policy": "Recommendations only. No YouTube metadata was changed automatically."
+  },
+  "editorial_rules": {
+    "flow": ["behavior", "misconception", "early_reframe", "core_question", "mechanism", "cost_or_paradox", "reframe", "quiet_landing"],
+    "title": "Concrete recognition first; one promise; avoid generic self-help wording.",
+    "description": "First two lines state the behavior and psychological question; source note and CTA stay short.",
+    "thumbnail": "One clear behavior, one focal character/action, short Japanese overlay, continuous 16:9 scene, soft gradient text zone, no baked-in text."
+  },
+  "videos": [
+    {
+      "video_id": "n-xuwXpHFXU",
+      "published_at": "2026-08-12T11:00:29Z",
+      "duration": "PT8M17S",
+      "current_title": "「私、何かした…？」他人の不機嫌を自分のせいと感じてしまう人の特徴【心理学】",
+      "views": 39,
+      "thumbnail_url": "https://i.ytimg.com/vi/n-xuwXpHFXU/maxresdefault.jpg",
+      "vidiq_thumbnail_score": 54,
+      "vidiq_thumbnail_findings": ["背景が cluttered", "visual complexity が高い", "視線誘導が弱い"],
+      "core_topic": "他人の不機嫌を自分の責任として背負う行動",
+      "mechanism": "他人の課題と自分の課題の混同",
+      "recommended_title": "他人の不機嫌を背負ってしまう人の心理",
+      "vidiq_title_candidates": [
+        {"title": "「他人の不機嫌に振り回される」あなたの心の境界線を守る方法", "score": 82},
+        {"title": "他人の感情と自分の感情を切り離す方法", "score": 77},
+        {"title": "なぜ他人の感情を背負いすぎてしまうのか？", "score": 67}
+      ],
+      "thumbnail_text": "私のせい？",
+      "thumbnail_direction": "右側に、相手の不機嫌な表情ではなく、スマートフォンの通知を見て自分を指さすキャラクター。左側は同じ室内を navy の soft gradient に落とし、文字は一つだけ。矢印は使わず、視線とスマートフォンで行動を示す。",
+      "thumbnail_prompt": "16:9 YouTube thumbnail, flat illustrated Japanese psychology channel style, use the exact same recurring mascot from the existing channel visuals, preserve face, hairstyle, outfit, colors, body proportions and thick outline, do not redesign the character. One concrete behavior: the mascot is on the right side of a quiet Japanese room, looking at a phone notification and pointing at themselves with a worried expression, as if asking whether they caused another person's displeasure. Show only one subtle abstract displeased reaction cue in the background, no extra characters. Continuous full-bleed room across the frame. Keep the left side as the same room with lower detail and a soft navy atmospheric gradient for manual headline overlay. Clear focal point on face, phone and pointing hand. The visual must communicate self-blame and uncertainty immediately. No baked-in text, no Japanese letters, no English letters, no numbers, no logo, no watermark, no split screen, no hard vertical divider, no separate background, no photorealism, no clutter.",
+      "vidiq_generated_thumbnail": {"image_url": "https://ai-thumbnails.s3.amazonaws.com/editor/b873aa0c-5889-4a6e-bc4e-c72c5711b91c/efad367b-b051-4d47-a5e4-eced5bc0c29d.png", "score": 79, "status": "completed"},
+      "description": "相手の表情が少し曇っただけで、「私、何かした？」と考えてしまう。\n\nここで起きているのは、相手の感情を理解することと、相手の感情の責任まで引き受けることが混ざるパターンです。なぜ他人の不機嫌が、自分の問題のように感じられるのか。日常の反応から、その境界線が曖昧になる仕組みを整理します。\n\n自分が扱う課題と、相手にしか扱えない課題を分けて見直すための心理学です。"
+    },
+    {
+      "video_id": "p0O3TEWLT-A",
+      "published_at": "2026-08-10T11:15:19Z",
+      "duration": "PT9M25S",
+      "current_title": "「頼み事を断れない…」自分を削る優しい人が境界線を引き、心を軽くする心理学",
+      "views": 35,
+      "thumbnail_url": "https://i.ytimg.com/vi/p0O3TEWLT-A/maxresdefault.jpg",
+      "vidiq_thumbnail_score": 82,
+      "vidiq_thumbnail_findings": ["clear face and expression", "背景が少し busy"],
+      "core_topic": "頼まれると断れず、自分の負担を後回しにする行動",
+      "mechanism": "相手の期待と自分の選択の境界が曖昧になる",
+      "recommended_title": "頼まれると断れない人の心理。自分の負担を後回しにする理由",
+      "vidiq_title_candidates": [
+        {"title": "「NO」と言えない自分を変える。人間関係が劇的に楽になる境界線の引き方", "score": 81},
+        {"title": "自己犠牲をやめたい人へ。断れない性格を根本から変える心理メカニズム", "score": 80},
+        {"title": "「頼み事を断れない」のは脳のせい？自分を守るための境界線ルール", "score": 77}
+      ],
+      "thumbnail_text": "断れない",
+      "thumbnail_direction": "右側に、頼まれたメモを持ちながら自分の予定表を見て止まるキャラクター。左側は同じ机の背景を soft gradient 化。文字は「断れない」だけ。笑顔や優しさの演出を強調しない。",
+      "thumbnail_prompt": "16:9 YouTube thumbnail, flat illustrated Japanese psychology channel style, use the exact same recurring mascot from the existing channel visuals, preserve face, hairstyle, outfit, colors, body proportions and thick outline, do not redesign the character. One concrete behavior: the mascot is on the right side of a Japanese desk, holding a request note in one hand while staring at a crowded personal schedule in the other hand, frozen before saying no. Show tension between another person's request and the mascot's own limited time. One character only, no kindness symbols, no smiling pose. Continuous full-bleed room across the frame. Keep the left side as the same room with lower detail and a soft navy atmospheric gradient for manual headline overlay. Clear focal point on the request note, schedule and hesitant face. No readable writing in the props. No baked-in text, no Japanese letters, no English letters, no numbers, no logo, no watermark, no split screen, no hard divider, no clutter, no photorealism.",
+      "vidiq_generated_thumbnail": {"status": "failed", "reason": "thumbnail service unavailable; credits refunded"},
+      "description": "頼まれると、予定がいっぱいでも「いいよ」と答えてしまう。断った後の相手の反応まで先に考えて、自分の負担を後回しにする。\n\n問題は、優しさが足りないことではありません。相手の希望と、自分が引き受けるかどうかの境界が、返事の前に曖昧になっているのかもしれません。なぜ断るという一言が重くなるのか、その心理の流れを短く整理します。\n\n意志を強くするのではなく、自分の課題を確認してから返事を選ぶための視点です。"
+    },
+    {
+      "video_id": "G5eITKJf5eM",
+      "published_at": "2026-08-09T11:00:03Z",
+      "duration": "PT9M34S",
+      "current_title": "「夜の一人反省会」を止める方法。それ、あなたが悪いんじゃないんです【アドラー心理学】",
+      "views": 47,
+      "thumbnail_url": "https://i.ytimg.com/vi/G5eITKJf5eM/maxresdefault.jpg",
+      "vidiq_thumbnail_score": 85,
+      "vidiq_thumbnail_findings": ["strong contrast", "clear value proposition", "background complexity can be reduced"],
+      "core_topic": "夜に会話や行動を繰り返し採点する行動",
+      "mechanism": "過去の反応を再確認して安心を得ようとする思考ループ",
+      "recommended_title": "夜の反省会が止まらない理由。過去の会話を採点し続ける心理",
+      "vidiq_title_candidates": [
+        {"title": "寝る前の反省会で自分を責めていませんか？アドラー心理学で解決するメンタル術", "score": 87},
+        {"title": "「夜の一人反省会」が止まらないあなたへ。考えすぎてしまう本当の理由【アドラー心理学】", "score": 84},
+        {"title": "その反省、必要ありません。夜の思考ループを断ち切る心理学的アプローチ", "score": 84}
+      ],
+      "thumbnail_text": "また反省会",
+      "thumbnail_direction": "夜のベッド脇でスマートフォンを見ながら、同じ会話の吹き出しを何度も見返すキャラクター。吹き出し内は文字なし。左側を暗い navy gradient の余白にし、表情とスマートフォンを右に集約。",
+      "thumbnail_prompt": "16:9 YouTube thumbnail, flat illustrated Japanese psychology channel style, use the exact same recurring mascot from the existing channel visuals, preserve face, hairstyle, outfit, colors, body proportions and thick outline, do not redesign the character. One concrete behavior: at night the mascot sits on the right side of a bed, repeatedly checking a smartphone while several identical empty speech bubbles form a subtle circular loop around the phone. The bubbles contain no text. Show the tired face and repeated checking behavior, not a generic sad portrait. Continuous dark bedroom across the frame. Keep the left side low-detail with a soft navy atmospheric gradient for manual headline overlay. Strong focal point on the phone, eyes and circular loop. No other people. No baked-in text, no Japanese letters, no English letters, no numbers, no logo, no watermark, no split screen, no hard divider, no clutter, no photorealism.",
+      "vidiq_generated_thumbnail": {"image_url": "https://ai-thumbnails.s3.amazonaws.com/editor/b873aa0c-5889-4a6e-bc4e-c72c5711b91c/845ccd42-1ec3-4776-8bb2-3cd89ffcf90d.png", "score": 81, "status": "completed"},
+      "description": "布団に入ってから、昼間の一言を何度も思い返す。あの言い方はまずかったかもしれない。相手はどう受け取っただろう。\n\n反省しているつもりでも、同じ場面を採点し続けるほど答えが増えるわけではありません。ここでは、過去の会話を確認することで一時的な安心を得ようとする思考のループを、日常の行動から見ていきます。\n\n夜に自分を裁く前に、「いま確認しているのは事実か、それとも相手の課題まで推測しているのか」と見直すための話です。"
+    },
+    {
+      "video_id": "OfP3DVdRdcc",
+      "published_at": "2026-08-03T09:55:42Z",
+      "duration": "PT13M41S",
+      "current_title": "約束のキャンセルでホッとする理由。『嫌われる勇気』で心を軽くする「課題の分離」",
+      "views": 74,
+      "thumbnail_url": "https://i.ytimg.com/vi/OfP3DVdRdcc/maxresdefault.jpg",
+      "vidiq_thumbnail_score": 86,
+      "vidiq_thumbnail_findings": ["clear promise", "high contrast", "slightly low energy and busy background"],
+      "core_topic": "予定のキャンセルで安堵し、その安堵を責める行動",
+      "mechanism": "会う前から相手の機嫌・沈黙・会話を管理しようとする負担",
+      "recommended_title": "約束が消えると、なぜホッとするのか。会う前から抱える心の負担",
+      "vidiq_title_candidates": [
+        {"title": "約束のキャンセル＝安堵の正体。繊細な人が人間関係を楽にするための処方箋", "score": 85},
+        {"title": "予定がキャンセルで「ホッとした」あなたへ。それは薄情ではなく、頑張りすぎのサインです", "score": 83},
+        {"title": "人間関係でぐったりしてしまうあなたへ。それは「機嫌・沈黙・採点」の係を抱えすぎているだけ", "score": 83}
+      ],
+      "thumbnail_text": "ホッとした",
+      "thumbnail_direction": "キャンセル通知を見て表情が緩むキャラクターと、机上に残った予定表。安堵と罪悪感が同じ表情に見える一瞬を右側に配置。左側は同じ部屋の navy gradient。",
+      "thumbnail_prompt": "16:9 YouTube thumbnail, flat illustrated Japanese psychology channel style. CHARACTER IDENTITY LOCK: use the canonical mascot reference image video-build/images/IMG-01.png when reference images are supported. The mascot is a bald round-headed male cartoon figure with a large spherical bald head, pale cream skin, heavy sleepy-sad eyelids, round black eyes with small white highlights, thin curved black eyebrows, a minimal curved-arc nose, a small neutral line mouth, large head and compact slightly chubby chibi torso. He wears the exact same muted slate-blue crewneck sweatshirt over a white collared shirt, khaki straight-leg trousers, and blue canvas sneakers with white laces. Match the face silhouette, eyes, skin tone, outfit, colors, head-to-body ratio and thick black outline exactly. No hair, beard, glasses, hat, accessories, different gender, different body type or redesigned mascot. One concrete behavior: the mascot is on the right side of a quiet room, looking at a cancelled appointment notification on a phone while their shoulders visibly relax, with a paper schedule on the table. The expression combines relief and guilt in one recognizable moment. Do not show a dramatic celebration. Continuous full-bleed room across the frame. Keep the left side as the same room with a soft navy atmospheric gradient for manual headline overlay. Clear focal point on phone, schedule and face. Change only pose, expression, crop and environment; identity remains fixed. No readable writing in the props. No baked-in text, no Japanese letters, no English letters, no numbers, no logo, no watermark, no split screen, no hard divider, no clutter, no photorealism.",
+      "vidiq_generated_thumbnail": {"image_url": "https://ai-thumbnails.s3.amazonaws.com/editor/b873aa0c-5889-4a6e-bc4e-c72c5711b91c/1efec95c-5f99-4795-96fe-14ad45884675.png", "score": 58, "status": "completed"},
+      "description": "楽しみにしていたはずの予定がキャンセルになって、なぜかホッとする。\n\nその安堵は、相手を嫌っている証拠とは限りません。会うと決まった瞬間から、相手の機嫌を読む、沈黙を埋める、帰宅後に会話を採点する。そんな役割を先回りして抱えていた可能性があります。\n\n約束そのものではなく、約束の前に自分が背負っていたものを見る。そこから、人との距離を考え直します。"
+    },
+    {
+      "video_id": "bClYY9xpwX8",
+      "published_at": "2026-07-23T09:00:34Z",
+      "duration": "PT10M22S",
+      "current_title": "玄関のドアを閉めた瞬間、動けなくなる理由。それは怠けではなく「感情労働」の限界サイン",
+      "views": 18,
+      "thumbnail_url": "https://i.ytimg.com/vi/bClYY9xpwX8/maxresdefault.jpg",
+      "vidiq_thumbnail_score": 77,
+      "vidiq_thumbnail_findings": ["clear face and structure", "background complexity", "weak eye guidance and wow factor"],
+      "core_topic": "帰宅すると急に動けず、やることを後回しにする行動",
+      "mechanism": "外で感情を整え続けた後に、反応を維持する余力が落ちる",
+      "recommended_title": "帰宅すると動けなくなる理由。外で続けた「感情の調整」のあとに起きること",
+      "vidiq_title_candidates": [
+        {"title": "「帰宅後の五分」で変わる。毎日ヘトヘトな人が、今日からできる心のケア", "score": 87},
+        {"title": "玄関のドアを閉めた瞬間、力尽きるあなたへ。それは「感情労働」の限界サインです", "score": 83},
+        {"title": "帰宅して動けなくなるのは「怠け」ではありません。その心の仕組みと、電池を回復させる方法", "score": 80}
+      ],
+      "thumbnail_text": "帰宅で停止",
+      "thumbnail_direction": "玄関で靴を脱いだままソファへ視線だけ向け、スマートフォンにも家事にも手が伸びないキャラクター。行動停止を一つだけ見せる。左側を玄関と同じ連続空間の soft gradient にする。",
+      "thumbnail_prompt": "16:9 YouTube thumbnail, flat illustrated Japanese psychology channel style, use the exact same recurring mascot from the existing channel visuals, preserve face, hairstyle, outfit, colors, body proportions and thick outline, do not redesign the character. One concrete behavior: at the apartment entrance the mascot has removed only one shoe and stands completely still, looking toward a sofa and phone without reaching for either. Show the behavioral freeze immediately, with no medical imagery and no dramatic collapse. Continuous entryway-to-living-room environment across the frame. Keep the left side lower detail with a soft navy atmospheric gradient for manual headline overlay. Clear focal point on the stopped body, one shoe, sofa and phone. No extra people. No baked-in text, no Japanese letters, no English letters, no numbers, no logo, no watermark, no split screen, no hard divider, no clutter, no photorealism.",
+      "vidiq_generated_thumbnail": {"image_url": "https://ai-thumbnails.s3.amazonaws.com/editor/b873aa0c-5889-4a6e-bc4e-c72c5711b91c/aa979b93-3477-4eed-9ee5-e038f4b48e1e.png", "score": 88, "status": "completed"},
+      "description": "玄関のドアを閉めた瞬間、靴も脱ぎきらずに動けなくなる。ご飯やお風呂、返信まで後回しになる。\n\nここで見るのは、怠けという性格評価ではありません。外で相手の表情や空気に合わせ、感情を整え続けたあと、家に戻って反応を続ける余力が落ちる流れです。なぜ家に着いてから疲れが表に出るのかを、具体的な行動から整理します。\n\n必要なのは意志の強さではなく、帰宅直後の最初の負担を軽くする見方です。"
+    },
+    {
+      "video_id": "ddHmBDO7osY",
+      "published_at": "2026-07-17T11:00:14Z",
+      "duration": "PT25M1S",
+      "current_title": "「空気を読みすぎて疲れる」の正体。アドラー心理学で知る、自分を守るアンテナの下ろし方",
+      "views": 49,
+      "thumbnail_url": "https://i.ytimg.com/vi/ddHmBDO7osY/maxresdefault.jpg",
+      "vidiq_thumbnail_score": 82,
+      "vidiq_thumbnail_findings": ["sharp and high contrast", "background too complex", "negative space needs cleanup"],
+      "core_topic": "相手の表情・声・空気を読み続けて会った後に消耗する行動",
+      "mechanism": "他人の反応を細かく監視し、自分の振る舞いを調整し続ける負荷",
+      "recommended_title": "人と会うと、なぜかどっと疲れるのか。空気を読み続ける心の仕組み",
+      "vidiq_title_candidates": [
+        {"title": "人と会うと消耗する。そんなあなたのための、心のアンテナを休める技術", "score": 81},
+        {"title": "内向型・繊細さんの疲れはどこから来る？頑張りすぎる心を整えるヒント", "score": 80},
+        {"title": "人と会うと、なぜかどっと疲れるあなたへ。その「正体」を心理学でほどく", "score": 79}
+      ],
+      "thumbnail_text": "会うと消耗",
+      "thumbnail_direction": "会話中は笑っているが、画面右下で視線と肩が下がっていく同一キャラクター。相手を増やさず一人の行動に集中し、背景の情報量を大幅に落とす。左側は navy gradient の文字ゾーン。",
+      "thumbnail_prompt": "16:9 YouTube thumbnail, flat illustrated Japanese psychology channel style, use the exact same recurring mascot from the existing channel visuals, preserve face, hairstyle, outfit, colors, body proportions and thick outline, do not redesign the character. One concrete behavior: after a conversation the mascot remains on the right side with a polite smile fading, shoulders lowered and eyes exhausted, while a minimal anonymous silhouette is softly out of focus in the background. Show the cost of constantly adjusting to another person's mood, not a crowded social scene. Continuous quiet interior across the frame. Keep the left side very low-detail with a soft navy atmospheric gradient for manual headline overlay. Clear focal point on the mascot's face, lowered shoulders and hands. No group, no exaggerated sadness. No baked-in text, no Japanese letters, no English letters, no numbers, no logo, no watermark, no split screen, no hard divider, no clutter, no photorealism.",
+      "vidiq_generated_thumbnail": {"image_url": "https://ai-thumbnails.s3.amazonaws.com/editor/b873aa0c-5889-4a6e-bc4e-c72c5711b91c/635a82e3-8be3-496e-b8cc-734586a191a4.png", "score": 60, "status": "completed"},
+      "description": "人といる間は普通に話せているのに、帰宅すると急に何もしたくなくなる。\n\n疲れの原因は、会話の量だけではないかもしれません。相手の表情や声の調子を読み、自分の言葉や表情を小さく調整し続ける。その見えにくい反応が、会った後にまとめて重さとして出てくることがあります。\n\n人を嫌いかどうかではなく、誰の前でどれだけ自分を調整しているのか。そこから疲れ方を見直します。"
+    },
+    {
+      "video_id": "wYRtahxPtrU",
+      "published_at": "2026-07-12T14:53:30Z",
+      "duration": "PT26M10S",
+      "current_title": "「昔の友達」に会いたくない理由。冷たい人になったのではなく、心が求めている「課題の分離」",
+      "views": 157,
+      "thumbnail_url": "https://i.ytimg.com/vi/wYRtahxPtrU/maxresdefault.jpg",
+      "vidiq_thumbnail_score": 88,
+      "vidiq_thumbnail_findings": ["subject is clear and dominant", "strong contrast", "background complexity and low wow factor"],
+      "core_topic": "昔の友人との再会を避けたくなり、距離の変化を自分や相手の否定と解釈する行動",
+      "mechanism": "過去の役割と現在の自分のずれ、関係に必要な距離の再調整",
+      "recommended_title": "昔の友達に会うと疲れる理由。変わったのは、冷たさではなく関係の距離",
+      "vidiq_title_candidates": [
+        {"title": "「会うと疲れる」は、あなたの心が正常な証拠です。人間関係で消耗しないための「課題の分離」", "score": 82},
+        {"title": "人間関係の断捨離：会ったあとに疲れてしまう人とは、距離を置いても大丈夫な理由", "score": 82},
+        {"title": "「また会いたい」と思えないのは普通のこと。年齢とともに変わる、人間関係の距離感の正体", "score": 80}
+      ],
+      "thumbnail_text": "もう会えない？",
+      "thumbnail_direction": "昔の集合写真を見ながら、現在の自分だけが少し離れて立つキャラクター。過去の人物を増やしすぎず、距離の変化を空間で示す。左側は同じ背景の soft gradient、文字は一つだけ。",
+      "thumbnail_prompt": "16:9 YouTube thumbnail, flat illustrated Japanese psychology channel style. CHARACTER IDENTITY LOCK: use the canonical mascot reference image video-build/images/IMG-01.png when reference images are supported. The mascot is a bald round-headed male cartoon figure with a large spherical bald head, pale cream skin, heavy sleepy-sad eyelids, round black eyes with small white highlights, thin curved black eyebrows, a minimal curved-arc nose, a small neutral line mouth, large head and compact slightly chubby chibi torso. He wears the exact same muted slate-blue crewneck sweatshirt over a white collared shirt, khaki straight-leg trousers, and blue canvas sneakers with white laces. Match the face silhouette, eyes, skin tone, outfit, colors, head-to-body ratio and thick black outline exactly. No hair, beard, glasses, hat, accessories, different gender, different body type or redesigned mascot. One concrete behavior: the mascot stands on the right side of a quiet room, holding a small old group photograph and looking at it from a slight distance, uncertain about meeting those friends again. Suggest the gap between an old social role and the present self through space, not through a crowded collage. Keep the old photo unreadable and visually simple. Continuous full-bleed room across the frame. Keep the left side low-detail with a soft navy atmospheric gradient for manual headline overlay. Clear focal point on the mascot, photograph and distance. Change only pose, expression, crop and environment; identity remains fixed. No extra visible faces, no baked-in text, no Japanese letters, no English letters, no numbers, no logo, no watermark, no split screen, no hard divider, no clutter, no photorealism.",
+      "vidiq_generated_thumbnail": {"image_url": "https://ai-thumbnails.s3.amazonaws.com/editor/b873aa0c-5889-4a6e-bc4e-c72c5711b91c/faffc984-7658-4851-9128-834e704d1efe.png", "score": 25, "status": "completed"},
+      "description": "昔は会いたかった友達なのに、今は誘いを見るだけで少し疲れる。\n\nそれは、相手を嫌いになったという結論だけでは説明できません。昔の集まりで担っていた役割と、今の自分が必要としている距離がずれている。関係を続けるか切るかの二択にすると、そのずれまで自分の冷たさとして背負ってしまいます。\n\n過去を大切にしながら、現在の自分に合う距離を選ぶ。人間関係を見直すときの、静かな基準を考えます。"
+    }
+  ]
+}
