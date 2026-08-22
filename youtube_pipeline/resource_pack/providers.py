@@ -2,12 +2,22 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Mapping, Protocol
+import threading
+from concurrent.futures import ThreadPoolExecutor
+from typing import Any, Callable, Mapping, Protocol, Sequence, TypeVar
 
 from ..config import Settings
 from ..model_router import ModelRouter, ModelProfile
 from .metrics import non_whitespace_chars
-from ..infrastructure.model_trace import trace_parsed_response, trace_raw_response, trace_request
+from .sections import split_tts_chunks
+from .validation import derive_visual_density_targets
+from ..infrastructure.model_trace import (
+    restore_trace_context,
+    snapshot_trace_context,
+    trace_parsed_response,
+    trace_raw_response,
+    trace_request,
+)
 from ..providers import parse_json_object
 from .prompts import (
     AUDIT_SYSTEM,
@@ -29,6 +39,8 @@ from .prompts import (
     contract_prompt,
     image_prompts_prompt,
     image_strategy_prompt,
+    image_strategy_foundation_prompt,
+    image_strategy_chunk_prompt,
     planning_prompt,
     psychology_brief_prompt,
     publish_prompt,
@@ -41,10 +53,157 @@ from .prompts import (
     topic_selection_prompt,
     thumbnail_prompt,
     vietnamese_translation_prompt,
+    writing_movement_prompt,
     writing_prompt,
 )
 
 logger = logging.getLogger(__name__)
+
+_T = TypeVar("_T")
+
+# Class-level guard so instances built via ``__new__`` (tests, hot reloads)
+# still get a working lock around the shared client cache.
+_CLIENT_CREATE_LOCK = threading.Lock()
+
+# Independent provider calls (translation chunks, image-prompt batches,
+# per-movement audits/repairs) have no cross-item reasoning dependency, so they
+# run concurrently. 4 workers keeps useful overlap while staying polite with
+# provider rate limits; each task is one bounded request.
+_PARALLEL_MODEL_WORKERS = 4
+
+
+def _run_provider_tasks_parallel(tasks: Sequence[Callable[[], _T]]) -> list[_T]:
+    """Run independent model calls concurrently, preserving input order.
+
+    Order preservation matters: translation chunks are joined in sequence and
+    image batches must keep their beat order. The first raised exception is
+    re-raised so the stage engine keeps its single retry-owner contract.
+    """
+    if not tasks:
+        return []
+    if len(tasks) == 1:
+        return [tasks[0]()]
+    snapshot = snapshot_trace_context()
+    results: list[Any] = [None] * len(tasks)
+
+    def _worker(index: int, task: Callable[[], _T]) -> None:
+        restore_trace_context(snapshot)
+        results[index] = task()
+
+    workers = min(_PARALLEL_MODEL_WORKERS, len(tasks))
+    first_error: BaseException | None = None
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = [pool.submit(_worker, index, task) for index, task in enumerate(tasks)]
+        for future in futures:
+            try:
+                future.result()
+            except BaseException as exc:  # noqa: BLE001 - re-raised below in order
+                if first_error is None:
+                    first_error = exc
+    if first_error is not None:
+        raise first_error
+    return results
+
+
+def _image_strategy_contract(contract: dict) -> dict:
+    """Keep image-strategy requests focused on visual decisions, not sources."""
+    return {
+        key: contract[key]
+        for key in (
+            "chosen_title",
+            "core_psychological_question",
+            "psychological_identity",
+            "central_emotion",
+            "main_tension",
+            "selected_mechanisms",
+            "content_spine",
+            "recognition_device",
+            "thumbnail_brief",
+            "format_lock",
+            "visual_duration_seconds",
+            "visual_duration_source",
+        )
+        if key in contract
+    }
+
+
+def _thumbnail_context(thumbnail: dict) -> dict:
+    """Pass only the thumbnail facts that establish visual continuity."""
+    return {
+        key: thumbnail[key]
+        for key in ("thumbnail_text", "image_prompt", "negative_prompt", "concepts", "overlay_spec")
+        if key in thumbnail
+    }
+
+
+def _image_strategy_section(section: dict) -> dict:
+    return {
+        key: section[key]
+        for key in (
+            "id", "segment_function", "psychological_job", "behavior_link",
+            "new_information", "state_advance", "so_what_next", "mechanisms_used",
+        )
+        if key in section
+    }
+
+
+def _allocate_visual_events(total: int, weights: list[Any]) -> list[int]:
+    """Allocate the validated floor exactly, with every movement represented."""
+    count = len(weights)
+    if count == 0:
+        return []
+    total = max(total, count)
+    normalized = []
+    for weight in weights:
+        try:
+            normalized.append(max(0.1, float(weight)))
+        except (TypeError, ValueError):
+            normalized.append(1.0)
+    base = [1] * count
+    remaining = total - count
+    weight_total = sum(normalized)
+    raw = [remaining * weight / weight_total for weight in normalized]
+    allocation = [minimum + int(value) for minimum, value in zip(base, raw)]
+    remainder = remaining - sum(int(value) for value in raw)
+    for index in sorted(
+        range(count), key=lambda item: (raw[item] - int(raw[item]), -item), reverse=True
+    )[:remainder]:
+        allocation[index] += 1
+    return allocation
+
+
+def _renumber_visual_chunk(chunk_beats: list[dict], start: int, section_id: str) -> list[dict]:
+    """Turn chunk-local IDs into one globally ordered, reusable beat sequence."""
+    local_to_global: dict[str, str] = {}
+    for offset, beat in enumerate(chunk_beats):
+        local_id = str(beat.get("id") or "")
+        if not local_id:
+            raise ValueError("Visual chunk chứa beat không có id.")
+        if local_id in local_to_global:
+            raise ValueError("Visual chunk chứa beat id trùng: %s." % local_id)
+        local_to_global[local_id] = "B%03d" % (start + offset)
+
+    normalized: list[dict] = []
+    for offset, raw in enumerate(chunk_beats):
+        beat = dict(raw)
+        local_id = str(beat["id"])
+        beat["id"] = local_to_global[local_id]
+        beat["script_section"] = section_id
+        if bool(beat.get("new_image")):
+            beat["reuse_image_id"] = None
+        else:
+            reuse = str(beat.get("reuse_image_id") or "")
+            target = local_to_global.get(reuse)
+            if target is None:
+                raise ValueError(
+                    "Visual chunk %s reuse ảnh ngoài chunk hoặc không tồn tại: %s."
+                    % (local_id, reuse)
+                )
+            if list(local_to_global).index(reuse) >= offset:
+                raise ValueError("Visual chunk %s chỉ được reuse beat đứng trước." % local_id)
+            beat["reuse_image_id"] = target
+        normalized.append(beat)
+    return normalized
 
 
 def _normalize_psychology_context(psychology_brief: dict | None) -> dict:
@@ -70,6 +229,7 @@ class ResourceContentProvider(Protocol):
     def create_contract(self, topic: str, source_pack: dict, performance: dict, psychology_brief: dict, validation_feedback: str = "") -> dict: ...
     def create_plan(self, contract: dict, source_pack: dict, psychology_brief: dict, validation_feedback: str = "") -> dict: ...
     def write_script(self, contract: dict, plan: dict, source_pack: dict, psychology_brief: dict | None = None) -> str: ...
+    def write_script_movements(self, contract: dict, plan: dict, source_pack: dict, psychology_brief: dict | None = None) -> list[dict]: ...
     def review_script(self, contract: dict, plan: dict, source_pack: dict, draft: str, competitor_context: str = "") -> dict: ...
     def apply_review(self, contract: dict, plan: dict, source_pack: dict, draft: str, review: dict) -> str: ...
     def audit_script(self, auditor: str, contract: dict, plan: dict, source_pack: dict, script: str) -> dict: ...
@@ -138,53 +298,46 @@ class AIResourceProvider:
     def _client_for(self, profile: ModelProfile) -> Any:
         api_key = self.router.resolve_api_key(profile)
         key = (profile.provider, api_key, profile.base_url)
-        if key in self._clients:
+        with _CLIENT_CREATE_LOCK:
+            if key in self._clients:
+                return self._clients[key]
+        client = self._build_client(profile, api_key)
+        with _CLIENT_CREATE_LOCK:
+            self._clients.setdefault(key, client)
             return self._clients[key]
+
+    def _build_client(self, profile: ModelProfile, api_key: str) -> Any:
         if profile.provider == "gemini":
             from google import genai
-            client = genai.Client(api_key=api_key)
-        elif profile.provider == "openai_compatible":
+            return genai.Client(api_key=api_key)
+        if profile.provider == "openai_compatible":
             if self._OpenAI is None:
                 raise RuntimeError("Thiếu SDK openai; cài package openai để dùng provider openai_compatible.")
-            client = self._OpenAI(api_key=api_key, base_url=profile.base_url or None)
-        else:
-            raise ValueError(f"Provider không hỗ trợ: {profile.provider}")
-        self._clients[key] = client
-        return client
+            # The engine owns retries. Bound a stalled upstream request so a
+            # run records a retryable failure instead of remaining "running"
+            # for the SDK's multi-minute default timeout.
+            return self._OpenAI(api_key=api_key, base_url=profile.base_url or None, timeout=180.0, max_retries=0)
+        raise ValueError(f"Provider không hỗ trợ: {profile.provider}")
 
     def _gemini_generate(self, profile: ModelProfile, contents: str, system: str, label: str, json_mode: bool) -> Any:
-        import random
-        import time
         from google.genai import types
-        from google.genai import errors as genai_errors
-
-        last_error: Exception | None = None
-        for attempt in range(1, 4):
-            try:
-                client = self._client_for(profile)
-                config_kwargs = {
-                    "system_instruction": system,
-                    "response_mime_type": "application/json" if json_mode else None,
-                    "temperature": profile.temperature,
-                    "thinking_config": types.ThinkingConfig(thinking_level="high"),
-                }
-                if profile.max_output_tokens:
-                    config_kwargs["max_output_tokens"] = profile.max_output_tokens
-                return client.models.generate_content(
-                    model=profile.model,
-                    contents=contents,
-                    config=types.GenerateContentConfig(**config_kwargs),
-                )
-            except genai_errors.APIError as exc:
-                last_error = exc
-                message = str(exc).lower()
-                overloaded = getattr(exc, "code", None) == 503 or "unavailable" in message or "high demand" in message
-                if not overloaded or attempt == 3:
-                    raise
-                delay = 15.0 * attempt + random.uniform(0, 5)
-                logger.warning("%s quá tải — thử lại %d/3 sau %.0fs | stage=%s | model=%s", profile.provider, attempt + 1, delay, label, profile.model)
-                time.sleep(delay)
-        raise last_error or RuntimeError("Provider call failed")
+        # The stage engine is the sole retry owner. Retrying here as well used
+        # to multiply a 3-attempt stage into up to 9 model calls and minutes of
+        # hidden backoff, while giving the UI no truthful retry budget.
+        client = self._client_for(profile)
+        config_kwargs = {
+            "system_instruction": system,
+            "response_mime_type": "application/json" if json_mode else None,
+            "temperature": profile.temperature,
+            "thinking_config": types.ThinkingConfig(thinking_level="high"),
+        }
+        if profile.max_output_tokens:
+            config_kwargs["max_output_tokens"] = profile.max_output_tokens
+        return client.models.generate_content(
+            model=profile.model,
+            contents=contents,
+            config=types.GenerateContentConfig(**config_kwargs),
+        )
 
     def _call_json(self, role: str, label: str, system: str, prompt: str) -> dict:
         if not hasattr(self, "router"):
@@ -319,9 +472,65 @@ class AIResourceProvider:
             planning_prompt(contract, source_pack, brief, validation_feedback),
         )
 
-    def write_script(self, contract: dict, plan: dict, source_pack: dict, psychology_brief: dict | None = None) -> str:
+    def write_script_movements(self, contract: dict, plan: dict, source_pack: dict, psychology_brief: dict | None = None) -> list[dict]:
         brief = _normalize_psychology_context(psychology_brief)
-        return self._call_text("writer", "RP_WRITING", WRITING_SYSTEM, writing_prompt(contract, plan, source_pack, brief), 0.7)
+        target_min = int(contract.get("target_char_min") or 0)
+        sections = [section for section in plan.get("sections", []) if isinstance(section, dict)]
+        # Long-form targets exceed the reliable single-response budget of several
+        # OpenAI-compatible providers. Generate coherent movements instead of
+        # letting an otherwise valid script die as truncated output.
+        if target_min >= 8000 and len(sections) >= 2:
+            try:
+                target_total = int(contract.get("target_char_max") or target_min)
+            except (TypeError, ValueError):
+                target_total = target_min
+            target_total = max(target_min, target_total)
+            weights = []
+            for section in sections:
+                try:
+                    weights.append(max(0.1, float(section.get("relative_weight", 1.0))))
+                except (TypeError, ValueError):
+                    weights.append(1.0)
+            weight_total = sum(weights)
+            previous_tail = ""
+            movements: list[dict] = []
+            for index, (section, weight) in enumerate(zip(sections, weights)):
+                # 1,200 chars leaves enough room for a meaningful movement while
+                # preserving the relative weights selected by planning.
+                movement_target = max(1200, round(target_total * weight / weight_total))
+                logger.info(
+                    "Long-form writing movement | %d/%d | section=%s | target_chars=%d",
+                    index + 1, len(sections), section.get("id", "S%d" % (index + 1)), movement_target,
+                )
+                movement = self._call_text(
+                    "writer",
+                    "RP_WRITING_MOVEMENT_%02d" % (index + 1),
+                    WRITING_SYSTEM,
+                    writing_movement_prompt(
+                        contract, source_pack, brief, section, previous_tail,
+                        movement_target, index == 0, index == len(sections) - 1,
+                    ),
+                    0.7,
+                ).strip()
+                if not movement:
+                    raise ValueError("Writing movement %d trả về rỗng." % (index + 1))
+                movements.append({
+                    "id": str(section.get("id") or "S%d" % (index + 1)),
+                    "target_chars": movement_target,
+                    "text": movement,
+                })
+                previous_tail = movement[-900:]
+            return movements
+        text = self._call_text("writer", "RP_WRITING", WRITING_SYSTEM, writing_prompt(contract, plan, source_pack, brief), 0.7)
+        return [{"id": "S1", "target_chars": target_min, "text": text.strip()}]
+
+    def write_script(self, contract: dict, plan: dict, source_pack: dict, psychology_brief: dict | None = None) -> str:
+        """Compatibility API for callers that only consume a joined draft."""
+        return "\n\n".join(
+            str(item.get("text") or "").strip()
+            for item in self.write_script_movements(contract, plan, source_pack, psychology_brief)
+            if str(item.get("text") or "").strip()
+        )
 
     def review_script(self, contract: dict, plan: dict, source_pack: dict, draft: str, competitor_context: str = "") -> dict:
         return self._call_json("reviewer", "RP_REVIEW", REVIEW_SYSTEM, review_prompt(contract, plan, source_pack, draft, competitor_context))
@@ -360,43 +569,171 @@ class AIResourceProvider:
         return self._call_json("editor", "RP_REPAIR", REPAIR_SYSTEM, repair_prompt(contract, plan, source_pack, script, findings))
 
     def translate_to_vietnamese(self, script: str) -> str:
-        return self._call_text("writer", "RP_TRANSLATE_VI", TRANSLATE_SYSTEM, vietnamese_translation_prompt(script), 0.3)
+        # A 35-45 minute Japanese narration can exceed 18k characters. Sending
+        # it as one translation request regularly exceeds gateway timeouts even
+        # though the writer model is healthy. Translation has no cross-chunk
+        # reasoning dependency, so use conservative sentence-safe requests and
+        # run the chunks concurrently.
+        if non_whitespace_chars(script) <= 3600:
+            return self._call_text("writer", "RP_TRANSLATE_VI", TRANSLATE_SYSTEM, vietnamese_translation_prompt(script), 0.3)
+        chunks = split_tts_chunks(script, max_chars=3200)
+
+        def _translate_chunk(chunk: object) -> str:
+            label = "RP_TRANSLATE_VI_CHUNK_%03d" % chunk.index
+            logger.info(
+                "Vietnamese translation chunk start | %d/%d | chars=%s",
+                chunk.index, len(chunks), chunk.chars,
+            )
+            return self._call_text(
+                "writer", label, TRANSLATE_SYSTEM, vietnamese_translation_prompt(chunk.text), 0.3
+            )
+
+        translated = _run_provider_tasks_parallel(
+            [lambda chunk=chunk: _translate_chunk(chunk) for chunk in chunks]
+        )
+        return "\n\n".join(translated)
 
     def create_thumbnail(self, contract: dict, script: str, competitor_context: str = "") -> dict:
         return self._call_json("packaging", "RP_THUMBNAIL", THUMBNAIL_SYSTEM, thumbnail_prompt(contract, script, competitor_context))
 
     def create_image_strategy(self, contract: dict, plan: dict, thumbnail: dict) -> dict:
-        return self._call_json("packaging", "RP_IMAGE_STRATEGY", IMAGE_SYSTEM, image_strategy_prompt(contract, plan, thumbnail))
+        # Long-form runs may require 100+ beats. A single JSON response for
+        # all of them regularly exceeds gateway timeouts or truncates inside a
+        # quoted visual description. Keep a small shared foundation and make
+        # one bounded request per planning movement instead.
+        foundation = self._call_json(
+            "packaging",
+            "RP_IMAGE_STRATEGY_FOUNDATION",
+            IMAGE_SYSTEM,
+            image_strategy_foundation_prompt(_image_strategy_contract(contract), _thumbnail_context(thumbnail)),
+        )
+        sections = [section for section in plan.get("sections", []) if isinstance(section, dict)]
+        if not sections:
+            sections = [{"id": "S1", "psychological_job": "visual coverage", "relative_weight": 1.0}]
+        targets = derive_visual_density_targets(contract, plan)
+        allocations = _allocate_visual_events(
+            int(targets["minimum_visual_events"]),
+            [section.get("relative_weight", 1.0) for section in sections],
+        )
+        logger.info(
+            "Image strategy chunk plan | chunks=%d | target_events=%d | allocation=%s",
+            len(sections), targets["minimum_visual_events"], allocations,
+        )
+        beats: list[dict] = []
+
+        def _render_strategy_chunk(index: int, section: dict, target_events: int) -> list[dict]:
+            logger.info(
+                "Image strategy chunk start | chunk=%d/%d | section=%s | target_events=%d",
+                index, len(sections), section.get("id", "S1"), target_events,
+            )
+            result = self._call_json(
+                "packaging",
+                "RP_IMAGE_STRATEGY_CHUNK_%02d" % index,
+                IMAGE_SYSTEM,
+                image_strategy_chunk_prompt(
+                    _image_strategy_contract(contract),
+                    _image_strategy_section(section),
+                    foundation,
+                    target_events,
+                    index,
+                ),
+            )
+            chunk_beats = result.get("visual_beats")
+            if not isinstance(chunk_beats, list) or len(chunk_beats) != target_events:
+                actual = len(chunk_beats) if isinstance(chunk_beats, list) else "invalid"
+                raise ValueError(
+                    "RP_IMAGE_STRATEGY_CHUNK_%02d phải trả đúng %d visual_beats, nhận %s."
+                    % (index, target_events, actual)
+                )
+            logger.info(
+                "Image strategy chunk complete | chunk=%d/%d | section=%s | beats=%d",
+                index, len(sections), section.get("id", "S1"), len(chunk_beats),
+            )
+            return chunk_beats
+
+        # Chunks share only the read-only foundation; numbering is applied
+        # afterwards in section order so concurrency cannot reorder IDs.
+        chunk_results = _run_provider_tasks_parallel([
+            lambda index=index, section=section, target_events=target_events: _render_strategy_chunk(
+                index, section, target_events
+            )
+            for index, (section, target_events) in enumerate(zip(sections, allocations), start=1)
+        ])
+        for section, chunk_beats in zip(sections, chunk_results):
+            beats.extend(_renumber_visual_chunk(chunk_beats, len(beats) + 1, str(section.get("id") or "S1")))
+        return {
+            "style_bible": str(foundation.get("style_bible", "")),
+            "character_bible": str(foundation.get("character_bible", "")),
+            "environment_bible": str(foundation.get("environment_bible", "")),
+            "opening_visual_contract": foundation.get("opening_visual_contract") or {},
+            "estimated_unique_images": 0,
+            "estimated_total_visual_events": len(beats),
+            "mascot_ratio": 0.25,
+            "density_check": True,
+            "no_filler_check": True,
+            "visual_beats": beats,
+            "generation_policy": {
+                "mode": "section_chunks",
+                "chunk_count": len(sections),
+                "target_visual_events": int(targets["minimum_visual_events"]),
+            },
+        }
 
     def create_image_prompts(self, strategy: dict, contract: dict) -> dict:
         beats = [beat for beat in strategy.get("visual_beats", []) if bool(beat.get("new_image"))]
         if not beats:
             return {"images": [], "storyboard": []}
 
-        # Each prompt repeats the channel style bible. Keep requests small so
-        # the provider never has to return a giant images+storyboard JSON blob.
-        # Storyboard rows are generated locally from the full strategy.
-        batch_size = 12
-        images: list[dict] = []
-        for start in range(0, len(beats), batch_size):
-            batch = beats[start:start + batch_size]
+        # Keep each provider response deliberately small. The strategy is the
+        # authoritative research/editorial output; this stage only translates
+        # locked visual_information into image-model syntax. Storyboard rows
+        # are generated locally from the full strategy. Batches share no state,
+        # so they run concurrently; results stay in beat order.
+        batch_size = 4
+        total_batches = (len(beats) + batch_size - 1) // batch_size
+
+        def _render_batch(batch_number: int, batch: list[dict]) -> list[dict]:
             batch_strategy = {
                 "style_bible": strategy.get("style_bible", ""),
                 "character_bible": strategy.get("character_bible", ""),
                 "environment_bible": strategy.get("environment_bible", ""),
                 "visual_beats": batch,
             }
-            label = "RP_IMAGE_PROMPTS_%02d" % (start // batch_size + 1)
+            label = "RP_IMAGE_PROMPTS_%03d" % batch_number
+            expected_ids = [str(beat["image_id"]) for beat in batch]
+            logger.info(
+                "Image prompts batch start | batch=%d | total_batches=%d | image_ids=%s",
+                batch_number, total_batches, ",".join(expected_ids),
+            )
             result = self._call_json(
                 "packaging",
                 label,
                 IMAGE_SYSTEM,
-                image_prompts_prompt(batch_strategy, contract),
+                image_prompts_prompt(batch_strategy, _image_strategy_contract(contract)),
             )
             batch_images = result.get("images")
             if not isinstance(batch_images, list):
                 raise ValueError("%s phải trả field images dạng list." % label)
-            images.extend(batch_images)
+            received_ids = [str(item.get("image_id", "")) for item in batch_images if isinstance(item, dict)]
+            if received_ids != expected_ids:
+                raise ValueError(
+                    "%s phải trả đúng image IDs theo thứ tự %s, nhận %s."
+                    % (label, ",".join(expected_ids), ",".join(received_ids) or "none")
+                )
+            logger.info(
+                "Image prompts batch done | batch=%d | images=%d",
+                batch_number, len(batch_images),
+            )
+            return batch_images
+
+        batches = [
+            (start // batch_size + 1, beats[start:start + batch_size])
+            for start in range(0, len(beats), batch_size)
+        ]
+        batch_results = _run_provider_tasks_parallel(
+            [lambda n=n, b=b: _render_batch(n, b) for n, b in batches]
+        )
+        images = [image for batch_images in batch_results for image in batch_images]
         return {"images": images, "storyboard": []}
 
     def create_publish_draft(self, contract: dict, source_pack: dict) -> dict:
@@ -429,6 +766,8 @@ def _demo_script() -> str:
 
 
 class DemoResourceProvider:
+    is_demo_provider = True
+
     def research_topics(self, snapshot: dict, performance: dict) -> dict:
         return {
             "channel_positioning": "Tâm lý học ứng dụng cho những khoảnh khắc đời thường của người trưởng thành Nhật Bản.",
@@ -482,10 +821,19 @@ class DemoResourceProvider:
             "recognizable_behavior_signals": ["通知を閉じる", "文面を何度も直す", "遅れるほど罪悪感が増す"],
             "common_misconception": "怠けや無関心",
             "early_reframe": "返事の前に相手の感情まで管理しようとしている",
+            "editorial_dna": {
+                "audience_pain": "短い返信なのに手が止まり、遅れるほど苦しくなる",
+                "behavioral_entry": "通知を開いても、最初の一文が打てない",
+                "contradiction": "関係を大切にしたいのに、返事が遅れる",
+                "emotional_promise": "自分を責める前に、返信を重くしている境界を見直せる",
+                "memory_line": "返信の重さは文面だけでなく、背負った責任の範囲でも決まる",
+                "title_angle": "返信できない苦しさを行動から捉える",
+                "thumbnail_conflict": "通知の前で止まる手と、膨らむ責任感",
+            },
             "mechanism_candidates": [{"name": mechanism, "role": "responsibility boundary", "source_support": "verified source pack", "confidence": "high"}],
-            "selected_mechanisms": [{"name": mechanism, "role": "separate controllable responsibility", "behavior_explained": "返信の過剰準備", "why": "相手の受け取り方まで自分の課題にすると作業が終わらない", "inner_process": "失望させない正解を探し続ける", "evidence_status": "verified"}],
-            "causal_chain": ["通知 -> 相手の感情を予測 -> 完璧な返信を探す -> 停止と罪悪感"],
-            "inner_process_map": [{"trigger": "通知", "thought_attention_body": "相手の反応へ注意が固定", "response": "返信を保留"}],
+            "selected_mechanisms": [{"name": mechanism, "role": "separate controllable responsibility", "behavior_explained": "返信の過剰準備", "why": "自分の課題と相手の課題を見分けるという整理を、返信の場面に限定して用いる", "inner_process": "返信の負担を、背負う範囲として観察する", "evidence_status": "editorial", "source_boundary": "課題を分ける考え方を返信場面へ応用する範囲"}],
+            "causal_chain": ["通知 -> 返信の場面で背負う範囲を観察する -> 返信を保留することがある"],
+            "inner_process_map": [{"trigger": "通知", "thought_attention_body": "返信の負担を観察する", "response": "返信を保留", "function_or_cost": "遅れが残ることがある"}],
             "origin_status": "unsupported", "strength_status": "useful", "cost_status": "required",
             "practical_shift_status": "useful", "route": "PROCESS",
             "exclusions": ["childhood cause", "diagnosis", "fictional protagonist"],
@@ -511,22 +859,20 @@ class DemoResourceProvider:
             "chosen_title": candidates[1]["title"],
             "chosen_title_char_count": 18,
             "title_hook_contract": {"title_behavior": "通知を見ても返事ができない", "title_pain": "短い返信なのに指が止まり、自分を責める", "opening_anchors": ["通知", "返事", "指が止まる"], "payoff_by_seconds": 20},
-            "target_duration_minutes": "6-12",
-            "target_char_min": 2300,
-            "target_char_max": 6000,
-            "hook_contract": {"recognition_by_seconds": 8, "misconception_or_tension_by_seconds": 18, "first_real_insight_by_seconds": 35, "core_question_by_seconds": 55},
+            "target_duration_minutes": "35-45",
+            "target_char_min": 13600,
+            "target_char_max": 17500,
+            "hook_contract": {"recognition_by_seconds": 20, "misconception_or_tension_by_seconds": 45, "first_real_insight_by_seconds": 60, "core_question_by_seconds": 90},
             "thumbnail_brief": {"click_question": "なぜ短い返信が怖いのか", "visual_conflict": "通知は小さいのに心の影は大きい", "title_must_not_repeat": "返信できない"},
             "format_lock": {
-                "primary_format": "psychological profile / psychological deep-dive",
+                "primary_format": "symbolic long-form psychological deep-dive",
                 "content_center": "một kiểu người — người căng thẳng vì tin nhắn chưa trả lời",
-                "primary_narration": "direct psychological explanation",
-                "secondary_device": "short behavioral examples",
+                "primary_narration": "symbolic psychological analysis with reflective narration",
+                "secondary_device": "recurring symbolic vignette and behavioral recognition",
                 "forbidden_spine": [
-                    "narrative story",
-                    "personal anecdote",
-                    "cinematic monologue",
-                    "fictional character journey",
-                    "chronological life story",
+                    "fictional claim presented as evidence",
+                    "chronological character biography",
+                    "symbolic scene without psychological advance",
                 ],
             },
         }
@@ -559,6 +905,9 @@ class DemoResourceProvider:
 
     def write_script(self, contract: dict, plan: dict, source_pack: dict, psychology_brief: dict | None = None) -> str:
         return _demo_script()
+
+    def write_script_movements(self, contract: dict, plan: dict, source_pack: dict, psychology_brief: dict | None = None) -> list[dict]:
+        return [{"id": "S1", "target_chars": int(contract.get("target_char_min") or 0), "text": self.write_script(contract, plan, source_pack, psychology_brief)}]
 
     def review_script(self, contract: dict, plan: dict, source_pack: dict, draft: str, competitor_context: str = "") -> dict:
         # Schema rule v9: bản tái cấu trúc hoàn chỉnh (PHẦN 1–5). Demo giữ nguyên draft.

@@ -2,10 +2,12 @@ import { useEffect, useState } from 'react';
 import { Film, RefreshCw } from '../components/Icons';
 import {
   buildJobLogDownloadUrl,
+  artifactUrl,
   cancelBuildJob,
   getBuildJob,
   getBuildJobLog,
   getBuildStatus,
+  mergeTtsChunks,
   getSubStyle,
   importPackImages,
   listRuns,
@@ -247,6 +249,18 @@ export function BuildPage() {
     }
   };
 
+  const doMergeTtsChunks = async () => {
+    if (!runId) return;
+    setActionError(null);
+    try {
+      await mergeTtsChunks(runId);
+      void statusPoll.refresh();
+      void srtInputsPoll.refresh();
+    } catch (e) {
+      setActionError(String(e));
+    }
+  };
+
   const doStartSrt = async () => {
     if (!runId) return;
     setSrtError(null);
@@ -409,6 +423,29 @@ export function BuildPage() {
                         </>
                       )}
                     </dl>
+                  )}
+                  {status.tts_chunks.available && !status.audio_ready && (
+                    <div style={{ marginTop: 10, borderTop: '1px solid var(--border)', paddingTop: 10 }}>
+                      <div className="form-row">
+                        <label style={{ fontWeight: 600, color: 'var(--text-heading)' }}>TTS chunks</label>
+                        <span className={`badge ${status.tts_chunks.generated === status.tts_chunks.total ? 'badge-complete' : 'badge-unknown'}`}>
+                          {status.tts_chunks.generated}/{status.tts_chunks.total}
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                        {status.tts_chunks.chunks.map((chunk) => (
+                          <a key={chunk.id} className="btn btn-ghost" style={{ padding: '3px 8px', fontSize: 12 }} href={artifactUrl(runId, chunk.path, true)}>
+                            {chunk.id} · {chunk.chars.toLocaleString()} ký tự
+                          </a>
+                        ))}
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 9 }}>
+                        <span style={{ fontSize: 12, color: 'var(--muted)' }}>Audio: audio/chunks/001.mp3 ...</span>
+                        <button type="button" className="btn btn-secondary" onClick={() => void doMergeTtsChunks()} disabled={status.tts_chunks.generated !== status.tts_chunks.total}>
+                          Ghép audio chunks
+                        </button>
+                      </div>
+                    </div>
                   )}
 
                   {/* ảnh */}

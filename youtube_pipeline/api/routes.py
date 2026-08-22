@@ -9,12 +9,15 @@ from __future__ import annotations
 import json
 import os
 import re
+import socket
+import ssl
 import shutil
 import sys
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, HTTPException, Response
 from fastapi.responses import StreamingResponse
@@ -115,21 +118,45 @@ def update_model_config(body: dict) -> dict:
     return updated
 
 
+@router.post("/model-config/preflight")
+def preflight_model_config() -> dict:
+    """Validate TLS reachability for configured OpenAI-compatible endpoints.
+
+    This intentionally performs no model request and never exposes or sends an
+    API key. A valid TLS handshake is enough to catch the common wrong-domain
+    certificate/SNI failure before a costly Run Live starts.
+    """
+    router_config = _model_router()
+    results = []
+    for name, raw in router_config.snapshot().get("profiles", {}).items():
+        provider = str(raw.get("provider", "")).strip()
+        base_url = str(raw.get("base_url", "")).strip()
+        if provider != "openai_compatible":
+            results.append({"profile": name, "provider": provider, "status": "skipped", "detail": "TLS preflight applies to OpenAI-compatible HTTP endpoints only."})
+            continue
+        parsed = urlparse(base_url)
+        if parsed.scheme != "https" or not parsed.hostname:
+            results.append({"profile": name, "provider": provider, "base_url": base_url, "status": "failed", "category": "provider_configuration", "detail": "Base URL phải là HTTPS URL hợp lệ, ví dụ https://provider.example/v1."})
+            continue
+        port = parsed.port or 443
+        try:
+            with socket.create_connection((parsed.hostname, port), timeout=8) as raw_socket:
+                context = ssl.create_default_context()
+                with context.wrap_socket(raw_socket, server_hostname=parsed.hostname) as tls_socket:
+                    cipher = tls_socket.cipher()
+            results.append({"profile": name, "provider": provider, "base_url": base_url, "status": "ok", "detail": "TLS certificate hợp lệ cho hostname đã cấu hình.", "tls": cipher[0] if cipher else None})
+        except ssl.SSLCertVerificationError as exc:
+            results.append({"profile": name, "provider": provider, "base_url": base_url, "status": "failed", "category": "tls_certificate", "detail": "TLS certificate không khớp hostname. Provider phải sửa certificate/SNI hoặc cung cấp Base URL khác.", "technical_detail": str(exc)})
+        except (OSError, ValueError) as exc:
+            results.append({"profile": name, "provider": provider, "base_url": base_url, "status": "failed", "category": "provider_connection", "detail": "Không thể kết nối endpoint từ API server.", "technical_detail": str(exc)})
+    return {"results": results, "checked_at": _now_iso()}
+
+
 @router.get("/config")
 def config() -> dict:
     root = paths.backend_root()
-    input_files = []
-    for p in sorted(root.glob("*.json")):
-        if p.name.startswith("."):
-            continue
-        st = p.stat()
-        input_files.append(
-            {
-                "name": p.name,
-                "size_bytes": st.st_size,
-                "modified_at": datetime.fromtimestamp(st.st_mtime, tz=timezone.utc).isoformat(),
-            }
-        )
+    from youtube_pipeline.api.datapull import list_datasets
+    input_files = list_datasets()
     from youtube_pipeline.resource_pack.pipeline import MINIMAX_PROFILE, resource_pack_stages
 
     active = runner.active_run()
@@ -138,7 +165,9 @@ def config() -> dict:
         "runs_dir": str(paths.runs_dir()),
         "python_executable": sys.executable,
         "input_files": input_files,
-        "default_input_file": "youtube_data.json",
+        "default_input_file": "data/channels/youtube_data.json" if any(
+            item["file"] == "data/channels/youtube_data.json" for item in input_files
+        ) else (input_files[0]["file"] if input_files else None),
         "minimax_profile": MINIMAX_PROFILE,
         "stage_order": [s.name for s in resource_pack_stages()],
         "active_run": active,
@@ -392,27 +421,33 @@ def start_run(body: dict) -> dict:
     else:
         out = paths.run_dir(run_id)
     input_file = None
+    manual_topic = None
+    no_channel_data = False
     if mode == "production":
-        # Production có thể chạy không cần UI chọn file: mặc định lấy dataset mới nhất
-        # do data puller vừa tạo. input_file vẫn được giữ để debug/replay.
+        channel_data_mode = str(body.get("channel_data_mode") or "snapshot")
+        if channel_data_mode not in ("refresh", "snapshot", "none"):
+            raise HTTPException(status_code=400, detail="channel_data_mode không hợp lệ")
+        if channel_data_mode == "none":
+            candidate_topic = str(body.get("manual_topic") or "").strip()
+            # Browser form libraries sometimes serialize an unset optional
+            # value as a string. Treat those sentinels exactly like an empty
+            # field so this path remains competitor-led topic discovery.
+            manual_topic = None if candidate_topic.casefold() in {"", "none", "null", "undefined", "n/a"} else candidate_topic
+            no_channel_data = True
         name = body.get("input_file")
-        if not name:
-            from youtube_pipeline.api.datapull import last_result
-            latest = last_result()
-            name = latest.get("file") if latest else None
-        if not name:
+        if channel_data_mode != "none" and not name:
             raise HTTPException(
                 status_code=400,
-                detail="Chưa có channel dataset. Hãy chạy kéo data YouTube trước.",
+                detail="Chọn một channel dataset trước khi chạy production.",
             )
-        backend_root = paths.backend_root().resolve()
-        input_file = (backend_root / str(name)).resolve()
-        if not input_file.is_relative_to(backend_root):
-            raise HTTPException(status_code=400, detail="Input file phải nằm trong backend root.")
-        if not input_file.is_file():
-            raise HTTPException(status_code=400, detail="Input file không tồn tại: %s" % name)
+        if channel_data_mode != "none":
+            from youtube_pipeline.api.datapull import resolve_dataset_file
+            try:
+                input_file = resolve_dataset_file(str(name))
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
     try:
-        log_file = runner.start_new(run_id, out, mode, input_file)
+        log_file = runner.start_new(run_id, out, mode, input_file, manual_topic, no_channel_data)
     except FileExistsError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     except BusyError as exc:
@@ -442,6 +477,22 @@ def resume_run(run_id: str) -> dict:
         "status": "starting",
         "log_path": str(log_file),
     }
+
+
+@router.post("/runs/{run_id}/topic-status")
+def update_topic_status(run_id: str, body: dict) -> dict:
+    """Mark a completed resource pack as published only after the user releases it."""
+    _check_run_id(run_id)
+    state = _require_state(run_id)
+    if state.get("status") != "complete":
+        raise HTTPException(status_code=400, detail="Chỉ cập nhật lifecycle cho run đã hoàn tất.")
+    status = body.get("status") if isinstance(body, dict) else None
+    try:
+        from youtube_pipeline.topic_history import set_topic_status
+        set_topic_status(paths.run_dir(run_id), run_id, str(status))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"run_id": run_id, "topic_status": status}
 
 
 @router.post("/runs/{run_id}/cancel", status_code=202)

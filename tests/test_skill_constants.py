@@ -119,13 +119,13 @@ class ChannelConstantsFileTests(unittest.TestCase):
         self.assertEqual("389", first_token("cpm_measured"))
         self.assertEqual("35", first_token("hook_contract.first_real_insight_by_seconds"))
         self.assertEqual("45", first_token("no_emotion_only_max_seconds"))
-        self.assertEqual('"2-3"', first_token("mechanism_count_target"))
+        self.assertEqual('"1-2"', first_token("mechanism_count_target"))
 
     def test_adaptive_psychology_spine_replaces_14_step_template(self):
         text = CONSTANTS_PATH.read_text(encoding="utf-8")
         self.assertIn("Psychology-First", text)
-        self.assertIn("behavior recognition", text)
-        self.assertIn("mechanism chain", text)
+        self.assertIn("sensory recognition", text)
+        self.assertIn("symbolic reframe", text)
         self.assertNotIn("KHUÔN 14 BƯỚC", text)
 
 

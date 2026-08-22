@@ -9,9 +9,16 @@ export interface ActiveRun {
 }
 
 export interface InputFileInfo {
-  name: string;
+  file: string;
   size_bytes: number;
   modified_at: string;
+  generated_at: string | null;
+  age_hours: number | null;
+  freshness: 'fresh' | 'stale' | 'unknown' | 'invalid_timestamp';
+  video_count: number;
+  channel_id: string | null;
+  analytics_window: { start: string; end: string } | null;
+  has_reporting_reach: boolean;
 }
 
 export interface MinimaxProfile {
@@ -29,7 +36,7 @@ export interface ServerConfig {
   runs_dir: string;
   python_executable: string;
   input_files: InputFileInfo[];
-  default_input_file: string;
+  default_input_file: string | null;
   minimax_profile: MinimaxProfile;
   stage_order: string[];
   active_run: ActiveRun | null;
@@ -55,6 +62,22 @@ export interface ModelConfig {
   role_profiles: Record<string, string>;
   roles: string[];
   provider_types: ModelProviderType[];
+}
+
+export interface ModelPreflightResult {
+  profile: string;
+  provider: string;
+  base_url?: string;
+  status: 'ok' | 'failed' | 'skipped';
+  category?: string;
+  detail: string;
+  technical_detail?: string;
+  tls?: string | null;
+}
+
+export interface ModelPreflight {
+  results: ModelPreflightResult[];
+  checked_at: string;
 }
 
 export type StageStatus = 'pending' | 'running' | 'passed' | 'failed';
@@ -213,7 +236,10 @@ export type ArtifactTree = Record<string, Record<string, ArtifactInfo>>;
 
 export interface NewRunBody {
   mode: 'demo' | 'production';
+  channel_data_mode?: 'refresh' | 'snapshot' | 'none';
   input_file?: string;
+  /** Optional operator override. Empty + channel_data_mode=none means competitor-led topic discovery. */
+  manual_topic?: string;
   run_id?: string;
   output_dir?: string;
 }
@@ -295,6 +321,23 @@ export interface BuildImages {
   missing: string[];
 }
 
+export interface BuildTtsChunk {
+  id: string;
+  file: string;
+  path: string;
+  chars: number;
+  audio_output: string;
+  audio_ready: boolean;
+}
+
+export interface BuildTtsChunks {
+  available: boolean;
+  total: number;
+  generated: number;
+  chunks: BuildTtsChunk[];
+  merge_output: string | null;
+}
+
 export interface BuildLastReport {
   status: string | null;
   generated_at: string | null;
@@ -320,6 +363,7 @@ export interface BuildStatus {
   timeline_status: TimelineStatus;
   audio: BuildAudio | null;
   audio_ready: boolean;
+  tts_chunks: BuildTtsChunks;
   sections_count: number | null;
   events_count: number | null;
   unique_images: number | null;

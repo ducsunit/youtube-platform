@@ -20,6 +20,7 @@ from youtube_pipeline.resource_validation import (
     psychology_format_metrics,
     normalize_contract_format_lock,
     normalize_contract_titles,
+    normalize_editorial_promise,
     normalize_title_hook_contract,
     title_hook_alignment,
     validate_contract,
@@ -38,6 +39,15 @@ class PsychologyFirstFlowTests(unittest.TestCase):
             "recognizable_behavior_signals": ["反芻", "確認", "先読み"],
             "common_misconception": "意志が弱い",
             "early_reframe": "思考で不確実性を制御しようとしている",
+            "editorial_dna": {
+                "audience_pain": "考えが止まらず疲れる",
+                "behavioral_entry": "返信の後に何度も文面を見直す",
+                "contradiction": "安心したいのに確認が増える",
+                "emotional_promise": "自分を責める前に反応の条件を見直せる",
+                "memory_line": "反芻は答えではなく注意が戻る反応かもしれない",
+                "title_angle": "考えが止まらない瞬間",
+                "thumbnail_conflict": "確認する手と止まらない思考",
+            },
             "mechanism_candidates": [{"name": "反芻"}],
             "selected_mechanisms": [{"name": "反芻", "role": "loop", "behavior_explained": "繰り返し考える", "why": "確実な答えを探す", "inner_process": "注意が同じ疑問へ戻る", "evidence_status": "editorial"}],
             "causal_chain": ["不確実性 -> 反芻 -> 一時的制御感 -> 疲労"],
@@ -57,13 +67,13 @@ class PsychologyFirstFlowTests(unittest.TestCase):
         self.assertNotIn("7-PART STRUCTURE", combined)
         self.assertNotIn("ORIGIN_STORY", combined)
         self.assertNotIn("Triple denial", combined)
-        self.assertIn("direct-to-viewer", ANTI_STORY_RULES)
+        self.assertIn("recurring symbol", ANTI_STORY_RULES)
 
-    def test_video_10_editorial_profile_is_a_quality_bar_not_a_copy_template(self):
-        self.assertIn("VIDEO-10 EDITORIAL PROFILE", PLANNING_SYSTEM)
-        self.assertIn("not a copied template", PLANNING_SYSTEM)
-        self.assertIn("VIDEO-10 QUALITY BAR", WRITING_SYSTEM)
-        self.assertIn("sourceが一つのmechanismしか支持しない場合", WRITING_SYSTEM)
+    def test_symbolic_long_form_profile_is_a_quality_bar_not_a_copy_template(self):
+        self.assertIn("long-form", PLANNING_SYSTEM)
+        self.assertIn("revelation ladder", PLANNING_SYSTEM)
+        self.assertIn("思考の深淵", WRITING_SYSTEM)
+        self.assertIn("source-backed mechanism", WRITING_SYSTEM)
 
     def test_psychology_brief_prompt_requires_core_and_tension(self):
         prompt = psychology_brief_prompt("topic", {}, {})
@@ -71,6 +81,23 @@ class PsychologyFirstFlowTests(unittest.TestCase):
         self.assertIn("main_tension", prompt)
         self.assertIn("selected_mechanisms", prompt)
         self.assertIn("route", prompt)
+        self.assertIn("editorial_dna", prompt)
+
+    def test_brief_requires_complete_editorial_dna(self):
+        brief = self._brief()
+        del brief["editorial_dna"]["memory_line"]
+        with self.assertRaisesRegex(ValueError, "editorial_dna"):
+            validate_psychology_brief(brief)
+
+    def test_healing_promise_is_normalized_to_bounded_self_understanding(self):
+        brief = self._brief()
+        brief["editorial_dna"]["emotional_promise"] = "この動画で必ず癒され、人生が変わる"
+        self.assertTrue(normalize_editorial_promise(brief))
+        self.assertEqual(
+            brief["editorial_dna"]["emotional_promise"],
+            brief["editorial_dna"]["memory_line"],
+        )
+        validate_psychology_brief(brief)
 
     def test_anti_story_flags_sequential_plot_but_not_micro_example(self):
         bad = "ドアが開き、彼は部屋に入った。その後、窓の外を見て、翌日を思い出した。"
@@ -191,25 +218,25 @@ class PsychologyFormatCheckTests(unittest.TestCase):
             "route": "PROCESS",
             "selected_mechanisms": ["反芻"],
             "title_candidates": [
-                {"title": "考えすぎる人に知ってほしい心の仕組みです"},
-                {"title": "考えが止まらないのは意志のせいではない"},
-                {"title": "不安を大きくしているのは思考の錯覚です"},
+                {"title": "考えすぎる人に知ってほしい、心の奥で同じ会話を繰り返す本当の理由"},
+                {"title": "考えが止まらないのは意志のせいではない｜心を重くする思考の本当の正体"},
+                {"title": "不安を大きくしているのは思考の錯覚だった｜静かに抜け出すための見方"},
             ],
-            "chosen_title": "考えが止まらないのは意志のせいではない",
+            "chosen_title": "考えが止まらないのは意志のせいではない｜心を重くする思考の本当の正体",
             "target_char_min": 2400,
             "target_char_max": 4700,
             "hook_contract": {"recognition_by_seconds": 8},
             "thumbnail_brief": {"click_question": "なぜ考えが止まらないのか"},
             "format_lock": {
-                "primary_format": "psychological profile / psychological deep-dive",
+                "primary_format": "symbolic long-form psychological deep-dive",
                 "content_center": "một kiểu người — người suy nghĩ quá nhiều",
-                "primary_narration": "direct psychological explanation",
-                "secondary_device": "short behavioral examples",
+                "primary_narration": "symbolic psychological analysis with reflective narration",
+                "secondary_device": "recurring symbolic vignette and behavioral recognition",
                 "forbidden_spine": [
-                    "narrative story",
-                    "personal anecdote",
-                    "fictional character journey",
-                    "chronological life story",
+                    "fictional claim presented as evidence",
+                    "chronological character biography",
+                    "symbolic scene without psychological advance",
+                    "unsupported causal story",
                 ],
             },
         }
@@ -249,20 +276,20 @@ class PsychologyFormatCheckTests(unittest.TestCase):
         self.assertTrue(normalize_contract_format_lock(contract))
         validate_contract(contract)
         self.assertEqual(
-            "behavioral micro-examples used only for recognition and evidence",
+            "recurring symbolic vignette and behavioral recognition used as editorial illustration",
             contract["format_lock"]["secondary_device"],
         )
 
     def test_contract_title_lengths_are_repaired_deterministically(self):
         contract = self._contract()
         contract["title_candidates"][0]["title"] = "短い"
-        contract["title_candidates"][1]["title"] = "このタイトルは長すぎるため二十八文字を超えています"
+        contract["title_candidates"][1]["title"] = "このタイトルは長すぎるため七十文字を超えてしまうことを確認するためだけに書かれた非常に長いタイトルです"
         contract["title_candidates"][2]["title"] = "普通のタイトル"
         contract["chosen_title"] = "短い"
         normalize_contract_titles(contract)
         validate_contract(contract)
-        self.assertTrue(all(18 <= len(item["title"]) <= 28 for item in contract["title_candidates"]))
-        self.assertTrue(18 <= len(contract["chosen_title"]) <= 28)
+        self.assertTrue(all(32 <= len(item["title"]) <= 100 for item in contract["title_candidates"]))
+        self.assertTrue(32 <= len(contract["chosen_title"]) <= 100)
 
     def test_title_hook_contract_uses_opening_anchors_without_verbatim_title(self):
         contract = self._contract()

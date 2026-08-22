@@ -24,7 +24,7 @@ from youtube_pipeline.api.runner import (
 
 STAGE_NAMES = [
     "ingest", "performance", "topic_research", "topic_candidates", "topic_selection",
-    "source_lock", "claim_ledger", "psychology_brief", "script_contract", "planning", "writing", "review", "consistency",
+    "source_lock", "claim_ledger", "narrative_brief", "writing", "script_audit",
     "script_qa", "structure_check", "psychology_format_check", "translate_script_vi", "sections", "thumbnail_contract", "image_strategy", "image_prompts",
     "publish_draft", "resource_pack",
 ]
@@ -114,14 +114,17 @@ class TestSystem(ApiServerTestCase):
         self.assertEqual(body["backend_root"], str(self.root))
 
     def test_config(self) -> None:
-        (self.root / "youtube_data.json").write_text("{}", encoding="utf-8")
+        (self.root / "data/channels").mkdir(parents=True)
+        (self.root / "data/channels/youtube_data.json").write_text(
+            json.dumps({"schema_version": 2, "videos": {}}), encoding="utf-8"
+        )
         r = self.client.get("/api/config")
         self.assertEqual(r.status_code, 200)
         body = r.json()
         self.assertEqual(body["stage_order"], STAGE_NAMES)
         self.assertTrue(body["minimax_profile"]["reference_cpm_min"] == 380)
         names = [f["name"] for f in body["input_files"]]
-        self.assertIn("youtube_data.json", names)
+        self.assertIn("data/channels/youtube_data.json", names)
         self.assertIsNone(body["active_run"])
         self.assertFalse(body["busy"])
 
@@ -399,10 +402,53 @@ class TestStartResumeCancel(ApiServerTestCase):
         self.assertIn("--input-file", prod)
         self.assertIn("/abs/input.json", prod)
         self.assertNotIn("--demo", prod)
+        manual = build_new_run_command("r-manual", Path("/abs/runs/r-manual"), "production", manual_topic="休めない理由")
+        self.assertIn("--manual-topic", manual)
+        self.assertIn("休めない理由", manual)
+        self.assertNotIn("--input-file", manual)
+        competitor = build_new_run_command("r-competitor", Path("/abs/runs/r-competitor"), "production", no_channel_data=True)
+        self.assertIn("--no-channel-data", competitor)
+        self.assertNotIn("--input-file", competitor)
         resume = build_resume_command("r3", Path("/abs/runs/r3"))
         self.assertIn("--resume", resume)
         self.assertIn("/abs/runs/r3/run_state.json", resume)
         self.assertIn("/abs/runs/r3", resume)  # --output-dir
+
+    def test_start_manual_topic_run_without_dataset(self) -> None:
+        with mock.patch("youtube_pipeline.api.routes.runner.start_new", return_value=self.root / "logs" / "manual.log") as start:
+            response = self.client.post(
+                "/api/runs",
+                json={
+                    "mode": "production",
+                    "channel_data_mode": "none",
+                    "manual_topic": "休むほど落ち着かなくなる理由",
+                    "run_id": "manual-topic",
+                },
+            )
+        self.assertEqual(response.status_code, 202, response.text)
+        self.assertIsNone(start.call_args.args[3])
+        self.assertEqual(start.call_args.args[4], "休むほど落ち着かなくなる理由")
+
+    def test_start_competitor_topic_run_without_dataset(self) -> None:
+        with mock.patch("youtube_pipeline.api.routes.runner.start_new", return_value=self.root / "logs" / "competitor.log") as start:
+            response = self.client.post(
+                "/api/runs",
+                json={"mode": "production", "channel_data_mode": "none", "run_id": "competitor-topic"},
+            )
+        self.assertEqual(response.status_code, 202, response.text)
+        self.assertIsNone(start.call_args.args[3])
+        self.assertIsNone(start.call_args.args[4])
+        self.assertTrue(start.call_args.args[5])
+
+    def test_none_string_is_not_a_manual_topic(self) -> None:
+        with mock.patch("youtube_pipeline.api.routes.runner.start_new", return_value=self.root / "logs" / "competitor.log") as start:
+            response = self.client.post(
+                "/api/runs",
+                json={"mode": "production", "channel_data_mode": "none", "manual_topic": "None", "run_id": "competitor-sentinel"},
+            )
+        self.assertEqual(response.status_code, 202, response.text)
+        self.assertIsNone(start.call_args.args[4])
+        self.assertTrue(start.call_args.args[5])
 
 
 @unittest.skipUnless(os.environ.get("YT_API_INTEGRATION") == "1", "YT_API_INTEGRATION=1 để chạy demo E2E thật")

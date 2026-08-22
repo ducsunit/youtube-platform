@@ -1,14 +1,9 @@
-"""Chia script thành sections theo số section của planning — KHÔNG chia chunk.
+"""Keep editorial sections separate from provider-safe TTS chunks.
 
-Kịch bản focus khoảng 6–12 phút (2.300–6.000 ký tự theo guideline; có thể tới 15 phút khi argument đủ) gen được trong MỘT lần gọi MiniMax từ
-`script/minimax-prompt.txt`; không còn file chunk để gen/ghép từng phần.
-
-Sections chỉ là cơ cấu đánh dấu mốc cho bước Dựng video (cửa sổ giây theo tỉ
-lệ ký tự, tên file audio cắt theo section, marks.tsv — web/CLI build_service
-tính timeline động từ sections + storyboard). Số section khớp
-chính xác số section trong planning.json (S1..SN) nên mọi beat/event đều map
-được cửa sổ — không còn tình trạng bỏ sót event ở cuối script (lỗi cũ: 8
-section planning nhưng chunker chỉ ra 5 chunk theo kích thước → 18 event rơi).
+Planning sections stay aligned with visual beats and video timing.  TTS chunks
+are a separate, sentence-safe transport layer for providers that cap each
+request at 5,000 characters; they never change the final narration or section
+mapping used by the video builder.
 """
 from __future__ import annotations
 
@@ -33,6 +28,24 @@ class ScriptSection:
     def file(self) -> str:
         """Tên quy ước cho audio cắt theo section (sorted glob == thứ tự section)."""
         return "%02d_section-%02d.txt" % (self.index, self.index)
+
+
+@dataclass
+class TTSChunk:
+    index: int
+    text: str
+
+    @property
+    def chars(self) -> int:
+        return non_whitespace_chars(self.text)
+
+    @property
+    def id(self) -> str:
+        return "TTS-%03d" % self.index
+
+    @property
+    def file(self) -> str:
+        return "%03d.txt" % self.index
 
 
 def _split_by_sentences(segment: str) -> list[str]:
@@ -122,6 +135,42 @@ def split_script_sections(
         "target_chars_per_section": target,
     }
     return sections, policy
+
+
+def split_tts_chunks(script: str, max_chars: int = 4800) -> list[TTSChunk]:
+    """Split clean narration into provider-safe chunks without altering text.
+
+    ``4800`` deliberately leaves headroom below a 5,000-character API limit
+    for provider-side accounting. Boundaries are only placed after Japanese
+    sentence endings. Concatenating every returned ``text`` reproduces the
+    original script byte-for-byte.
+    """
+    if not script:
+        raise ValueError("Script không được rỗng.")
+    if not 100 <= max_chars <= 5000:
+        raise ValueError("TTS chunk max_chars phải nằm trong 100–5000.")
+    units = _split_by_sentences(script)
+    if not units:
+        raise ValueError("Script không có câu để tách TTS chunk.")
+    chunks: list[str] = []
+    current = ""
+    for unit in units:
+        unit_chars = non_whitespace_chars(unit)
+        if unit_chars > max_chars:
+            raise ValueError("Một câu dài %d ký tự, vượt TTS chunk limit %d." % (unit_chars, max_chars))
+        if current and non_whitespace_chars(current) + unit_chars > max_chars:
+            chunks.append(current)
+            current = unit
+        else:
+            current += unit
+    if current:
+        chunks.append(current)
+    result = [TTSChunk(index=index, text=text) for index, text in enumerate(chunks, start=1)]
+    if "".join(chunk.text for chunk in result) != script:
+        raise ValueError("TTS chunks không ghép lại đúng final script.")
+    if any(chunk.chars > max_chars for chunk in result):
+        raise ValueError("TTS chunk vượt character limit.")
+    return result
 
 
 def validate_sections(script: str, sections: list[ScriptSection], section_count: int) -> None:

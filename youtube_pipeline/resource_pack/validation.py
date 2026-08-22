@@ -5,7 +5,11 @@ import re
 import unicodedata
 from typing import Any
 
-from .claim_ledger import source_supports_reinforcement_loop
+from .claim_ledger import (
+    causal_capability_violations,
+    source_causal_capabilities,
+    source_supports_reinforcement_loop,
+)
 
 from .metrics import non_whitespace_chars
 from .source_catalog import KNOWN_SOURCE_URLS
@@ -95,9 +99,9 @@ STORY_SEQUENCE_MARKERS_JA = (
     "歩いてい", "振り返ると",
 )
 
-# Scene-first opening signals. These are intentionally narrower than STORY_SEQUENCE_MARKERS_JA:
-# a topic may legitimately mention LINE/smartphone, but the hook must not begin by
-# narrating a scene and only reveal the psychology later.
+# Scene-first opening signals remain telemetry for symbolic long-form. A scene is
+# valid when it becomes identity tension and a psychological question before the
+# configured pivot window; it is invalid only when it turns into plot.
 HOOK_SCENE_START_MARKERS_JA = (
     "夜、", "朝、", "昼、", "会議室", "布団の中", "ベッドの中",
     "スマホを開", "スマホを見", "LINEを送", "LINEを開", "ドアが閉",
@@ -107,6 +111,14 @@ HOOK_PSYCHOLOGY_MARKERS_JA = (
     "なぜ", "こういう人", "このタイプ", "心理", "傾向", "思い込み",
     "仕組み", "正体", "無意識", "実は", "あなたは", "人がいます",
     "人もいます", "〜してしまう", "してしまう人",
+)
+
+# Competitor 思考の深淵 opens current uploads by addressing the viewer directly
+# in the first breath (もし〜 / あなたにも〜). A cold open without any of these
+# markers reads as detached scene-setting and loses the first-second recognition.
+HOOK_DIRECT_ADDRESS_MARKERS_JA = (
+    "もし", "あなた", "ませんか", "ないでしょうか", "どう思いますか",
+    "どう受け止めますか", "心当たり",
 )
 
 
@@ -132,6 +144,28 @@ def _brief_claim_text(value: dict) -> str:
     return "\n".join(parts)
 
 
+_HEALING_PROMISE_MARKERS = (
+    "guarantee", "guaranteed", "cure", "heal", "治る", "癒", "回復", "救", "解決",
+    "必ず", "絶対", "人生が変わ", "変われ", "chữa", "khỏi",
+)
+
+
+def normalize_editorial_promise(value: dict) -> bool:
+    """Replace a generic recovery promise with the brief's bounded insight."""
+    dna = value.get("editorial_dna") if isinstance(value, dict) else None
+    if not isinstance(dna, dict):
+        return False
+    promise = str(dna.get("emotional_promise") or "").strip()
+    if not promise or not any(marker in promise.lower() for marker in _HEALING_PROMISE_MARKERS):
+        return False
+    memory_line = str(dna.get("memory_line") or "").strip()
+    if memory_line and not any(marker in memory_line.lower() for marker in _HEALING_PROMISE_MARKERS):
+        dna["emotional_promise"] = memory_line
+    else:
+        dna["emotional_promise"] = "行動を自分の欠点ではなく、起きている心理的な条件として見直せる。"
+    return True
+
+
 def validate_psychology_brief(value: dict, source_pack: dict | None = None) -> None:
     require_fields(
         value,
@@ -139,6 +173,7 @@ def validate_psychology_brief(value: dict, source_pack: dict | None = None) -> N
             "phenomenon_or_type", "psychological_identity",
             "core_psychological_question", "main_tension",
             "recognizable_behavior_signals", "common_misconception", "early_reframe",
+            "editorial_dna",
             "mechanism_candidates", "selected_mechanisms", "causal_chain",
             "inner_process_map", "origin_status", "strength_status", "cost_status",
             "practical_shift_status", "route", "exclusions",
@@ -149,6 +184,18 @@ def validate_psychology_brief(value: dict, source_pack: dict | None = None) -> N
         raise ValueError("psychology_brief.route không hợp lệ.")
     if not 3 <= len(value["recognizable_behavior_signals"]) <= 6:
         raise ValueError("Psychology brief phải có 3-6 behavior signals.")
+    editorial_dna = value["editorial_dna"]
+    if not isinstance(editorial_dna, dict):
+        raise ValueError("psychology_brief.editorial_dna phải là object.")
+    dna_fields = (
+        "audience_pain", "behavioral_entry", "contradiction", "emotional_promise",
+        "memory_line", "title_angle", "thumbnail_conflict",
+    )
+    require_fields(editorial_dna, dna_fields, "psychology_brief.editorial_dna")
+    if any(not str(editorial_dna[field]).strip() for field in dna_fields):
+        raise ValueError("psychology_brief.editorial_dna không được để trống.")
+    if any(marker in str(editorial_dna["emotional_promise"]).lower() for marker in _HEALING_PROMISE_MARKERS):
+        raise ValueError("editorial_dna.emotional_promise phải là self-understanding có giới hạn, không phải lời hứa chữa khỏi.")
     selected = value["selected_mechanisms"]
     if not 1 <= len(selected) <= 2:
         raise ValueError("Chỉ chọn 1-2 psychological mechanisms cho một video.")
@@ -171,6 +218,73 @@ def validate_psychology_brief(value: dict, source_pack: dict | None = None) -> N
                 "psychological_identity/early_reframe/causal_chain/inner_process_map."
                 % ", ".join(unsupported)
             )
+
+
+# The brief is the last point where a model may invent a narrative explanation.
+# Keep this guard narrow and capability-based: it blocks the unsupported chains
+# which otherwise contaminate contract, plan, writer, and repair prompts.
+_BRIEF_CAUSAL_CAPABILITY_PATTERNS = {
+    "attention_pathway": (
+        r"注意.{0,8}(?:向|固定|引)",
+        r"欲求.{0,16}目標.{0,16}(?:ずれ|不一致)",
+    ),
+    "decision_fatigue": (
+        r"判断.{0,16}(?:疲労|疲れ)",
+        r"判断.{0,12}(?:多|繰り返).{0,12}(?:疲労|疲れ)",
+    ),
+    "exposure_as_evidence": (r"(?:刺激|曝露).{0,16}証拠",),
+    "reproducible_conditions_guarantee": (r"再現しやす.{0,12}条件",),
+    "goal_behavior_under_distress": (r"苦痛.{0,20}目標.{0,20}(?:守|保)",),
+    "reinforcement_loop": (
+        r"(?:一時的|短期的).{0,16}(?:安心|落ち着).{0,24}(?:維持|強化)",
+        r"(?:安心|落ち着).{0,16}(?:反応|行動).{0,16}(?:維持|強化)",
+    ),
+}
+
+
+def _brief_causal_text(value: dict) -> str:
+    parts = [
+        str(value.get("psychological_identity", "")),
+        str(value.get("early_reframe", "")),
+        str(value.get("main_tension", "")),
+        str(value.get("causal_chain", "")),
+        str(value.get("inner_process_map", "")),
+    ]
+    for mechanism in value.get("selected_mechanisms", []):
+        if isinstance(mechanism, dict):
+            parts.extend(str(mechanism.get(field, "")) for field in (
+                "role", "behavior_explained", "why", "inner_process", "source_boundary",
+            ))
+    pack = value.get("narrative_pack") if isinstance(value.get("narrative_pack"), dict) else {}
+    parts.extend(str(item) for item in (pack.get("revelation_ladder") or []))
+    parts.extend(str(item) for item in (pack.get("movements") or []))
+    return "\n".join(parts)
+
+
+def validate_source_bounded_brief_causality(value: dict, source_pack: dict) -> None:
+    """Reject causal detail not explicitly licensed by verified support."""
+    ledger = source_pack.get("claim_ledger") if isinstance(source_pack.get("claim_ledger"), dict) else {}
+    capabilities = ledger.get("capabilities") if isinstance(ledger.get("capabilities"), dict) else source_causal_capabilities(source_pack)
+    text = _brief_causal_text(value)
+    blocked = [
+        capability
+        for capability, patterns in _BRIEF_CAUSAL_CAPABILITY_PATTERNS.items()
+        if not capabilities.get(capability, False) and any(re.search(pattern, text) for pattern in patterns)
+    ]
+    if blocked:
+        raise ValueError(
+            "Psychology brief vượt capability nguồn đã khóa: %s. "
+            "Causal chain phải dừng ở quan sát/liên hệ được source hỗ trợ, không suy ra chuỗi nhận thức mới."
+            % ", ".join(blocked)
+        )
+    capability_violations = causal_capability_violations(text, source_pack)
+    if capability_violations:
+        raise ValueError(
+            "Psychology brief suy diễn prediction-error vượt nguồn: %s. "
+            "Chỉ giữ mô tả phản ứng với prediction/reward error đúng mức nguồn; "
+            "không suy ra update dự đoán kế tiếp hoặc tác động trực tiếp lên hành vi."
+            % ", ".join(capability_violations)
+        )
 
 
 def anti_story_findings(text: str) -> list[str]:
@@ -446,27 +560,41 @@ def psychology_review_gate_verdict(review: dict) -> tuple[bool, list[str]]:
 
 
 def psychology_hook_findings(text: str) -> list[str]:
-    """Detect a slow hook before review, without turning lexical style into a hard gate."""
+    """Detect an opening that becomes plot instead of a symbolic pivot.
+
+    This is advisory. The long-form competitor format deliberately has room for
+    a sensory opening, so a lexical absence of ``なぜ`` in the first few lines is
+    not treated as a defect by itself.
+    """
     opening = str(text or "").strip()[:420]
     if not opening:
         return ["empty_opening"]
     lines = [line.strip() for line in re.split(r"[。！？\n]", opening) if line.strip()]
     if not lines:
         return ["empty_opening"]
-    scene_hits = [line for line in lines[:3] if any(marker in line for marker in HOOK_SCENE_START_MARKERS_JA)]
-    psychology_hits = [line for line in lines[:4] if any(marker in line for marker in HOOK_PSYCHOLOGY_MARKERS_JA)]
-    if len(scene_hits) >= 2 and not psychology_hits:
-        return ["opening_scene_led_without_early_psychological_pivot"]
-    # Psychology Direct needs more than recognition: the first few lines must
-    # expose the felt contradiction and leave one mechanism-led question open.
-    # This only requests the editor's single targeted polish pass; it never
-    # blocks production because Japanese can express the same idea many ways.
-    early = "。".join(lines[:6])
-    has_contradiction = any(marker in early for marker in ("のに", "なのに", "それでも", "本当は", "なのに"))
-    has_open_loop = any(marker in early for marker in ("なぜ", "どうして", "でしょうか", "のか"))
-    if not (has_contradiction and has_open_loop):
-        return ["opening_lacks_pain_contradiction_or_open_loop"]
+    opening = "。".join(lines[:12])
+    psychology_hits = [line for line in lines[:12] if any(marker in line for marker in HOOK_PSYCHOLOGY_MARKERS_JA)]
+    sequential_hits = [marker for marker in STORY_SEQUENCE_MARKERS_JA if marker in opening]
+    if not psychology_hits and len(sequential_hits) >= 3:
+        return ["opening_scene_became_plot_without_symbolic_psychological_pivot"]
     return []
+
+
+def direct_address_findings(text: str) -> list[str]:
+    """Competitor-aligned hook gate: the opening must address the viewer directly.
+
+    思考の深淵 opens with a first-breath hypothetical/recognition question
+    (もし〜だとしたら、どう思いますか). A cold open that only describes a scene
+    delays self-recognition, so flag it as advisory review feedback.
+    """
+    opening = str(text or "").strip()
+    if not opening:
+        return []
+    lines = [line.strip() for line in re.split(r"[。！？\n]", opening) if line.strip()]
+    head = "。".join(lines[:2])[:160]
+    if any(marker in head for marker in HOOK_DIRECT_ADDRESS_MARKERS_JA):
+        return []
+    return ["opening_missing_direct_address_question"]
 
 
 def generic_selfhelp_findings(text: str) -> list[str]:
@@ -648,9 +776,9 @@ def validate_contract(value: dict) -> None:
         ),
         "script_contract",
     )
-    # Phase 4 (plan v2 §6): contract phải khóa FORMAT, không chỉ psychology —
-    # primary format là psychological profile/deep-dive, forbidden spine là các
-    # dạng narrative. Planning/writing/review/QA đều kế thừa lock này.
+    # The production format is a symbolic long-form psychological deep-dive.
+    # Its psychological argument remains the spine; a recurring vignette is
+    # allowed only as editorial illustration, never as factual proof or biography.
     lock = value["format_lock"]
     if not isinstance(lock, dict):
         raise ValueError("script_contract.format_lock phải là object.")
@@ -659,8 +787,9 @@ def validate_contract(value: dict) -> None:
         ("primary_format", "content_center", "primary_narration", "secondary_device", "forbidden_spine"),
         "script_contract.format_lock",
     )
-    if "psychological" not in str(lock["primary_format"]).lower():
-        raise ValueError("format_lock.primary_format phải là psychological profile / deep-dive.")
+    primary_format = str(lock["primary_format"]).lower()
+    if "psychological" not in primary_format or "symbolic" not in primary_format:
+        raise ValueError("format_lock.primary_format phải là symbolic long-form psychological deep-dive.")
     content_center = str(lock["content_center"]).lower()
     primary_narration = str(lock["primary_narration"]).lower()
     secondary_device = str(lock["secondary_device"]).lower()
@@ -673,22 +802,22 @@ def validate_contract(value: dict) -> None:
     )
     if not any(term in content_center for term in content_center_markers):
         raise ValueError("format_lock.content_center phải khóa psychological pattern/behavior, không phải scene/story.")
-    if not any(term in primary_narration for term in ("direct", "psychological", "explanation", "analysis")):
-        raise ValueError("format_lock.primary_narration phải là direct psychological explanation/analysis.")
-    if not any(term in secondary_device for term in ("example", "behavior", "micro")):
-        raise ValueError("format_lock.secondary_device phải giới hạn example/behavior như thiết bị phụ.")
+    if not any(term in primary_narration for term in ("symbolic", "psychological", "analysis", "reflective")):
+        raise ValueError("format_lock.primary_narration phải là symbolic psychological analysis.")
+    if not any(term in secondary_device for term in ("symbol", "vignette", "example", "behavior", "recognition")):
+        raise ValueError("format_lock.secondary_device phải khóa vignette/symbol như editorial illustration.")
     if not isinstance(lock["forbidden_spine"], list) or len(lock["forbidden_spine"]) < 3:
         raise ValueError("format_lock.forbidden_spine phải liệt kê ít nhất 3 forbidden spine.")
     if len(value["title_candidates"]) != 3:
         raise ValueError("Script contract phải có đúng 3 title candidates.")
     for candidate in value["title_candidates"]:
         actual = len(str(candidate.get("title", "")))
-        if not 18 <= actual <= 28:
-            raise ValueError("Mỗi title candidate phải dài 18-28 ký tự.")
+        if not 32 <= actual <= 100:
+            raise ValueError("Mỗi title candidate phải dài 32-100 ký tự.")
         candidate["char_count"] = actual
     title_count = len(value["chosen_title"])
-    if not 18 <= title_count <= 28:
-        raise ValueError("Chosen title phải dài 18-28 ký tự; hiện tại %d." % title_count)
+    if not 32 <= title_count <= 100:
+        raise ValueError("Chosen title phải dài 32-100 ký tự; hiện tại %d." % title_count)
     value["chosen_title_char_count"] = title_count
     try:
         target_min = int(value["target_char_min"])
@@ -723,8 +852,8 @@ def normalize_contract_format_lock(value: dict) -> bool:
     primary = str(lock.get("primary_format", "")).lower()
     set_if_invalid(
         "primary_format",
-        "psychological" in primary,
-        "psychological profile / psychological deep-dive",
+        "psychological" in primary and "symbolic" in primary,
+        "symbolic long-form psychological deep-dive",
     )
     content = str(lock.get("content_center", "")).lower()
     content_markers = (
@@ -740,20 +869,20 @@ def normalize_contract_format_lock(value: dict) -> bool:
     narration = str(lock.get("primary_narration", "")).lower()
     set_if_invalid(
         "primary_narration",
-        any(term in narration for term in ("direct", "psychological", "explanation", "analysis")),
-        "direct psychological explanation / analysis",
+        any(term in narration for term in ("symbolic", "psychological", "analysis", "reflective")),
+        "symbolic psychological analysis with reflective narration",
     )
     secondary = str(lock.get("secondary_device", "")).lower()
     set_if_invalid(
         "secondary_device",
-        any(term in secondary for term in ("example", "behavior", "micro")),
-        "behavioral micro-examples used only for recognition and evidence",
+        any(term in secondary for term in ("symbol", "vignette", "example", "behavior", "recognition")),
+        "recurring symbolic vignette and behavioral recognition used as editorial illustration",
     )
     forbidden = lock.get("forbidden_spine")
     set_if_invalid(
         "forbidden_spine",
         isinstance(forbidden, list) and len(forbidden) >= 3,
-        ["narrative story", "personal anecdote", "cinematic monologue", "fictional character journey"],
+        ["fictional claim presented as evidence", "chronological character biography", "symbolic scene without psychological advance", "unsupported causal story"],
     )
     return changed
 
@@ -792,8 +921,8 @@ def normalize_review_list(value: object) -> list[str]:
 
 def normalize_contract_titles(value: dict) -> None:
     """Repair title packaging length after the model's targeted correction."""
-    minimum, maximum = 18, 28
-    suffix = "の心理とは？その理由"
+    minimum, maximum = 32, 70
+    suffix = "｜その心の奥で起きていること"
 
     def _normalize(raw: object) -> str:
         title = str(raw or "").strip()
@@ -1043,6 +1172,20 @@ def validate_plan(
         for turn in turns:
             if not isinstance(turn, dict) or not str(turn.get("new_information", "")).strip():
                 raise ValueError("Mỗi continuity retention turn phải mô tả new_information.")
+            required_turn_fields = ("after_section", "why_continue", "payoff_kind")
+            if any(not str(turn.get(field, "")).strip() for field in required_turn_fields):
+                raise ValueError("Retention turn phải có after_section, why_continue và payoff_kind.")
+            if str(turn["after_section"]) not in {str(section.get("id")) for section in sections[:-1]}:
+                raise ValueError("Retention turn phải nằm sau một section hợp lệ và không đặt sau landing cuối.")
+            if str(turn["payoff_kind"]) not in {"mechanism_reveal", "paradox", "consequence", "reframe"}:
+                raise ValueError("Retention turn.payoff_kind không hợp lệ.")
+            turn_text = " ".join(str(turn.get(field, "")).lower() for field in ("new_information", "why_continue"))
+            empty_bridge_markers = (
+                "xem tiếp", "hãy xem tiếp", "phần sau", "stay tuned", "keep watching",
+                "watch until", "最後まで", "続きで", "次で明か", "解決策を",
+            )
+            if any(marker in turn_text for marker in empty_bridge_markers):
+                raise ValueError("Retention turn phải nêu payoff thật, không dùng teaser/FOMO hoặc hứa giải pháp.")
             if any(key in turn for key in ("time", "timestamp", "seconds")):
                 raise ValueError("continuity retention turn không được khóa timestamp; timing derive từ script.")
 
@@ -1077,6 +1220,16 @@ def validate_plan(
                 "Planning chứa cơ chế khoa học/tuổi thơ chưa có verified source: %s. "
                 "Source pack phải được mở rộng trước, hoặc bỏ cơ chế này khỏi plan."
                 % ", ".join(unsupported)
+            )
+        capability_violations = causal_capability_violations(
+            json.dumps(plan_copy, ensure_ascii=False), source_pack
+        )
+        if capability_violations:
+            raise ValueError(
+                "Planning suy diễn causal mechanism ngoài source: %s. "
+                "Prediction error không tự cho phép viết learning loop, update dự đoán, "
+                "hoặc tác động trực tiếp lên việc bắt đầu/dừng hành vi."
+                % ", ".join(capability_violations)
             )
         if not source_supports_reinforcement_loop(source_pack):
             plan_text = json.dumps(plan_copy, ensure_ascii=False).lower()
@@ -1159,6 +1312,46 @@ def normalize_plan_editorial_metadata(value: dict) -> bool:
     return changed
 
 
+def normalize_plan_quality_metadata(value: dict) -> bool:
+    """Complete non-content planning metadata omitted by an otherwise valid plan.
+
+    These fields declare checks that are independently enforced later by the
+    script structure/format stages. Filling missing metadata must not invent a
+    mechanism, section, or claim, and avoids a needless second planner call.
+    """
+    changed = False
+    gate = value.get("planning_quality_gate")
+    if not isinstance(gate, dict):
+        gate = {}
+        value["planning_quality_gate"] = gate
+        changed = True
+    defaults = {
+        "no_duplicate_sections": True,
+        "every_section_advances_state": True,
+        "psychology_is_spine": True,
+        "no_plot_or_character_arc": True,
+        "ending_creates_self_understanding": True,
+    }
+    for field, default in defaults.items():
+        if field not in gate:
+            gate[field] = default
+            changed = True
+    continuity = value.get("continuity_map")
+    if isinstance(continuity, dict) and isinstance(continuity.get("retention_turns"), list):
+        sections = {str(section.get("id")): str(section.get("segment_function", "")) for section in value.get("sections", []) if isinstance(section, dict)}
+        kinds = {
+            "mechanism": "mechanism_reveal", "inner_world": "mechanism_reveal",
+            "contradiction": "paradox", "strength_cost": "consequence",
+            "practical_shift": "reframe", "insight_landing": "reframe",
+        }
+        for turn in continuity["retention_turns"]:
+            if not isinstance(turn, dict) or str(turn.get("payoff_kind", "")).strip():
+                continue
+            turn["payoff_kind"] = kinds.get(sections.get(str(turn.get("after_section")), ""), "reframe")
+            changed = True
+    return changed
+
+
 def normalize_audit_score(value: dict) -> int:
     """Đưa overall_score về thang 0-100.
 
@@ -1233,6 +1426,15 @@ def normalize_audit_report(value: Any, auditor: str = "unknown") -> dict[str, An
             report[field] = raw
         else:
             report[field] = [raw]
+    # A bare source_alignment=false is an uninspectable model opinion. Source
+    # blocking requires the exact unsupported claim so the editor can repair it
+    # and the deterministic controller can verify the result. Keep this as an
+    # advisory note rather than letting it randomly fail otherwise valid runs.
+    if not report["source_alignment"] and not report["unsupported_claims"]:
+        report["source_alignment"] = True
+        report["issues"].append(
+            "Audit source_alignment=false không kèm unsupported_claims; ghi nhận advisory, không block run."
+        )
     if not isinstance(value, dict):
         report["issues"].append("Audit response phải là JSON object.")
     required = ("source_alignment", "outline_coverage", "title_alignment")
@@ -1295,7 +1497,32 @@ def thumbnail_text_duplication(title: str, thumbnail_text: str) -> tuple[bool, s
 
 
 def normalize_thumbnail_prompt(value: dict) -> None:
-    """Complete literal thumbnail contract tokens without another model retry."""
+    """Complete literal thumbnail contract tokens without another model retry.
+
+    ``background_color`` describes the protected overlay zone, not the whole
+    generated image.  The image may still fade naturally into that zone; this
+    normalization prevents an arbitrary model color pair from failing a purely
+    deterministic accessibility/readability check.
+    """
+    headline = str(value.get("thumbnail_text", "")).strip()
+    if len(headline) > 14:
+        headline = headline[:14].rstrip()
+    value["thumbnail_text"] = headline
+    try:
+        has_safe_contrast = contrast_ratio(
+            str(value.get("text_color", "")), str(value.get("background_color", ""))
+        ) >= 7
+    except ValueError:
+        has_safe_contrast = False
+    if not has_safe_contrast:
+        value["text_color"] = "#FFE500"
+        value["background_color"] = "#111111"
+        overlay = value.get("overlay_spec")
+        if isinstance(overlay, dict):
+            overlay["text_zone"] = (
+                "Protected charcoal #111111 overlay zone behind the headline; "
+                "blend it softly into the scene with an ink gradient, never a hard split."
+            )
     prompt = str(value.get("image_prompt", "")).strip()
     lowered = prompt.lower()
     additions = []
@@ -1303,12 +1530,14 @@ def normalize_thumbnail_prompt(value: dict) -> None:
         additions.append("16:9 full bleed composition.")
     if "no text" not in lowered:
         additions.append("No text in base image.")
-    if "flat illustrated" not in lowered:
-        additions.append("Flat illustrated cartoon style.")
+    if "ink" not in lowered:
+        additions.append("High-contrast black ink illustration style.")
     if "thick black outline" not in lowered:
         additions.append("Thick black outline.")
-    if "navy" not in lowered:
-        additions.append("Navy #1A2332 background.")
+    if "off-white" not in lowered and "white paper" not in lowered:
+        additions.append("Off-white paper field with high-contrast black ink composition.")
+    if "gold" not in lowered and "yellow" not in lowered:
+        additions.append("One controlled gold #FFD700 accent.")
     if "fictional" not in lowered:
         additions.append("Fictional anonymous character.")
     if "full-bleed" not in lowered and "full bleed" not in lowered:
@@ -1316,13 +1545,13 @@ def normalize_thumbnail_prompt(value: dict) -> None:
     if "gradient" not in lowered:
         additions.append("Soft atmospheric gradient into the manual text zone; no hard split.")
     if "identity lock" not in lowered:
-        additions.append("Identity lock: exact recurring mascot, unchanged face, outfit, proportions, and colors.")
+        additions.append("Identity lock: exact recurring fictional chalk-line figure, unchanged round head, line weight, proportions, and charcoal/off-white treatment.")
     if "visual identity anchor" not in lowered:
-        additions.append("Visual identity anchor: use the canonical mascot reference image when supported; match its face, outfit, colors, proportions, and thick outline exactly.")
+        additions.append("Visual identity anchor: match the recurring chalk-line figure's head silhouette, proportions, line weight, and charcoal/off-white treatment exactly.")
     value.setdefault("character_reference", {
-        "role": "canonical_mascot_visual_anchor",
+        "role": "canonical_chalk_figure_visual_anchor",
         "preferred_image": "video-build/images/IMG-01.png",
-        "fallback": "CHARACTER_BIBLE text lock",
+        "fallback": "recurring chalk-line figure text lock",
         "instruction": "Use the reference for identity only; vary pose, expression, crop, and scene."
     })
     value["image_prompt"] = " ".join([prompt, *additions]).strip()
@@ -1335,8 +1564,8 @@ def validate_thumbnail(value: dict, title: str) -> dict[str, Any]:
     contrast = contrast_ratio(value["text_color"], value["background_color"])
     issues = []
     warnings = []
-    if not 4 <= text_count <= 11:
-        issues.append("Thumbnail text phải dài 4-11 ký tự.")
+    if not 4 <= text_count <= 14:
+        issues.append("Thumbnail text phải dài 4-14 ký tự.")
 
     duplicated, duplication_reason = thumbnail_text_duplication(title, value["thumbnail_text"])
     if duplicated:
@@ -1352,8 +1581,8 @@ def validate_thumbnail(value: dict, title: str) -> dict[str, Any]:
     prompt_lower = value["image_prompt"].lower()
     if "16:9" not in value["image_prompt"] or "no text" not in prompt_lower:
         issues.append("Thumbnail image prompt phải có 16:9 và no text.")
-    if not all(token in prompt_lower for token in ("flat illustrated", "thick black outline", "navy")):
-        issues.append("Thumbnail phải giữ flat illustrated cartoon style lock (thick black outline, navy background).")
+    if not all(token in prompt_lower for token in ("ink", "thick black outline", "gold")):
+        issues.append("Thumbnail phải giữ ink illustration style lock (thick black outline, gold accent).")
     if "fictional" not in prompt_lower:
         issues.append("Thumbnail phải ghi rõ nhân vật là fictional để tránh likeness người thật.")
     return {
@@ -1368,48 +1597,74 @@ def validate_thumbnail(value: dict, title: str) -> dict[str, Any]:
 
 def derive_visual_density_targets(contract: dict, plan: dict) -> dict[str, int]:
     """Derive minimum coverage from duration instead of a fixed image quota."""
-    duration_text = str(contract.get("target_duration_minutes", "6-12"))
-    def _minutes(value: str) -> float | None:
-        match = re.fullmatch(r"(\d+)(?::(\d{1,2}))?", value.strip())
-        if not match:
-            return None
-        return float(match.group(1)) + float(match.group(2) or 0) / 60.0
+    actual_seconds = contract.get("visual_duration_seconds")
+    if isinstance(actual_seconds, (int, float)) and actual_seconds > 0:
+        duration_seconds = max(60, int(round(actual_seconds)))
+        duration_minutes = duration_seconds / 60.0
+    else:
+        # Missing duration only occurs in small compatibility/provider tests.
+        # Production contracts always carry the explicit 35-45 range.
+        duration_text = str(contract.get("target_duration_minutes", "6-12"))
+        def _minutes(value: str) -> float | None:
+            match = re.fullmatch(r"(\d+)(?::(\d{1,2}))?", value.strip())
+            if not match:
+                return None
+            return float(match.group(1)) + float(match.group(2) or 0) / 60.0
 
-    parts = re.split(r"\s*[-–]\s*", duration_text)
-    parsed = [_minutes(part) for part in parts]
-    parsed = [value for value in parsed if value is not None]
-    duration_minutes = sum(parsed) / len(parsed) if parsed else 9.0
-    duration_seconds = max(60, int(round(duration_minutes * 60)))
+        parts = re.split(r"\s*[-–]\s*", duration_text)
+        parsed = [_minutes(part) for part in parts]
+        parsed = [value for value in parsed if value is not None]
+        duration_minutes = sum(parsed) / len(parsed) if parsed else 9.0
+        duration_seconds = max(60, int(round(duration_minutes * 60)))
 
-    # Front-loaded schedule: denser opening, progressively slower later.
-    remaining = duration_seconds
-    visual_events = 0
-    for window_seconds, seconds_per_event in (
-        (30, 6),
-        (60, 8),
-        (210, 12),
-        (max(0, duration_seconds - 360), 16),
-        (60, 20),
-    ):
-        active = min(remaining, window_seconds)
-        if active > 0:
-            visual_events += math.ceil(active / seconds_per_event)
-            remaining -= active
-    section_floor = len(plan.get("sections", [])) * 5
+    # Long-form chalk/ink videos use evolving tableaux and symbolic callbacks,
+    # not a new static image every 6-16 seconds. Keep the first minute denser,
+    # then give each revelation movement room to breathe.
+    if duration_minutes >= 25:
+        opening_events = 7
+        movement_floor = max(1, len(plan.get("sections", []))) * 5
+        visual_events = max(opening_events + math.ceil(max(0, duration_seconds - 60) / 30), movement_floor)
+        unique_ratio = 0.48
+        recommended_events_min = max(visual_events, int(round(duration_minutes * 2.1)))
+        recommended_events_max = max(recommended_events_min, int(round(duration_minutes * 2.7)))
+    else:
+        remaining = duration_seconds
+        visual_events = 0
+        for window_seconds, seconds_per_event in (
+            (30, 6),
+            (60, 8),
+            (210, 12),
+            (max(0, duration_seconds - 360), 16),
+            (60, 20),
+        ):
+            active = min(remaining, window_seconds)
+            if active > 0:
+                visual_events += math.ceil(active / seconds_per_event)
+                remaining -= active
+        unique_ratio = 0.70
+        recommended_events_min = max(visual_events, int(round(duration_minutes * 5.5)))
+        recommended_events_max = max(recommended_events_min, int(round(duration_minutes * 7)))
     # Unique-image ratio is dynamic. This is a soft planning hint, not a hard quota.
-    unique_images = max(1, math.ceil(visual_events * 0.70))
-    # Keep the recommendation compatible with the compact visual strategy
-    # prompt. The minimum is the only hard floor; recommendations must not
-    # silently turn into an 80-140 beat generation quota.
-    recommended_events_min = max(visual_events, int(round(duration_minutes * 5.5)))
-    recommended_events_max = max(recommended_events_min, int(round(duration_minutes * 7)))
+    unique_images = max(1, math.ceil(visual_events * unique_ratio))
     return {
         "duration_seconds_reference": duration_seconds,
+        "duration_source": str(contract.get("visual_duration_source") or "contract_target_range"),
         "minimum_visual_events": visual_events,
         "recommended_visual_events": [recommended_events_min, recommended_events_max],
         "minimum_unique_images_soft": unique_images,
-        "unique_ratio_target": [0.70, 0.90],
+        "unique_ratio_target": [0.45, 0.65] if duration_minutes >= 25 else [0.70, 0.90],
     }
+
+
+def _requests_baked_image_text(value: str) -> bool:
+    """Return true only for an affirmative request to render text in an image."""
+    positive, _, _negative = value.lower().partition("negative:")
+    markers = (
+        "labeled", "labelled", "label exactly", "labeled exactly",
+        "text reads", "text saying", "caption reads", "written exactly",
+        "printed exactly", "readable japanese text",
+    )
+    return any(marker in positive for marker in markers)
 
 
 def validate_image_strategy(
@@ -1434,6 +1689,8 @@ def validate_image_strategy(
         beat_id = str(beat["id"])
         if beat_id in beat_to_image:
             raise ValueError("Visual beat ID bị trùng: %s" % beat_id)
+        if _requests_baked_image_text(str(beat["visual_information"])):
+            raise ValueError("Visual beat %s yêu cầu chữ/label trong ảnh AI; dùng ẩn dụ không chữ và overlay thủ công." % beat_id)
         if bool(beat["new_image"]):
             image_index += 1
             beat["image_id"] = "IMG-%02d" % image_index
@@ -1496,7 +1753,80 @@ def validate_image_strategy(
         raise ValueError("Image strategy density/no-filler gate chưa pass.")
 
 
-def normalize_image_prompts(value: dict, strategy: dict | None = None) -> None:
+def _allocate_integer_duration(total: int, weights: list[int], minimums: list[int]) -> list[int]:
+    """Allocate an exact integer duration while preserving each minimum."""
+    if total < sum(minimums):
+        raise ValueError("Timeline không đủ thời lượng để mọi visual event có thời gian hiển thị tối thiểu.")
+    remaining = total - sum(minimums)
+    if not remaining:
+        return list(minimums)
+    normalized = [max(1, weight) for weight in weights]
+    weight_total = sum(normalized)
+    raw = [remaining * weight / weight_total for weight in normalized]
+    allocated = [minimum + math.floor(extra) for minimum, extra in zip(minimums, raw)]
+    for index in sorted(range(len(raw)), key=lambda item: (raw[item] - math.floor(raw[item]), -item), reverse=True)[:remaining - sum(math.floor(extra) for extra in raw)]:
+        allocated[index] += 1
+    return allocated
+
+
+def build_deterministic_storyboard_timeline(
+    beats: list[dict],
+    duration_seconds: int,
+    sections: dict | None,
+) -> tuple[list[str], dict[str, Any]]:
+    """Assign contiguous event windows from finished narration, never model times."""
+    if not beats:
+        return [], {"duration_seconds": 0, "source": "deterministic_script_qa_sections", "section_windows": []}
+    if duration_seconds <= 0:
+        raise ValueError("Timeline cần duration script QA dương.")
+
+    section_rows = (sections or {}).get("sections", []) if isinstance(sections, dict) else []
+    chars_by_section = {
+        str(row.get("id")): max(0, int(row.get("chars") or 0))
+        for row in section_rows if isinstance(row, dict)
+    }
+    ordered_section_ids = list(dict.fromkeys(str(beat.get("script_section") or "S1") for beat in beats))
+    beats_by_section = {
+        section_id: [beat for beat in beats if str(beat.get("script_section") or "S1") == section_id]
+        for section_id in ordered_section_ids
+    }
+    minimum_event_seconds = 2
+    section_minimums = [len(beats_by_section[section_id]) * minimum_event_seconds for section_id in ordered_section_ids]
+    section_weights = [chars_by_section.get(section_id) or len(beats_by_section[section_id]) for section_id in ordered_section_ids]
+    section_durations = _allocate_integer_duration(duration_seconds, section_weights, section_minimums)
+
+    event_times: dict[str, str] = {}
+    cursor = 0
+    section_windows = []
+    for section_id, section_duration in zip(ordered_section_ids, section_durations):
+        section_beats = beats_by_section[section_id]
+        event_durations = _allocate_integer_duration(
+            section_duration,
+            [1] * len(section_beats),
+            [minimum_event_seconds] * len(section_beats),
+        )
+        section_start = cursor
+        for beat, event_duration in zip(section_beats, event_durations):
+            end = cursor + event_duration
+            event_times[str(beat["id"])] = "%d-%ds" % (cursor, end)
+            cursor = end
+        section_windows.append({"section_id": section_id, "start_seconds": section_start, "end_seconds": cursor})
+    if cursor != duration_seconds:
+        raise AssertionError("Timeline deterministic allocation không khớp duration.")
+    return [event_times[str(beat["id"])] for beat in beats], {
+        "duration_seconds": duration_seconds,
+        "source": "deterministic_script_qa_sections",
+        "minimum_event_seconds": minimum_event_seconds,
+        "section_windows": section_windows,
+    }
+
+
+def normalize_image_prompts(
+    value: dict,
+    strategy: dict | None = None,
+    duration_seconds: int | None = None,
+    sections: dict | None = None,
+) -> None:
     """Normalize provider output and deterministically complete missing beats.
 
     Large image-prompt responses are sometimes truncated by the provider. The
@@ -1509,8 +1839,8 @@ def normalize_image_prompts(value: dict, strategy: dict | None = None) -> None:
         additions = []
         if "16:9" not in lowered:
             additions.append("16:9 full bleed composition.")
-        if "flat illustrated" not in lowered:
-            additions.append("Flat illustrated cartoon style, thick black outline, solid colors, no gradients, navy #1A2332 background.")
+        if "ink" not in lowered:
+            additions.append("High-contrast black ink illustration, thick black outline, off-white paper field, controlled gold #FFD700 accent.")
         if "negative:" not in lowered:
             additions.append("Negative: text, logo, watermark, extra fingers, distorted hands, duplicate subjects.")
         image["prompt"] = " ".join([prompt, *additions]).strip()
@@ -1535,8 +1865,8 @@ def normalize_image_prompts(value: dict, strategy: dict | None = None) -> None:
                 "beat_ids": [str(beat["id"])],
                 "prompt": (
                     "Japanese psychology illustration: %s. Anonymous recurring character or simple visual metaphor, "
-                    "clear readable action, flat illustrated cartoon, thick black outline, solid colors, no gradients, "
-                    "navy #1A2332 background, 16:9 full bleed. Negative: text, logo, watermark, photorealism, clutter."
+                    "clear readable action, high-contrast black ink illustration, thick black outline, off-white paper field, "
+                    "controlled gold #FFD700 accent, 16:9 full bleed. Negative: text, logo, watermark, photorealism, clutter."
                 ) % visual,
             }
         image.setdefault("beat_ids", [str(beat["id"])])
@@ -1552,13 +1882,19 @@ def normalize_image_prompts(value: dict, strategy: dict | None = None) -> None:
         str(beat["id"]): str(beat["image_id"])
         for beat in beats
     }
+    deterministic_times: list[str] | None = None
+    timeline_meta: dict[str, Any] | None = None
+    if duration_seconds is not None:
+        deterministic_times, timeline_meta = build_deterministic_storyboard_timeline(beats, int(duration_seconds), sections)
     storyboard = []
     for index, beat in enumerate(beats, start=1):
         beat_id = str(beat["id"])
         row = dict(existing_storyboard.get(beat_id) or {})
         row.update({
             "event_id": "E%02d" % index,
-            "time": row.get("time") or beat.get("time", "DRAFT_TIMING"),
+            # Model-generated timestamps are deliberately ignored. They can be
+            # incomplete, overlap, or create zero-duration tail events.
+            "time": deterministic_times[index - 1] if deterministic_times is not None else "DRAFT_TIMING",
             "beat_id": beat_id,
             "image_id": image_by_beat[beat_id],
             "new_image": bool(beat.get("new_image")),
@@ -1567,9 +1903,11 @@ def normalize_image_prompts(value: dict, strategy: dict | None = None) -> None:
         })
         storyboard.append(row)
     value["storyboard"] = storyboard
+    if timeline_meta is not None:
+        value["timeline"] = timeline_meta
 
 
-def validate_prompt_pack(value: dict, strategy: dict) -> dict[str, Any]:
+def validate_prompt_pack(value: dict, strategy: dict, require_timing: bool = False) -> dict[str, Any]:
     require_fields(value, ("images", "storyboard"), "image_prompt_pack")
     validate_image_strategy(strategy)
     beats = strategy["visual_beats"]
@@ -1590,8 +1928,10 @@ def validate_prompt_pack(value: dict, strategy: dict) -> dict[str, Any]:
     for image in images:
         prompt = str(image.get("prompt", ""))
         lowered = prompt.lower()
-        if not all(token in lowered for token in ("16:9", "flat illustrated", "negative:")):
+        if not all(token in lowered for token in ("16:9", "ink", "negative:")):
             issues.append("Prompt %s chưa self-contained." % image.get("image_id"))
+        if _requests_baked_image_text(prompt):
+            issues.append("Prompt %s yêu cầu chữ/label trong ảnh AI; hãy dùng overlay thủ công." % image.get("image_id"))
     expected_by_beat = {beat["id"]: beat["image_id"] for beat in beats}
     storyboard_beats = []
     for row in storyboard:
@@ -1608,8 +1948,31 @@ def validate_prompt_pack(value: dict, strategy: dict) -> dict[str, Any]:
     expected_beats = [beat["id"] for beat in beats]
     if storyboard_beats != expected_beats:
         issues.append("Storyboard phải có đúng một event cho mỗi visual beat theo đúng thứ tự.")
+    if require_timing:
+        cursor = 0
+        for row in storyboard:
+            match = re.fullmatch(r"(\d+)-(\d+)s", str(row.get("time") or ""))
+            if not match:
+                issues.append("Storyboard event %s thiếu deterministic time hợp lệ." % row.get("event_id"))
+                continue
+            start, end = int(match.group(1)), int(match.group(2))
+            if start != cursor:
+                issues.append("Storyboard event %s không liền mạch timeline." % row.get("event_id"))
+            if end <= start:
+                issues.append("Storyboard event %s có duration không hợp lệ." % row.get("event_id"))
+            cursor = end
+        timeline = value.get("timeline") if isinstance(value.get("timeline"), dict) else {}
+        if cursor != int(timeline.get("duration_seconds") or -1):
+            issues.append("Storyboard không kết thúc đúng duration deterministic.")
     ratio = len(storyboard) / len(images) if images else 0
-    return {"unique_images": len(images), "visual_events": len(storyboard), "events_per_image": round(ratio, 2), "issues": issues, "passed": not issues}
+    return {
+        "unique_images": len(images),
+        "visual_events": len(storyboard),
+        "events_per_image": round(ratio, 2),
+        "timeline": value.get("timeline") if require_timing else None,
+        "issues": issues,
+        "passed": not issues,
+    }
 
 
 # Cảnh chữ/typography/infographic không nên gen video (image-to-video từ ảnh

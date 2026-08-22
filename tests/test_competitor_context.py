@@ -26,53 +26,52 @@ import youtube_pipeline.resource_prompts as resource_prompts
 
 
 class CompetitorContextUnitTests(unittest.TestCase):
-    def test_inject_text_contains_psychtoons_patterns(self):
+    def test_inject_text_contains_japanese_long_form_patterns(self):
         text = competitor_context.competitor_inject_text()
-        self.assertIn("PsychToons", text)
-        self.assertIn("2–4 giây", text)
-        self.assertIn("9–11 phút", text)
+        self.assertIn("思考の深淵", text)
+        self.assertIn("35–45", text)
+        self.assertIn("Return an ordinary object", text)
 
     def test_inject_text_equals_baked_constant(self):
         self.assertEqual(
             competitor_context.competitor_inject_text(),
-            competitor_context.PSYCHTOONS_PATTERNS
+            competitor_context.COMPETITOR_PATTERNS
             + "\n"
-            + competitor_context.PSYCHTOONS_WRITING_DNA,
+            + competitor_context.COMPETITOR_WRITING_DNA,
         )
 
     def test_topic_candidates_prompt_includes_competitor_context(self):
         prompt = topic_candidates_prompt({}, {}, {}, competitor_context.competitor_inject_text())
-        self.assertIn("PsychToons", prompt)
+        self.assertIn("思考の深淵", prompt)
 
     def test_topic_candidates_prompt_omits_context_when_empty(self):
         prompt = topic_candidates_prompt({}, {}, {})
-        self.assertNotIn("PsychToons", prompt)
+        self.assertNotIn("思考の深淵", prompt)
 
     def test_review_prompt_includes_hook_check_when_context_given(self):
-        contract = {"target_duration_minutes": "9-11"}
+        contract = {"target_duration_minutes": "35-45"}
         prompt = review_prompt(
             contract, {}, {}, "draft", competitor_context.competitor_inject_text()
         )
-        self.assertIn("PsychToons", prompt)
+        self.assertIn("思考の深淵", prompt)
         self.assertIn("COMPETITOR HOOK CHECK", prompt)
 
     def test_review_prompt_omits_context_when_empty(self):
-        contract = {"target_duration_minutes": "9-11"}
+        contract = {"target_duration_minutes": "35-45"}
         prompt = review_prompt(contract, {}, {}, "draft")
-        self.assertNotIn("PsychToons", prompt)
+        self.assertNotIn("思考の深淵", prompt)
         self.assertNotIn("COMPETITOR HOOK CHECK", prompt)
 
     def test_thumbnail_prompt_includes_alignment_when_context_given(self):
         prompt = thumbnail_prompt(
             {}, "script", competitor_context.competitor_inject_text()
         )
-        self.assertIn("PsychToons", prompt)
+        self.assertIn("思考の深淵", prompt)
         self.assertIn("COMPETITOR ALIGNMENT", prompt)
 
     def test_thumbnail_prompt_omits_context_when_empty(self):
         prompt = thumbnail_prompt({}, "script")
-        # PsychToons-style character là STYLE LOCK cố định của kênh — luôn xuất hiện.
-        self.assertIn("PsychToons", prompt)
+        self.assertIn("recurring fictional chalk-line figure", prompt)
         self.assertNotIn("COMPETITOR ALIGNMENT", prompt)
 
     def test_style_lock_contains_qa_required_tokens(self):
@@ -80,11 +79,11 @@ class CompetitorContextUnitTests(unittest.TestCase):
         # literal token mà validate_thumbnail bắt buộc — nếu không LLM trung thành
         # với prompt sẽ bị QA reject 3 lần liên tiếp.
         lock = resource_prompts.CHARACTER_STYLE_LOCK.lower()
-        for token in ("flat illustrated", "thick black outline", "navy"):
+        for token in ("ink", "thick black outline", "off-white", "gold"):
             self.assertIn(token, lock)
         prompt = thumbnail_prompt({}, "script").lower()
-        self.assertIn("flat illustrated", prompt)
-        self.assertIn("navy", prompt)
+        self.assertIn("off-white", prompt)
+        self.assertIn("gold", prompt)
 
     def test_thumbnail_prompt_requires_soft_gradient_composition(self):
         prompt = thumbnail_prompt({}, "script").lower()
@@ -95,19 +94,33 @@ class CompetitorContextUnitTests(unittest.TestCase):
     def test_baked_text_thumbnail_prompt_carries_baked_kanji(self):
         contract = {
             "thumbnail_text": "誰のせい？",
-            "concepts": [{"scene": "The bald cartoon character sits alone at a wooden conference table."}],
+            "chosen_mode": "PARADOX",
+            "concepts": [
+                {"mode": "SELF_RECOGNITION", "scene": "Wrong scene."},
+                {"mode": "PARADOX", "scene": "The bald cartoon character sits alone at a wooden conference table."},
+            ],
         }
-        prompt = baked_text_thumbnail_prompt(contract)
+        prompt = baked_text_thumbnail_prompt(contract, "なぜ人の目が気になるのか")
         self.assertIn("誰のせい？", prompt)
         self.assertIn("16:9", prompt)
-        self.assertIn("cartoon", prompt)
-        self.assertIn("PsychToons-style", prompt)
+        self.assertIn("chalk-line", prompt)
+        self.assertIn("recurring fictional chalk-line figure", prompt)
         self.assertNotIn("no text", prompt)
-        # Spec chữ (2026-08-15): to, dễ đọc mobile, VÀNG + VIỀN ĐEN — regression guard.
+        # TV-first: chữ vàng viền đen, đủ lớn cho grid.
         self.assertIn("EXTRA LARGE", prompt)
         self.assertIn("GOLD/yellow", prompt)
         self.assertIn("BLACK outline", prompt)
-        self.assertIn("small mobile thumbnail", prompt)
+        self.assertIn("TV grid", prompt)
+        self.assertIn("Noto Sans JP Black", prompt)
+        self.assertIn("なぜ人の目が気になるのか", prompt)
+        self.assertIn("The bald cartoon character", prompt)
+        self.assertNotIn("Wrong scene", prompt)
+
+    def test_thumbnail_prompt_carries_symbol_and_typography_grammar(self):
+        prompt = thumbnail_prompt({}, "script")
+        self.assertIn("Noto Sans JP Black", prompt)
+        self.assertIn("cracked mask", prompt)
+        self.assertIn("Do not default to a figure at a desk", prompt)
 
     def test_baked_text_thumbnail_prompt_falls_back_without_text(self):
         prompt = baked_text_thumbnail_prompt({})
@@ -124,10 +137,9 @@ class CompetitorContextUnitTests(unittest.TestCase):
         (định nghĩa CHARACTER_BIBLE) — mọi prompt khác phải nội suy qua biến."""
         source = Path(resource_prompts.__file__).read_text(encoding="utf-8")
         for phrase in (
-            "pale cream skin",
-            "round black eyes",
-            "slate-blue crewneck",
-            "khaki straight-leg trousers",
+            "anonymous adult Japanese silhouette",
+            "round unfeatured head",
+            "charcoal clothing blocks",
             "fictional cartoon figure",
         ):
             self.assertEqual(
@@ -154,8 +166,8 @@ class CompetitorContextUnitTests(unittest.TestCase):
             image_prompts_prompt(strategy, contract),
         ]
         for prompt in prompts:
-            self.assertIn("pale cream skin", prompt)
-            self.assertIn("PsychToons-style", prompt)
+            self.assertIn("round unfeatured head", prompt)
+            self.assertIn("recurring fictional chalk-line figure", prompt)
             self.assertIn("fictional cartoon figure", prompt)
 
 
@@ -193,15 +205,14 @@ class CompetitorContextPipelineTests(unittest.TestCase):
             completed = self._run(provider, Path(directory))
             self.assertEqual(completed.status, "complete")
             self.assertTrue(provider.topic_candidates_context)
-            self.assertIn("PsychToons", provider.topic_candidates_context)
+            self.assertIn("思考の深淵", provider.topic_candidates_context)
 
-    def test_competitor_context_injected_in_review(self):
+    def test_legacy_review_stage_is_not_called_by_simplified_flow(self):
         with tempfile.TemporaryDirectory() as directory:
             provider = self.CapturingDemoProvider()
             completed = self._run(provider, Path(directory))
             self.assertEqual(completed.status, "complete")
-            self.assertTrue(provider.review_context)
-            self.assertIn("PsychToons", provider.review_context)
+            self.assertIsNone(provider.review_context)
 
     def test_competitor_context_injected_in_thumbnail(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -209,7 +220,7 @@ class CompetitorContextPipelineTests(unittest.TestCase):
             completed = self._run(provider, Path(directory))
             self.assertEqual(completed.status, "complete")
             self.assertTrue(provider.thumbnail_context)
-            self.assertIn("PsychToons", provider.thumbnail_context)
+            self.assertIn("思考の深淵", provider.thumbnail_context)
 
 
 if __name__ == "__main__":

@@ -50,6 +50,7 @@ def build_status(run_id: str) -> dict:
         "timeline_status": assets["timeline_status"],
         "audio": assets["audio"],
         "audio_ready": assets["audio_ready"],
+        "tts_chunks": assets["tts_chunks"],
         "sections_count": assets["sections_count"],
         "events_count": assets["events_count"],
         "unique_images": assets["unique_images"],
@@ -72,6 +73,18 @@ def build_status(run_id: str) -> dict:
             "build_video_script": str(build_service.build_video_script()),
         },
     }
+
+
+@router.post("/runs/{run_id}/merge-tts-chunks")
+def merge_tts_chunks(run_id: str) -> dict:
+    """Merge TTS audio created from script/audio-chunks into normal narration audio."""
+    _check_run_id(run_id)
+    _require_state(run_id)
+    try:
+        result = build_service.merge_tts_audio_chunks(paths.run_dir(run_id))
+    except build_service.BuildError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"run_id": run_id, **result}
 
 
 # ------------------------------------------------------------- style phụ đề

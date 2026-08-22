@@ -28,6 +28,23 @@ def _database():
     return PlatformDatabase(path)
 
 
+def snapshot_trace_context() -> dict[str, Any]:
+    """Capture trace context for provider calls moved to pool threads.
+
+    Plain ``threading`` workers do not inherit ContextVar values, so parallel
+    provider calls would otherwise log ``run_id=unknown`` and skip SQLite
+    telemetry. Snapshot on the submitting thread, restore inside the worker.
+    """
+    return {"run_id": _run_id.get(), "database_path": _database_path.get()}
+
+
+def restore_trace_context(snapshot: Mapping[str, Any]) -> None:
+    """Re-apply a snapshot created by :func:`snapshot_trace_context`."""
+    _run_id.set(str(snapshot.get("run_id") or "unknown"))
+    path = snapshot.get("database_path")
+    _database_path.set(path if isinstance(path, Path) else None)
+
+
 def _serialize(value: Any) -> str:
     if isinstance(value, str):
         return value

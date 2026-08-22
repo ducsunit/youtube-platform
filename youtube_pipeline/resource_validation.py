@@ -15,9 +15,15 @@ from .resource_pack.validation import (
     normalize_contract_titles,
     normalize_title_hook_contract,
     normalize_plan_example_budgets,
+    normalize_editorial_promise,
     normalize_review_list,
+    normalize_thumbnail_prompt,
     psychology_review_gate_verdict,
     title_hook_alignment,
+    validate_contract as _validate_contract_canonical,
+    validate_psychology_brief as _validate_psychology_brief_canonical,
+    validate_source_bounded_brief_causality,
+    validate_thumbnail,
 )
 
 
@@ -92,44 +98,8 @@ def _brief_claim_text(value: dict) -> str:
 
 
 def validate_psychology_brief(value: dict, source_pack: dict | None = None) -> None:
-    require_fields(
-        value,
-        (
-            "phenomenon_or_type", "psychological_identity",
-            "core_psychological_question", "main_tension",
-            "recognizable_behavior_signals", "common_misconception", "early_reframe",
-            "mechanism_candidates", "selected_mechanisms", "causal_chain",
-            "inner_process_map", "origin_status", "strength_status", "cost_status",
-            "practical_shift_status", "route", "exclusions",
-        ),
-        "psychology_brief",
-    )
-    if value["route"] not in PSYCHOLOGY_ROUTES:
-        raise ValueError("psychology_brief.route không hợp lệ.")
-    if not 3 <= len(value["recognizable_behavior_signals"]) <= 6:
-        raise ValueError("Psychology brief phải có 3-6 behavior signals.")
-    selected = value["selected_mechanisms"]
-    if not 1 <= len(selected) <= 2:
-        raise ValueError("Chỉ chọn 1-2 psychological mechanisms cho một video.")
-    for mechanism in selected:
-        require_fields(
-            mechanism,
-            ("name", "role", "behavior_explained", "why", "inner_process", "evidence_status"),
-            "selected mechanism",
-        )
-    for field in ("origin_status", "strength_status", "cost_status", "practical_shift_status"):
-        if value[field] not in OPTIONAL_STATUSES:
-            raise ValueError("%s có status không hợp lệ." % field)
-    if source_pack is not None:
-        unsupported = unsupported_source_claims(_brief_claim_text(value), source_pack)
-        if unsupported:
-            raise ValueError(
-                "Psychology brief chứa claim ngoài source pack: %s. "
-                "Các khái niệm này chỉ được xuất hiện trong mechanism_candidates/"
-                "exclusions/common_misconception, không trong selected_mechanisms/"
-                "psychological_identity/early_reframe/causal_chain/inner_process_map."
-                % ", ".join(unsupported)
-            )
+    """Compatibility entry point for the canonical psychology-brief contract."""
+    _validate_psychology_brief_canonical(value, source_pack)
 
 
 def anti_story_findings(text: str) -> list[str]:
@@ -519,58 +489,8 @@ def validate_source_pack(value: dict) -> None:
 
 
 def validate_contract(value: dict) -> None:
-    require_fields(
-        value,
-        (
-            "single_core_promise", "psychological_identity",
-            "core_psychological_question", "main_tension", "route",
-            "selected_mechanisms", "title_candidates", "chosen_title",
-            "target_char_min", "target_char_max", "hook_contract", "thumbnail_brief",
-            "format_lock",
-        ),
-        "script_contract",
-    )
-    # Phase 4 (plan v2 §6): contract phải khóa FORMAT, không chỉ psychology —
-    # primary format là psychological profile/deep-dive, forbidden spine là các
-    # dạng narrative. Planning/writing/review/QA đều kế thừa lock này.
-    lock = value["format_lock"]
-    if not isinstance(lock, dict):
-        raise ValueError("script_contract.format_lock phải là object.")
-    require_fields(
-        lock,
-        ("primary_format", "content_center", "primary_narration", "secondary_device", "forbidden_spine"),
-        "script_contract.format_lock",
-    )
-    if "psychological" not in str(lock["primary_format"]).lower():
-        raise ValueError("format_lock.primary_format phải là psychological profile / deep-dive.")
-    content_center = str(lock["content_center"]).lower()
-    content_center_markers = (
-        "behavior", "pattern", "kiểu người", "psychological",
-        "心理", "行動傾向", "行動パターン", "思考パターン",
-        "認知パターン", "心理傾向", "心理構造", "内的プロセス",
-    )
-    if not any(term in content_center for term in content_center_markers):
-        raise ValueError("format_lock.content_center phải khóa psychological pattern/behavior, không phải scene/story.")
-    if not isinstance(lock["forbidden_spine"], list) or len(lock["forbidden_spine"]) < 3:
-        raise ValueError("format_lock.forbidden_spine phải liệt kê ít nhất 3 forbidden spine.")
-    if len(value["title_candidates"]) != 3:
-        raise ValueError("Script contract phải có đúng 3 title candidates.")
-    for candidate in value["title_candidates"]:
-        actual = len(str(candidate.get("title", "")))
-        if not 18 <= actual <= 28:
-            raise ValueError("Mỗi title candidate phải dài 18-28 ký tự.")
-        candidate["char_count"] = actual
-    title_count = len(value["chosen_title"])
-    if not 18 <= title_count <= 28:
-        raise ValueError("Chosen title phải dài 18-28 ký tự; hiện tại %d." % title_count)
-    value["chosen_title_char_count"] = title_count
-    try:
-        target_min = int(value["target_char_min"])
-        target_max = int(value["target_char_max"])
-    except (TypeError, ValueError) as exc:
-        raise ValueError("Target ký tự phải là số nguyên dương.") from exc
-    if target_min <= 0 or target_max < target_min:
-        raise ValueError("Target ký tự không hợp lệ.")
+    """Compatibility entry point for the canonical symbolic-long-form lock."""
+    _validate_contract_canonical(value)
 
 
 def unsupported_source_claims(text: str, source_pack: dict) -> list[str]:
@@ -728,62 +648,6 @@ def title_overlap_percent(title: str, thumbnail_text: str) -> float:
     if not thumb_chars:
         return 0.0
     return len(title_chars & thumb_chars) / len(thumb_chars) * 100
-
-
-def normalize_thumbnail_prompt(value: dict) -> None:
-    """Keep the legacy thumbnail output aligned with the canonical contract."""
-    prompt = str(value.get("image_prompt", "")).strip()
-    lowered = prompt.lower()
-    additions = []
-    if "16:9" not in lowered:
-        additions.append("16:9 full bleed composition.")
-    if "no text" not in lowered:
-        additions.append("No text in base image.")
-    if "flat illustrated" not in lowered:
-        additions.append("Flat illustrated cartoon style.")
-    if "thick black outline" not in lowered:
-        additions.append("Thick black outline.")
-    if "navy" not in lowered:
-        additions.append("Navy #1A2332 background.")
-    if "fictional" not in lowered:
-        additions.append("Fictional anonymous character.")
-    if "full-bleed" not in lowered and "full bleed" not in lowered:
-        additions.append("Full-bleed scene across the entire 16:9 frame.")
-    if "gradient" not in lowered:
-        additions.append("Soft atmospheric gradient into the manual text zone; no hard split.")
-    if "identity lock" not in lowered:
-        additions.append("Identity lock: exact recurring mascot, unchanged face, outfit, proportions, and colors.")
-    if "visual identity anchor" not in lowered:
-        additions.append("Visual identity anchor: use the canonical mascot reference image when supported; match its face, outfit, colors, proportions, and thick outline exactly.")
-    value.setdefault("character_reference", {
-        "role": "canonical_mascot_visual_anchor",
-        "preferred_image": "video-build/images/IMG-01.png",
-        "fallback": "CHARACTER_BIBLE text lock",
-        "instruction": "Use the reference for identity only; vary pose, expression, crop, and scene."
-    })
-    value["image_prompt"] = " ".join([prompt, *additions]).strip()
-
-
-def validate_thumbnail(value: dict, title: str) -> dict[str, Any]:
-    require_fields(value, ("concepts", "chosen_mode", "thumbnail_text", "text_color", "background_color", "image_prompt", "negative_prompt", "overlay_spec"), "thumbnail")
-    text_count = len(value["thumbnail_text"])
-    overlap = title_overlap_percent(title, value["thumbnail_text"])
-    contrast = contrast_ratio(value["text_color"], value["background_color"])
-    issues = []
-    if not 4 <= text_count <= 11:
-        issues.append("Thumbnail text phải dài 4-11 ký tự.")
-    if overlap > 35:
-        issues.append("Title/thumbnail overlap vượt 35%.")
-    if contrast < 7:
-        issues.append("Contrast ratio thấp hơn 7:1.")
-    prompt_lower = value["image_prompt"].lower()
-    if "16:9" not in value["image_prompt"] or "no text" not in prompt_lower:
-        issues.append("Thumbnail image prompt phải có 16:9 và no text.")
-    if not all(token in prompt_lower for token in ("flat illustrated", "thick black outline", "navy")):
-        issues.append("Thumbnail phải giữ flat illustrated cartoon style lock (thick black outline, navy background).")
-    if "fictional" not in prompt_lower:
-        issues.append("Thumbnail phải ghi rõ nhân vật là fictional để tránh likeness người thật.")
-    return {"copy_chars": text_count, "title_overlap_pct": round(overlap, 2), "contrast_ratio": round(contrast, 2), "issues": issues, "passed": not issues}
 
 
 def derive_visual_density_targets(contract: dict, plan: dict) -> dict[str, int]:

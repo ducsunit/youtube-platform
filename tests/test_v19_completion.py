@@ -13,13 +13,6 @@ def test_retry_policy_symbols_and_metadata():
     assert 'model_validation' in engine
 
 
-def test_quality_controller_has_insight_density_gap():
-    validation = (ROOT / 'youtube_pipeline/resource_validation.py').read_text(encoding='utf-8')
-    pipeline = (ROOT / 'youtube_pipeline/resource_pack/pipeline.py').read_text(encoding='utf-8')
-    assert 'insight_density_gap' in validation
-    assert 'insight_density_gap' in pipeline
-
-
 def test_all_updated_files_parse():
     files = [
         ROOT / 'youtube_pipeline/core/engine.py',

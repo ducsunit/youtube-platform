@@ -10,4 +10,4 @@ from .resource_pack.prompts import _json  # noqa: F401
 
 # Static compatibility marker: the actual CHARACTER_BIBLE remains in the
 # canonical module, while older checks verify that these phrases have one owner.
-# pale cream skin; round black eyes; slate-blue crewneck; khaki straight-leg trousers; fictional cartoon figure
+# anonymous adult Japanese silhouette; round unfeatured head; charcoal clothing blocks; fictional cartoon figure

@@ -26,7 +26,14 @@ def _classify_retry(exc: Exception) -> str:
     """Classify failures so deterministic bugs are not blindly retried."""
     name = type(exc).__name__
     module = type(exc).__module__
-    message = str(exc).lower()
+    messages: list[str] = []
+    current: BaseException | None = exc
+    seen: set[int] = set()
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        messages.append(str(current).lower())
+        current = current.__cause__ or current.__context__
+    message = " | ".join(messages)
 
     if "deterministic failure" in message or "no blind retry" in message:
         return "deterministic"
@@ -35,9 +42,22 @@ def _classify_retry(exc: Exception) -> str:
         return "quality_gate"
     if isinstance(exc, RetryableStageError):
         return "explicit_retryable"
+    if any(marker in message for marker in (
+        "certificate name does not match", "certificate verify failed",
+        "ssl: certificate", "hostname mismatch", "tlsv",
+    )):
+        # A certificate/SNI mismatch cannot succeed on a second attempt. It
+        # needs a corrected provider endpoint or a repaired provider cert.
+        return "provider_configuration"
     if name in {"ValidationError", "JSONDecodeError"} or "invalid json" in message or "json hợp lệ" in message:
         return "model_validation"
-    if name in {"TimeoutError", "ReadTimeout", "ConnectTimeout"} or "timeout" in message:
+    if name in {
+        "TimeoutError", "ReadTimeout", "ConnectTimeout", "WriteTimeout",
+        "PoolTimeout", "APITimeoutError",
+    } or any(marker in message for marker in (
+        "timeout", "timed out", "deadline exceeded", "gateway timeout",
+        "request timeout", "request timed out",
+    )):
         return "timeout"
     code = getattr(exc, "code", None)
     try:
@@ -52,6 +72,11 @@ def _classify_retry(exc: Exception) -> str:
         return "provider_transient"
     if "503" in message or "service unavailable" in message or "high demand" in message:
         return "provider_transient"
+    if name in {"APIConnectionError", "ConnectError", "NetworkError"} or any(marker in message for marker in (
+        "connection error", "connection refused", "network is unreachable",
+        "name or service not known", "temporary failure in name resolution",
+    )):
+        return "provider_connection"
     if any(marker in message for marker in ("401", "403", "404", "invalid api key", "model not found", "not found")):
         return "provider_configuration"
     if isinstance(exc, (ValueError, KeyError, TypeError, AttributeError, AssertionError)):

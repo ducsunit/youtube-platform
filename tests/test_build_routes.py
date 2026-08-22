@@ -97,6 +97,10 @@ class TestBuildStatus(BuildApiTestCase):
         self.assertIsNone(body["last_report"])
         # Skeleton thư mục được tạo sẵn cho người dùng bỏ file vào.
         self.assertTrue((self.root / "runs" / "demo-run" / "audio").is_dir())
+        self.assertTrue(body["tts_chunks"]["available"])
+        self.assertGreater(body["tts_chunks"]["total"], 0)
+        self.assertEqual(body["tts_chunks"]["generated"], 0)
+        self.assertTrue((self.root / "runs" / "demo-run" / "script" / "audio-chunks" / "manifest.json").is_file())
         self.assertTrue((self.root / "runs" / "demo-run" / "video-build" / "images").is_dir())
 
     def test_status_run_id_invalid(self) -> None:

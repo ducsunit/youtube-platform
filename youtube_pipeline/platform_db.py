@@ -226,6 +226,13 @@ class PlatformDatabase:
                 ),
             )
 
+    def set_topic_status(self, run_id: str, status: str) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                "UPDATE topic_history SET status=?, recorded_at=CURRENT_TIMESTAMP WHERE run_id=?",
+                (status, run_id),
+            )
+
     def has_run(self, run_id: str) -> bool:
         with self._connect() as connection:
             return connection.execute("SELECT 1 FROM runs WHERE run_id=?", (run_id,)).fetchone() is not None
@@ -235,7 +242,7 @@ class PlatformDatabase:
             rows = connection.execute(
                 """SELECT run_id,status,topic,title,source_concept,source_work,audience_moment,
                           promise,angle,mechanisms_json
-                   FROM topic_history WHERE status='completed' ORDER BY recorded_at"""
+                   FROM topic_history ORDER BY recorded_at"""
             ).fetchall()
         return [
             {

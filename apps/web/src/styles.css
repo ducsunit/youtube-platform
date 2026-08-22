@@ -897,6 +897,69 @@ select {
   color: var(--text-heading);
 }
 
+.stage-phase {
+  border-bottom: 1px solid var(--border);
+}
+
+.stage-phase-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.stage-phase-row:hover,
+.stage-phase-row.running {
+  background: rgba(59, 130, 246, 0.08);
+}
+
+.stage-phase-idx {
+  border-color: var(--accent);
+  color: var(--accent);
+  flex: 0 0 auto;
+}
+
+.stage-phase-copy {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.stage-phase-copy strong {
+  color: var(--text-heading);
+  font-size: 13px;
+}
+
+.stage-phase-copy small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.stage-chevron {
+  color: var(--muted);
+  transition: transform 0.15s ease;
+}
+
+.stage-chevron.open {
+  transform: rotate(180deg);
+}
+
+.stage-phase-details {
+  background: rgba(15, 23, 42, 0.18);
+}
+
+.stage-detail-row {
+  padding-left: 34px;
+}
+
 /* ---------- Log Console & Viewer ---------- */
 
 .log-viewer {

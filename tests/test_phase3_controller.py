@@ -29,6 +29,24 @@ def test_retry_controller_does_not_retry_wrapped_deterministic_failure():
     assert _classify_retry(RuntimeError("planning deterministic failure (no blind retry): bad hook")) == "deterministic"
 
 
+def test_retry_controller_classifies_gateway_worded_timeout():
+    assert _classify_retry(RuntimeError("Request timed out")) == "timeout"
+
+
+def test_retry_controller_stops_on_tls_certificate_mismatch_wrapped_by_sdk():
+    cause = RuntimeError("api.example.test certificate name does not match input")
+    wrapper = RuntimeError("Connection error")
+    wrapper.__cause__ = cause
+    assert _classify_retry(wrapper) == "provider_configuration"
+
+
+def test_retry_controller_marks_generic_sdk_connection_as_provider_connection():
+    class APIConnectionError(Exception):
+        pass
+
+    assert _classify_retry(APIConnectionError("Connection error")) == "provider_connection"
+
+
 def test_audit_contract_is_normalized_before_gate_decision():
     report = normalize_audit_report({"decision": "pass"}, "gemini")
     assert report["decision"] == "revise"

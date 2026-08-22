@@ -6,10 +6,11 @@ model. It gives every later model the same claim boundary for one run.
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 
-POLICY_VERSION = 2
+POLICY_VERSION = 3
 
 # These are common named frameworks that must not leak from a prior run. A term
 # is allowed only when this run's source evidence explicitly contains it.
@@ -21,10 +22,27 @@ KNOWN_NAMED_FRAMEWORKS = (
     "スキーマ療法",
     "ポリヴェーガル理論",
     "トラウマ反応",
+    # Jungian depth-psychology terms (competitor 思考の深淵). Blocked by default,
+    # allowed only when this run's locked source evidence contains the concept —
+    # the Jung Collected Works entries in the source catalog unlock them.
+    "ユング心理学",
+    "個性化",
+    "シャドウ",
+    "集合的無意識",
+    "元型",
+    "自己統合",
 )
 
 FRAMEWORK_SOURCE_ALIASES = {
     "アドラー心理学": ("課題の分離",),
+    # Any Jung source that names one core concept unlocks the shared vocabulary,
+    # so a locked Jungian source pack does not fail on a sibling term.
+    "ユング心理学": ("個性化", "シャドウ", "集合的無意識", "元型", "自己統合", "jung", "ユング"),
+    "個性化": ("individuation", "ユング", "jung"),
+    "シャドウ": ("shadow", "ユング", "jung"),
+    "集合的無意識": ("collective unconscious", "ユング", "jung"),
+    "元型": ("archetype", "ユング", "jung"),
+    "自己統合": ("self", "individuation", "ユング", "jung"),
 }
 
 # A short-term relief -> repeated behavior loop is a distinct causal claim.
@@ -37,6 +55,88 @@ REINFORCEMENT_SUPPORT_MARKERS = (
     "一時的な安心", "一時的に不安を下げ", "短期的な安心",
     "củng cố hành vi", "duy trì hành vi", "giảm khó chịu tạm thời",
 )
+
+# These are separate causal capabilities, not harmless wording variations.
+# They remain disabled unless a verified source explicitly supports them.  In
+# particular, editorial_application may frame an observation but cannot grant
+# a cognitive-process claim by itself.
+CAUSAL_CAPABILITY_MARKERS = {
+    "attention_pathway": (
+        "attention shifts", "attention is drawn", "attentional capture",
+        "注意が向", "注意を引", "注意が固定",
+    ),
+    "decision_fatigue": (
+        "decision fatigue", "judgment fatigue", "判断疲労", "判断の反復による疲労",
+    ),
+    "exposure_as_evidence": (
+        "exposure is evidence", "刺激への反復曝露の証拠", "曝露の証拠",
+    ),
+    "reproducible_conditions_guarantee": (
+        "reproducible conditions", "再現しやすい条件", "再現可能な条件",
+    ),
+    "goal_behavior_under_distress": (
+        "goal-directed behavior under distress", "苦痛を伴いながら", "苦痛の中でも目標",
+    ),
+    # Prediction-error evidence is often deliberately narrow (for example,
+    # neural responses in primates). It must not silently become a human
+    # learning loop or a direct explanation for starting/stopping behavior.
+    "prediction_error_updates_future_prediction": (
+        "prediction error updates future predictions", "prediction error updates expectation",
+        "予測誤差が次の予測を更新", "予測誤差は将来の予測を更新",
+    ),
+    "prediction_error_direct_behavior_effect": (
+        "prediction error directly changes behavior", "prediction error causes behavior to stop",
+        "予測誤差が行動を直接変える", "予測誤差が行動を止める",
+    ),
+}
+
+
+_PREDICTION_ERROR_TERM_RE = re.compile(
+    r"予測(?:誤差|と.{0,8}(?:ずれ|差))|prediction\s*error|sai lệch.{0,16}dự đoán|dự đoán.{0,16}(?:sai lệch|kết quả)",
+    re.IGNORECASE,
+)
+
+_PREDICTION_ERROR_FUTURE_UPDATE_RE = re.compile(
+    r"(?:予測|期待).{0,24}(?:見直|更新|修正).{0,24}(?:次|将来)|(?:次|将来).{0,24}(?:予測|期待).{0,24}(?:見直|更新|修正)|"
+    r"(?:prediction|expectation).{0,40}(?:update|revise|adjust)|(?:update|revise|adjust).{0,40}(?:prediction|expectation)|"
+    r"(?:dự đoán|kỳ vọng).{0,48}(?:điều chỉnh|cập nhật|sửa).{0,48}(?:lần sau|tiếp)|(?:lần sau|tiếp).{0,48}(?:dự đoán|kỳ vọng).{0,48}(?:điều chỉnh|cập nhật|sửa)",
+    re.IGNORECASE,
+)
+
+_PREDICTION_ERROR_BEHAVIOR_RE = re.compile(
+    r"(?:予測|結果|現実).{0,36}(?:行動|続け|止め|やめ|始め).{0,36}(?:変|止|減|難)|"
+    r"(?:予測|結果|現実).{0,50}(?:行動を(?:止|やめ|続け|始め)|動機.{0,12}(?:下|失)|続ける.{0,12}(?:止|やめ))|"
+    r"(?:行動|続け|止め|やめ|始め).{0,36}(?:予測|結果|現実).{0,36}(?:ため|から|によ|で)|"
+    r"(?:prediction|result|outcome).{0,52}(?:behavior|continue|stop|start|motivation).{0,52}(?:change|stop|reduce)|"
+    r"(?:behavior|continue|stop|start|motivation).{0,52}(?:prediction|result|outcome).{0,52}(?:change|stop|reduce)|"
+    r"(?:dự đoán|kết quả|thực tế).{0,64}(?:hành vi|tiếp tục|dừng|bắt đầu|động lực).{0,64}(?:thay đổi|dừng|giảm|khó)|"
+    r"(?:hành vi|tiếp tục|dừng|bắt đầu|động lực).{0,64}(?:dự đoán|kết quả|thực tế).{0,64}(?:thay đổi|dừng|giảm|khó)",
+    re.IGNORECASE,
+)
+
+
+def causal_capability_violations(text: str, source_pack: dict[str, Any]) -> list[str]:
+    """Find causal expansions that the locked evidence has not licensed.
+
+    The function intentionally names the unsupported *capability*, rather than
+    pretending a keyword in the script is itself a proof violation. This keeps
+    prediction-error source packs useful at their supported descriptive level.
+    """
+    content = str(text or "")
+    capabilities = source_causal_capabilities(source_pack)
+    violations: list[str] = []
+    if _PREDICTION_ERROR_TERM_RE.search(content):
+        if (
+            _PREDICTION_ERROR_FUTURE_UPDATE_RE.search(content)
+            and not capabilities["prediction_error_updates_future_prediction"]
+        ):
+            violations.append("prediction_error_updates_future_prediction")
+        if (
+            _PREDICTION_ERROR_BEHAVIOR_RE.search(content)
+            and not capabilities["prediction_error_direct_behavior_effect"]
+        ):
+            violations.append("prediction_error_direct_behavior_effect")
+    return violations
 
 
 def _source_evidence(source_pack: dict[str, Any]) -> str:
@@ -74,6 +174,17 @@ def source_supports_reinforcement_loop(source_pack: dict[str, Any]) -> bool:
     """Whether this source pack explicitly supports a relief-maintenance loop."""
     evidence = _verified_source_evidence(source_pack).lower()
     return any(marker.lower() in evidence for marker in REINFORCEMENT_SUPPORT_MARKERS)
+
+
+def source_causal_capabilities(source_pack: dict[str, Any]) -> dict[str, bool]:
+    """Return only causal abilities evidenced by locked verified sources."""
+    evidence = _verified_source_evidence(source_pack).lower()
+    capabilities = {
+        name: any(marker.lower() in evidence for marker in markers)
+        for name, markers in CAUSAL_CAPABILITY_MARKERS.items()
+    }
+    capabilities["reinforcement_loop"] = source_supports_reinforcement_loop(source_pack)
+    return capabilities
 
 
 def build_claim_ledger(source_pack: dict[str, Any]) -> dict[str, Any]:
@@ -133,9 +244,7 @@ def build_claim_ledger(source_pack: dict[str, Any]) -> dict[str, Any]:
             "causal mechanism beyond the stated support",
             "diagnosis, childhood cause, trauma cause, or neuroscience claim without support",
         ],
-        "capabilities": {
-            "reinforcement_loop": source_supports_reinforcement_loop(source_pack),
-        },
+        "capabilities": source_causal_capabilities(source_pack),
     }
 
 
@@ -150,6 +259,8 @@ def validate_claim_ledger(value: dict[str, Any]) -> None:
         raise ValueError("claim_ledger phải có ít nhất một allowed claim.")
     if not isinstance(value["forbidden_terms"], list):
         raise ValueError("claim_ledger.forbidden_terms phải là danh sách.")
+    if not isinstance(value.get("capabilities"), dict):
+        raise ValueError("claim_ledger.capabilities phải là object.")
 
 
 def attach_claim_ledger(source_pack: dict[str, Any], ledger: dict[str, Any]) -> dict[str, Any]:

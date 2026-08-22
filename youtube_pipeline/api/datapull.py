@@ -32,6 +32,9 @@ REQUIRED_SCOPES = (
     "https://www.googleapis.com/auth/youtube.force-ssl",
     "https://www.googleapis.com/auth/yt-analytics.readonly",
 )
+DEFAULT_DATASET_FILE = "data/channels/youtube_data.json"
+DATASET_DIRECTORIES = (Path("data/channels"),)
+DATASET_MAX_AGE_HOURS = 24
 
 # Video ID YouTube: 11 ký tự [A-Za-z0-9_-]; cho phép 1-20 để không quá chặt.
 _VIDEO_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,20}$")
@@ -184,21 +187,94 @@ def validate_dates(start_date, end_date) -> tuple[str, str]:
 
 
 def resolve_out_file(out_file: Optional[str] = None) -> Path:
-    """Tên file output — bắt buộc .json, nằm ở gốc backend (không có /).
-
-    Gốc backend là nơi GET /api/config quét `*.json` nên file kéo về xuất hiện
-    ngay trong dropdown "Tạo run mới" — không cần copy thủ công.
-    """
-    name = (out_file or "youtube_data.json").strip()
+    """Resolve a JSON output below the canonical data/channels directory."""
+    name = (out_file or DEFAULT_DATASET_FILE).strip()
     if not name.endswith(".json"):
         raise ValueError("out_file phải kết thúc bằng .json")
-    if "/" in name or "\\" in name:
-        raise ValueError("out_file phải là tên file ở gốc thư mục backend (không có /)")
     root = paths.backend_root().resolve()
     out = (root / name).resolve()
-    if not out.is_relative_to(root):
-        raise ValueError("out_file phải nằm trong thư mục backend")
+    data_root = (root / "data/channels").resolve()
+    if not out.is_relative_to(data_root):
+        raise ValueError("out_file phải nằm trong data/channels")
+    out.parent.mkdir(parents=True, exist_ok=True)
     return out
+
+
+def _dataset_metadata(path: Path) -> Optional[dict]:
+    """Return safe, UI-ready metadata for a persisted channel snapshot."""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(data, dict) or not isinstance(data.get("videos"), (dict, list)):
+        return None
+    generated_at = data.get("generated_at")
+    age_hours = None
+    freshness = "unknown"
+    if isinstance(generated_at, str):
+        try:
+            generated = datetime.fromisoformat(generated_at.replace("Z", "+00:00"))
+            if generated.tzinfo is None:
+                generated = generated.replace(tzinfo=timezone.utc)
+            age_hours = max(0.0, (datetime.now(timezone.utc) - generated.astimezone(timezone.utc)).total_seconds() / 3600)
+            freshness = "stale" if age_hours > DATASET_MAX_AGE_HOURS else "fresh"
+        except ValueError:
+            freshness = "invalid_timestamp"
+    videos = data["videos"]
+    rows = list(videos.values()) if isinstance(videos, dict) else videos
+    has_reach = any(
+        isinstance(row, dict)
+        and isinstance((row.get("analytics") or {}).get("reach"), dict)
+        and (row.get("analytics") or {}).get("reach", {}).get("impressions_ctr") is not None
+        for row in rows
+    )
+    root = paths.backend_root().resolve()
+    return {
+        "file": str(path.resolve().relative_to(root)),
+        # Compatibility for consumers that predate explicit dataset metadata.
+        "name": str(path.resolve().relative_to(root)),
+        "generated_at": generated_at,
+        "age_hours": round(age_hours, 1) if age_hours is not None else None,
+        "freshness": freshness,
+        "video_count": len(rows),
+        "channel_id": data.get("channel_id"),
+        "analytics_window": data.get("analytics_window"),
+        "has_reporting_reach": has_reach,
+        "size_bytes": path.stat().st_size,
+        "modified_at": datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc).isoformat(),
+    }
+
+
+def list_datasets() -> list[dict]:
+    """Discover only approved snapshot locations; never expose arbitrary paths."""
+    root = paths.backend_root().resolve()
+    found: list[dict] = []
+    seen: set[Path] = set()
+    for relative in DATASET_DIRECTORIES:
+        directory = (root / relative).resolve()
+        if not directory.is_dir() or not directory.is_relative_to(root):
+            continue
+        iterator = directory.rglob("*.json")
+        for path in iterator:
+            resolved = path.resolve()
+            if resolved in seen or not resolved.is_file() or not resolved.is_relative_to(root):
+                continue
+            seen.add(resolved)
+            metadata = _dataset_metadata(resolved)
+            if metadata:
+                found.append(metadata)
+    return sorted(found, key=lambda item: (item.get("generated_at") or "", item["modified_at"]), reverse=True)
+
+
+def resolve_dataset_file(name: str) -> Path:
+    """Resolve a dataset by its UI-provided relative name and approved catalog."""
+    catalog = {item["file"]: item for item in list_datasets()}
+    if name not in catalog:
+        raise ValueError("Dataset không tồn tại hoặc không phải channel snapshot hợp lệ: %s" % name)
+    path = (paths.backend_root().resolve() / name).resolve()
+    if not path.is_file():
+        raise ValueError("Dataset không còn tồn tại: %s" % name)
+    return path
 
 
 # ------------------------------------------------------------------ token
@@ -234,22 +310,13 @@ def token_status(pull_dir: Path) -> dict:
 
 def last_result() -> Optional[dict]:
     """Đọc file kéo gần nhất ở gốc backend -> {file, generated_at, ...}."""
-    out_name = data_runner.last_out_file() or "youtube_data.json"
-    path = paths.backend_root() / out_name
-    if not path.is_file():
-        return None
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None
-    videos = data.get("videos") or {}
-    return {
-        "file": out_name,
-        "generated_at": data.get("generated_at"),
-        "channel_id": data.get("channel_id"),
-        "video_count": len(videos),
-        "analytics_window": data.get("analytics_window"),
-    }
+    preferred = data_runner.last_out_file()
+    datasets = list_datasets()
+    if preferred:
+        match = next((item for item in datasets if item["file"] == preferred), None)
+        if match:
+            return match
+    return datasets[0] if datasets else None
 
 
 # -------------------------------------------------------------------- runner

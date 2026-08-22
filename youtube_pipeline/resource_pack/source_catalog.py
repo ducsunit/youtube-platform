@@ -233,6 +233,46 @@ APPROVED_SOURCE_CATALOG = [
             "レジリエンスを精神論や根性論だけで説明すること",
         ],
     },
+    {
+        "title": "The Collected Works of C. G. Jung, Vol. 9 Part 1: The Archetypes and the Collective Unconscious",
+        "url": "https://doi.org/10.1515/9781400850969",
+        "supports": (
+            "Jung describes individuation (個性化), archetypes, and the collective unconscious as an "
+            "interpretive framework for psychological development, not as empirically proven mechanisms."
+        ),
+        "authors": ["C. G. Jung"],
+        "publication_year": 1969,
+        "publisher": "Princeton University Press",
+        "citation_hint": "Jung, C. G. (1969), Collected Works Vol. 9.1, Princeton University Press",
+        "allowed_paraphrases": [
+            "個性化とは、無意識の側面を意識に統合していく過程として語られます",
+            "元型や集合的無意識は、体験を解釈するための枠組みとして用います（証明された因果ではありません）",
+        ],
+        "forbidden_attributions": [
+            "ユング理論を科学的に証明された事実として断定すること",
+            "視聴者個人の幼少期トラウマや診断をこの枠組みだけで決めつけること",
+        ],
+    },
+    {
+        "title": "The Collected Works of C. G. Jung, Vol. 9 Part 2: Aion — Researches into the Phenomenology of the Self",
+        "url": "https://doi.org/10.1515/9781400851058",
+        "supports": (
+            "Jung develops the shadow (シャドウ) and the Self as symbolic structures of the psyche, "
+            "framed as an interpretive lens for self-integration rather than a clinical diagnosis."
+        ),
+        "authors": ["C. G. Jung"],
+        "publication_year": 1969,
+        "publisher": "Princeton University Press",
+        "citation_hint": "Jung, C. G. (1969), Aion, Collected Works Vol. 9.2, Princeton University Press",
+        "allowed_paraphrases": [
+            "シャドウとは、自分が認めにくい側面を象徴的に指す言葉として用います",
+            "自己統合は、否認していた部分を意識に含めていく象徴的な過程として語られます",
+        ],
+        "forbidden_attributions": [
+            "シャドウ統合が特定の症状を必ず治すという断定",
+            "象徴的な解釈を医学的診断として提示すること",
+        ],
+    },
 ]
 
 # Backward-compatible name used by existing imports and generated artifacts.

@@ -46,9 +46,9 @@ def test_visual_targets_include_a_recommended_event_range():
 
 def test_resource_pack_uses_shared_competitor_writing_context():
     text = competitor_inject_text()
-    assert "PsychToons" in text
-    assert "Cold open" in text
-    assert "2–4 giây" in text
+    assert "思考の深淵" in text
+    assert "個性化" in text
+    assert "35–45" in text
 
 
 def test_source_catalog_contains_verified_academic_directions():

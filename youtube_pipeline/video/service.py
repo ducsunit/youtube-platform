@@ -24,6 +24,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any, Callable, Optional
 
@@ -157,6 +158,7 @@ def check_assets(run_dir: Path) -> dict:
         "timeline_status": None,
         "audio": None,
         "audio_ready": False,
+        "tts_chunks": {"available": False, "total": 0, "generated": 0, "chunks": [], "merge_output": None},
         "sections_count": None,
         "events_count": None,
         "unique_images": None,
@@ -187,7 +189,7 @@ def check_assets(run_dir: Path) -> dict:
 
     result["pipeline_ready"] = True
     # Skeleton thư mục luôn có sẵn: người dùng biết chính xác chỗ bỏ audio/ảnh.
-    for d in (run_dir / "audio", run_dir / "subtitles",
+    for d in (run_dir / "audio", run_dir / "audio" / "chunks", run_dir / "subtitles",
               build_dir, build_dir / "audio", build_dir / "images",
               build_dir / "import", build_dir / "srt", build_dir / "clips"):
         d.mkdir(parents=True, exist_ok=True)
@@ -200,6 +202,36 @@ def check_assets(run_dir: Path) -> dict:
     result["sections_count"] = meta["section_count"]
     result["events_count"] = meta["event_count"]
     result["unique_images"] = meta["unique_images"]
+
+    manifest_path = run_dir / "script" / "audio-chunks" / "manifest.json"
+    if manifest_path.is_file():
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            rows = manifest.get("chunks") if isinstance(manifest, dict) else []
+            if isinstance(rows, list):
+                chunks = []
+                for row in rows:
+                    if not isinstance(row, dict):
+                        continue
+                    output = str(row.get("audio_output") or "")
+                    ready = bool(output) and (run_dir / output).is_file()
+                    chunks.append({
+                        "id": str(row.get("id") or ""),
+                        "file": str(row.get("file") or ""),
+                        "path": str(row.get("path") or ""),
+                        "chars": int(row.get("chars") or 0),
+                        "audio_output": output,
+                        "audio_ready": ready,
+                    })
+                result["tts_chunks"] = {
+                    "available": bool(chunks),
+                    "total": len(chunks),
+                    "generated": sum(1 for row in chunks if row["audio_ready"]),
+                    "chunks": chunks,
+                    "merge_output": str(manifest.get("merge_output") or "audio/narration-merged.mp3"),
+                }
+        except (OSError, ValueError, json.JSONDecodeError):
+            pass
 
     audio = find_audio_file(run_dir / "audio")
     if audio is not None:
@@ -232,6 +264,56 @@ def check_assets(run_dir: Path) -> dict:
         result["missing_reason"] = None  # đủ tài nguyên — bấm Dựng video
 
     return result
+
+
+def merge_tts_audio_chunks(run_dir: Path) -> dict:
+    """Merge externally generated per-chunk narration into the normal audio input.
+
+    The resource pack owns text chunks; external TTS owns the individual MP3s.
+    This small bridge produces the one audio file expected by SRT and video
+    build without changing any script or timeline artifact.
+    """
+    manifest_path = run_dir / "script" / "audio-chunks" / "manifest.json"
+    if not manifest_path.is_file():
+        raise BuildError("Chưa có TTS chunk manifest; hãy chạy Resource Pack trước.")
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise BuildError("TTS chunk manifest hỏng: %s" % exc) from exc
+    rows = manifest.get("chunks") if isinstance(manifest, dict) else None
+    if not isinstance(rows, list) or not rows:
+        raise BuildError("TTS chunk manifest không có chunks.")
+    audio_files = []
+    for row in rows:
+        if not isinstance(row, dict):
+            raise BuildError("TTS chunk manifest có row không hợp lệ.")
+        rel = str(row.get("audio_output") or "")
+        path = (run_dir / rel).resolve()
+        if not rel or not path.is_relative_to(run_dir.resolve()) or not path.is_file():
+            raise BuildError("Thiếu audio TTS chunk: %s" % (rel or "unknown"))
+        audio_files.append(path)
+    if not shutil.which("ffmpeg"):
+        raise BuildError("Chưa cài ffmpeg; không thể ghép audio chunks.")
+    output = (run_dir / str(manifest.get("merge_output") or "audio/narration-merged.mp3")).resolve()
+    if not output.is_relative_to(run_dir.resolve()):
+        raise BuildError("merge_output ngoài run directory.")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile("w", encoding="utf-8", prefix="tts-concat-", suffix=".txt", delete=False) as handle:
+        concat_path = Path(handle.name)
+        for audio in audio_files:
+            handle.write("file '%s'\n" % str(audio).replace("'", "'\\''"))
+    try:
+        result = subprocess.run(
+            ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(concat_path), "-vn", "-c:a", "libmp3lame", "-b:a", "192k", str(output)],
+            capture_output=True,
+            text=True,
+            timeout=600,
+        )
+    finally:
+        concat_path.unlink(missing_ok=True)
+    if result.returncode != 0 or not output.is_file():
+        raise BuildError("ffmpeg ghép TTS chunks thất bại: %s" % (result.stderr[-800:] or "unknown error"))
+    return {"output": str(output.relative_to(run_dir)), "chunks": len(audio_files), "size_bytes": output.stat().st_size}
 
 
 def _read_report(build_dir: Path) -> Optional[dict]:

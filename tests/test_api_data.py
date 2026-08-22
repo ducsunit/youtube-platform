@@ -107,8 +107,10 @@ class DataApiTestCase(unittest.TestCase):
             json.dumps(data, ensure_ascii=False), encoding="utf-8"
         )
 
-    def write_result(self, name: str = "youtube_data.json", videos: int = 3) -> None:
-        (self.root / name).write_text(
+    def write_result(self, name: str = "data/channels/youtube_data.json", videos: int = 3) -> None:
+        path = self.root / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
             json.dumps(
                 {
                     "schema_version": 2,
@@ -185,7 +187,7 @@ class TestStatus(DataApiTestCase):
         b = self.client.get("/api/data/status").json()
         lr = b["last_result"]
         self.assertIsNotNone(lr)
-        self.assertEqual(lr["file"], "youtube_data.json")
+        self.assertEqual(lr["file"], "data/channels/youtube_data.json")
         self.assertEqual(lr["channel_id"], "UCtest")
         self.assertEqual(lr["video_count"], 3)
         self.assertEqual(lr["analytics_window"]["end"], "2026-07-31")
@@ -232,7 +234,7 @@ class TestActions(DataApiTestCase):
         self.assertEqual(argv[0], "youtube_pull.py")
         # builder đặt --out trước, --videos sau (sys.argv không có python).
         self.assertEqual(argv[1], "--out")
-        self.assertEqual(argv[2], str((self.root / "youtube_data.json").resolve()))
+        self.assertEqual(argv[2], str((self.root / "data/channels/youtube_data.json").resolve()))
         self.assertEqual(
             argv[argv.index("--videos") : argv.index("--videos") + 3],
             ["--videos", "abc123_XY", "Zz0"],
@@ -254,7 +256,7 @@ class TestActions(DataApiTestCase):
         self.assertEqual(r.status_code, 202)
         self.wait_job(r.json()["job_id"])
         argv = self.invocations()[0]["argv"]
-        self.assertEqual(argv, ["youtube_pull.py", "--out", str((self.root / "youtube_data.json").resolve())])
+        self.assertEqual(argv, ["youtube_pull.py", "--out", str((self.root / "data/channels/youtube_data.json").resolve())])
         self.assertNotIn("--videos", argv)
 
     def test_pull_advanced_options(self) -> None:
@@ -276,21 +278,21 @@ class TestActions(DataApiTestCase):
         self.assertIn("--no-replies", argv)
 
     def test_pull_custom_out_file(self) -> None:
-        self.write_result("custom.json", videos=2)
+        self.write_result("data/channels/custom.json", videos=2)
         r = self.client.post(
             "/api/data/pull",
-            json={"mode": "all", "out_file": "custom.json"},
+            json={"mode": "all", "out_file": "data/channels/custom.json"},
         )
         self.assertEqual(r.status_code, 202)
         self.wait_job(r.json()["job_id"])
         argv = self.invocations()[0]["argv"]
-        self.assertEqual(argv[argv.index("--out") + 1], str((self.root / "custom.json").resolve()))
+        self.assertEqual(argv[argv.index("--out") + 1], str((self.root / "data/channels/custom.json").resolve()))
         # last_result giờ trỏ vào file mới — và /api/config quét được nó.
         b = self.client.get("/api/data/status").json()
-        self.assertEqual(b["last_result"]["file"], "custom.json")
+        self.assertEqual(b["last_result"]["file"], "data/channels/custom.json")
         self.assertEqual(b["last_result"]["video_count"], 2)
         config_files = [f["name"] for f in self.client.get("/api/config").json()["input_files"]]
-        self.assertIn("custom.json", config_files)
+        self.assertIn("data/channels/custom.json", config_files)
 
     def test_pull_validation_400(self) -> None:
         cases = [
@@ -303,7 +305,7 @@ class TestActions(DataApiTestCase):
             {"mode": "range", "start_date": "2026-08-01", "end_date": "2026-07-01"},
             {"mode": "all", "out_file": "../escape.json"},
             {"mode": "all", "out_file": "notes.txt"},
-            {"mode": "all", "out_file": "sub/foo.json"},
+            {"mode": "all", "out_file": "custom.json"},
             {"mode": "all", "max_comments": -3},
         ]
         for case in cases:
@@ -321,13 +323,13 @@ class TestActions(DataApiTestCase):
 
     def test_reporting_sync(self) -> None:
         r = self.client.post(
-            "/api/data/reporting", json={"action": "sync", "out_file": "youtube_data.json"}
+            "/api/data/reporting", json={"action": "sync", "out_file": "data/channels/youtube_data.json"}
         )
         self.assertEqual(r.status_code, 202)
         self.wait_job(r.json()["job_id"])
         argv = self.invocations()[0]["argv"]
         self.assertIn("--sync-reporting", argv)
-        self.assertEqual(argv[argv.index("--out") + 1], str((self.root / "youtube_data.json").resolve()))
+        self.assertEqual(argv[argv.index("--out") + 1], str((self.root / "data/channels/youtube_data.json").resolve()))
 
     def test_reporting_bad_action(self) -> None:
         r = self.client.post("/api/data/reporting", json={"action": "purge"})

@@ -7,9 +7,19 @@ description: "Tạo chiến lược và prompt thumbnail YouTube tâm lý học 
 > Mọi giá trị global reference qua key `CONSTANTS.<key>`. Không hardcode số.
 > Nếu không đọc được file đó, dừng lại — không tự đoán.
 
-> Phiên bản 3.2.0 — cập nhật 2026-08-08: khóa style theo `thumbnail-template/thumbnail-video1.png`, thêm likeness/privacy gate.
+> Phiên bản 4.0.0 — cập nhật 2026-08-20: theo visual grammar high-contrast ink của `思考の深淵`, không sao chép layout từng video.
 
 # THUMBNAIL MASTER JP — CLICK-FIRST
+
+## Current Visual Lock
+
+This section overrides earlier PsychToons/navy references in this historical skill.
+
+- Use an off-white paper field, thick black ink drawing, black silhouettes/brush shadows, and exactly one controlled gold-yellow accent.
+- Place one oversized 6-10 character Japanese headline in the upper 28-34% of the frame; gold fill, thick black outline, one or two lines.
+- Below it, show one symbolic conflict: a lone figure vs shadow crowd, a threshold/door, a broken mask, a small repeated act, or another topic-specific metaphor.
+- Do not copy the competitor's women, exact masks, door, typography, or composition. Preserve the channel's canonical mascot identity when it appears.
+- The title carries the long identity/pain/contradiction. The thumbnail carries the short emotional verdict. Together they form one promise.
 
 Bạn là Thumbnail Strategist và Art Director. Chạy sau khi full script đã hoàn thành.
 
@@ -93,8 +103,8 @@ Sau khi tạo 3 concept, CHỌN MỘT để làm, không xuất bản kiểu "ba
 COPY_LIMITS:
   preferred_lines: 1
   max_lines: 2
-  preferred_total_japanese_chars: "4-8"    # → xem: CONSTANTS.thumbnail_copy_target_chars
-  hard_max_total_japanese_chars: 11        # → xem: CONSTANTS.thumbnail_copy_hard_max_chars
+  preferred_total_japanese_chars: "6-10"  # → xem: CONSTANTS.thumbnail_copy_target_chars
+  hard_max_total_japanese_chars: 14         # → xem: CONSTANTS.thumbnail_copy_hard_max_chars
   title_overlap_max: 35%                   # → xem: CONSTANTS.title_thumbnail_overlap_max_pct
 ```
 

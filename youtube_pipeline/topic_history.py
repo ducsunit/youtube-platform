@@ -34,13 +34,21 @@ def load_history(project_root: Path) -> list[dict[str, Any]]:
             payload = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             payload = {}
-    rows = [row for row in (payload.get("topics", []) if isinstance(payload, dict) else []) if isinstance(row, dict) and row.get("status") == "completed"]
+    rows = [
+        {**row, "status": "published" if row.get("status") == "completed" else row.get("status", "drafted")}
+        for row in (payload.get("topics", []) if isinstance(payload, dict) else [])
+        if isinstance(row, dict)
+    ]
     # SQLite is the platform index; the JSON catalog remains portable fallback.
     # Merge both so an existing JSON history stays effective until reindexed.
     database_path = _database_path(root)
     if database_path.is_file():
         from .platform_db import PlatformDatabase
         indexed = PlatformDatabase(database_path).completed_topics()
+        indexed = [
+            {**row, "status": "published" if row.get("status") == "completed" else row.get("status", "drafted")}
+            for row in indexed
+        ]
         by_run_id = {str(row.get("run_id")): row for row in rows}
         by_run_id.update({str(row.get("run_id")): row for row in indexed})
         rows = list(by_run_id.values())
@@ -68,7 +76,7 @@ def load_history(project_root: Path) -> list[dict[str, Any]]:
                     contract = json.loads(contract_path.read_text(encoding="utf-8"))
             except (OSError, ValueError):
                 pass
-            rows.append({**selected, "run_id": run_dir.name, "status": "completed", "chosen_title": contract.get("chosen_title", "")})
+            rows.append({**selected, "run_id": run_dir.name, "status": "drafted", "chosen_title": contract.get("chosen_title", "")})
     return rows
 
 
@@ -109,7 +117,8 @@ def annotate_candidates(payload: dict[str, Any], history: list[dict[str, Any]]) 
         item = dict(row)
         reason = duplicate_reason(item, history)
         if reason:
-            item["history_status"] = "used_before"
+            previous = next((entry for entry in history if duplicate_reason(item, [entry])), {})
+            item["history_status"] = previous.get("status", "drafted")
             item["history_reason"] = reason
         rows.append(item)
     result["candidates"] = rows
@@ -121,11 +130,11 @@ def annotate_candidates(payload: dict[str, Any], history: list[dict[str, Any]]) 
     return result
 
 
-def record_completed(project_root: Path, run_id: str, selected: dict[str, Any], brief: dict[str, Any] | None = None) -> None:
+def record_drafted(project_root: Path, run_id: str, selected: dict[str, Any], brief: dict[str, Any] | None = None) -> None:
     rows = load_history(project_root)
     entry = {
         "run_id": run_id,
-        "status": "completed",
+        "status": "drafted",
         "topic": selected.get("selected_topic", ""),
         "selected_topic": selected.get("selected_topic", ""),
         "title": selected.get("chosen_title", ""),
@@ -154,6 +163,31 @@ def record_completed(project_root: Path, run_id: str, selected: dict[str, Any], 
         handle.write(content)
         temporary = Path(handle.name)
     temporary.replace(path)
+
+
+def record_completed(project_root: Path, run_id: str, selected: dict[str, Any], brief: dict[str, Any] | None = None) -> None:
+    """Backward-compatible name; a generated resource pack is a draft, not published."""
+    record_drafted(project_root, run_id, selected, brief)
+
+
+def set_topic_status(project_root: Path, run_id: str, status: str) -> None:
+    if status not in {"drafted", "published", "archived"}:
+        raise ValueError("Topic status không hợp lệ.")
+    path = history_path(project_root)
+    rows = load_history(project_root)
+    found = False
+    for row in rows:
+        if str(row.get("run_id")) == run_id:
+            row["status"] = status
+            found = True
+    if not found:
+        raise ValueError("Không tìm thấy topic history cho run này.")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"schema_version": 2, "topics": rows}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    database_path = _database_path(path.parent.parent)
+    if database_path.is_file():
+        from .platform_db import PlatformDatabase
+        PlatformDatabase(database_path).set_topic_status(run_id, status)
 
 
 def _database_path(project_root: Path) -> Path:

@@ -1,5 +1,5 @@
 import { request } from './apiClient';
-import type { ModelConfig } from '../types';
+import type { ModelConfig, ModelPreflight } from '../types';
 
 export function getModelConfig(): Promise<ModelConfig> {
   return request<ModelConfig>('/model-config');
@@ -12,5 +12,12 @@ export function updateModelConfig(body: {
   return request<ModelConfig>('/model-config', {
     method: 'PUT',
     body: JSON.stringify(body),
+  });
+}
+
+export function preflightModelConfig(): Promise<ModelPreflight> {
+  return request<ModelPreflight>('/model-config/preflight', {
+    method: 'POST',
+    body: '{}',
   });
 }

@@ -196,7 +196,7 @@ def build_performance_review(snapshot: dict[str, Any]) -> dict[str, Any]:
         ] if low_ctr_reach else (["Intro retention thấp: packaging hứa điều script chưa trả đủ sớm."] if weak_intro else []),
         "confidence": "low-to-medium",
         "test_one_hypothesis": hypothesis,
-        "next_format": {"duration_mode": "flexible", "target_minutes": "6-12"},
+        "next_format": {"duration_mode": "symbolic_long_form", "target_minutes": "35-45"},
         "input_freshness": freshness,
         "warnings": warnings,
         "best_internal_video": best,

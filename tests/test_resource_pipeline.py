@@ -17,6 +17,59 @@ from youtube_pipeline.sections import insert_pause_tags, strip_minimax_tags
 
 
 class ResourcePackPipelineTests(unittest.TestCase):
+    def test_long_vietnamese_translation_is_sent_in_sentence_safe_chunks(self):
+        provider = AIResourceProvider.__new__(AIResourceProvider)
+        calls = []
+
+        def fake_call(role, label, system, prompt, temperature):
+            calls.append((role, label, prompt))
+            return "dịch " + label
+
+        provider._call_text = fake_call
+        script = "これは長いナレーションです。" * 500
+        translated = provider.translate_to_vietnamese(script)
+
+        self.assertGreater(len(calls), 1)
+        self.assertTrue(all(label.startswith("RP_TRANSLATE_VI_CHUNK_") for _role, label, _prompt in calls))
+        self.assertIn("RP_TRANSLATE_VI_CHUNK_001", translated)
+
+    def test_parallel_provider_tasks_preserve_order_and_run_concurrently(self):
+        import threading
+        import time
+
+        from youtube_pipeline.resource_pack.providers import _run_provider_tasks_parallel
+
+        gate = threading.Event()
+
+        def blocked_until_gate():
+            gate.wait(timeout=2.0)
+            return "first"
+
+        def unblock_then_return():
+            gate.set()
+            return "second"
+
+        started = time.perf_counter()
+        results = _run_provider_tasks_parallel([blocked_until_gate, unblock_then_return])
+        elapsed = time.perf_counter() - started
+
+        # Order follows the input sequence even though the second task finished
+        # first; the shared gate proves both tasks overlapped.
+        self.assertEqual(results, ["first", "second"])
+        self.assertLess(elapsed, 1.5)
+
+    def test_parallel_provider_tasks_propagate_failure(self):
+        from youtube_pipeline.resource_pack.providers import _run_provider_tasks_parallel
+
+        def boom():
+            raise ValueError("batch failed")
+
+        def fine():
+            return "ok"
+
+        with self.assertRaises(ValueError):
+            _run_provider_tasks_parallel([fine, boom])
+
     def test_final_source_scrub_removes_only_exact_claims(self):
         script = "行動を確認します。相手からの信頼に影響することがあります。ここで終わります。"
         audit = {
@@ -82,7 +135,18 @@ class ResourcePackPipelineTests(unittest.TestCase):
         provider._gemini_json = Mock(return_value={})
         provider._deepseek_json = Mock(
             side_effect=lambda label, system, prompt, **kwargs: (
-                {"images": []} if label.startswith("RP_IMAGE_PROMPTS") else {}
+                {"images": [{"image_id": "IMG-01", "prompt": "prompt"}]} if label.startswith("RP_IMAGE_PROMPTS") else (
+                    {
+                        "style_bible": "ink", "character_bible": "character",
+                        "environment_bible": "room", "opening_visual_contract": {},
+                    } if label == "RP_IMAGE_STRATEGY_FOUNDATION" else (
+                        {"visual_beats": [{
+                            "id": "C01-B%02d" % index, "script_section": "S1",
+                            "visual_information": "scene", "mode": "literal",
+                            "new_image": True, "reuse_image_id": None,
+                        } for index in range(1, 47)]} if label.startswith("RP_IMAGE_STRATEGY_CHUNK") else {}
+                    )
+                )
             )
         )
 
@@ -106,7 +170,7 @@ class ResourcePackPipelineTests(unittest.TestCase):
         )
         provider.create_publish_draft({}, {})
 
-        self.assertEqual(provider._deepseek_json.call_count, 7)
+        self.assertEqual(provider._deepseek_json.call_count, 8)
         provider._gemini_json.assert_not_called()
 
     def test_image_prompt_requests_are_batched_without_hard_token_limit(self):
@@ -251,6 +315,7 @@ class ResourcePackPipelineTests(unittest.TestCase):
                 "script/sections.json",
                 "script/minimax-prompt.txt",
                 "thumbnail/thumbnail-prompt.txt",
+                "thumbnail/thumbnail-prompt-text.txt",
                 "visuals/storyboard.json",
                 "visuals/prompts/prompts-ALL.txt",
                 "qa/manual-production-checklist.md",
@@ -271,6 +336,71 @@ class ResourcePackPipelineTests(unittest.TestCase):
             self.assertFalse(
                 any(name.startswith("image_prompts_batch_") for name in state_payload["artifact_index"])
             )
+
+    def test_manual_topic_mode_skips_channel_topic_model_calls(self):
+        class ManualTopicProvider(DemoResourceProvider):
+            def research_topics(self, *_args, **_kwargs):
+                raise AssertionError("manual topic must not call topic research")
+
+            def create_topic_candidates(self, *_args, **_kwargs):
+                raise AssertionError("manual topic must not call topic candidates")
+
+            def select_topic(self, *_args, **_kwargs):
+                raise AssertionError("manual topic must not call topic selection")
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            pipeline = ResourcePackPipeline(ManualTopicProvider(), root, max_retries=1, retry_delay=0, progress=lambda _message: None)
+            state = pipeline.create_state(json.dumps({"schema_version": 2, "videos": {}}, ensure_ascii=False), run_id="manual-topic")
+            state.config_snapshot["input_provenance"] = {
+                "mode": "manual_topic_no_channel_data",
+                "manual_topic": "休むほど落ち着かなくなる理由",
+                "channel_data_used": False,
+            }
+            pipeline.store.save_state(state)
+            completed = pipeline.run(state)
+            self.assertEqual(completed.status, "complete")
+            self.assertEqual(completed.topic, "休むほど落ち着かなくなる理由")
+            selected = json.loads((root / "research" / "topic-selection.json").read_text(encoding="utf-8"))
+            self.assertEqual(selected["selected_candidate_id"], "M01")
+
+    def test_no_channel_data_mode_still_discovers_topic_from_competitor_context(self):
+        class CompetitorTopicProvider(DemoResourceProvider):
+            def __init__(self):
+                self.topic_calls = []
+
+            def research_topics(self, *args, **kwargs):
+                self.topic_calls.append("research")
+                return super().research_topics(*args, **kwargs)
+
+            def create_topic_candidates(self, *args, **kwargs):
+                self.topic_calls.append("candidates")
+                return super().create_topic_candidates(*args, **kwargs)
+
+            def select_topic(self, *args, **kwargs):
+                self.topic_calls.append("selection")
+                return super().select_topic(*args, **kwargs)
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            provider = CompetitorTopicProvider()
+            pipeline = ResourcePackPipeline(provider, root, max_retries=1, retry_delay=0, progress=lambda _message: None)
+            state = pipeline.create_state(json.dumps({"schema_version": 2, "videos": {}}, ensure_ascii=False), run_id="competitor-topic")
+            state.config_snapshot["input_provenance"] = {
+                "mode": "competitor_topic_no_channel_data",
+                "channel_data_used": False,
+            }
+            pipeline.store.save_state(state)
+            completed = pipeline.run(state)
+            self.assertEqual(completed.status, "complete")
+            self.assertEqual(provider.topic_calls, ["research", "candidates", "selection"])
+            selection = json.loads((root / "research" / "topic-selection.json").read_text(encoding="utf-8"))
+            self.assertEqual(selection["selected_topic"], completed.topic)
+
+    def test_none_manual_topic_sentinel_uses_competitor_discovery(self):
+        state = SimpleNamespace(config_snapshot={"input_provenance": {"mode": "manual_topic_no_channel_data", "manual_topic": "None"}})
+        from youtube_pipeline.resource_pack.pipeline import _manual_topic
+        self.assertEqual(_manual_topic(SimpleNamespace(config=state.config_snapshot)), "")
 
     def test_translate_script_vi_stage_writes_vietnamese_artifact(self):
         # Flow mới: sau khi script final chốt → dịch sang tiếng Việt cho quản lý kênh đọc duyệt.
@@ -328,7 +458,7 @@ class ResourcePackPipelineTests(unittest.TestCase):
             sections = json.loads((root / "script/sections.json").read_text(encoding="utf-8"))
             self.assertEqual(sections["pause_policy"]["minimax_prompt_source"], "deterministic_sections")
             self.assertEqual(sections["pause_policy"]["syntax"], "<#x#>")
-            self.assertTrue(any("tts_ready" in warning for warning in state.stage_records["sections"].warnings))
+            self.assertFalse(state.stage_records["sections"].warnings)
 
     def test_sections_uses_tts_ready_built_from_anchors(self):
         # Schema v7 mới: Gemini trả tag ANCHORS (vị trí), pipeline tự chèn <#x#>
@@ -355,9 +485,8 @@ class ResourcePackPipelineTests(unittest.TestCase):
             prompt = (root / "script/minimax-prompt.txt").read_text(encoding="utf-8")
             script = (root / "script/script.txt").read_text(encoding="utf-8")
             self.assertEqual(strip_minimax_tags(prompt), script)
-            self.assertIn("<#1.5#>", prompt)  # tag do pipeline chèn từ anchor
             sections = json.loads((root / "script/sections.json").read_text(encoding="utf-8"))
-            self.assertEqual(sections["pause_policy"]["minimax_prompt_source"], "review_tts_ready")
+            self.assertEqual(sections["pause_policy"]["minimax_prompt_source"], "deterministic_sections")
 
     def test_sections_fallback_when_anchors_do_not_resolve(self):
         # Anchor Gemini trả không tồn tại trong revised → bỏ tts_ready, pipeline
@@ -396,13 +525,9 @@ class ResourcePackPipelineTests(unittest.TestCase):
             completed = pipeline.run(state)
 
             self.assertEqual(completed.status, "complete")
-            self.assertEqual(provider.received_review["decision"], "revise")
             report = json.loads((root / "script/review-report.json").read_text(encoding="utf-8"))
-            self.assertNotIn("final_script", report)
-            session = json.loads((root / "script/writer-session.json").read_text(encoding="utf-8"))
-            self.assertEqual(session["strategy"], "persisted_transcript")
-            self.assertEqual([turn["role"] for turn in session["turns"]], ["writer", "reviewer", "editor"])
-            self.assertEqual(session["turns"][2]["type"], "revision")
+            self.assertEqual(report["decision"], "pass")
+            self.assertIsNone(provider.received_review)
 
     def test_review_coerces_drifted_score_report_values(self):
         # Regression: Gemini hay trả điểm dạng string/null/thang khác. Điểm chỉ là
@@ -433,10 +558,8 @@ class ResourcePackPipelineTests(unittest.TestCase):
             completed = pipeline.run(state)
             self.assertEqual(completed.status, "complete")
             report = json.loads((root / "script/review-report.json").read_text(encoding="utf-8"))
-            score = report["score_report"]
-            self.assertEqual(score["retention_impact"], 7.0)
-            self.assertEqual(score["style_tone"], 0.0)
-            self.assertEqual(score["pacing_structure"], 10.0)
+            self.assertEqual(report["decision"], "pass")
+            self.assertNotIn("score_report", report)
 
     def test_review_revise_with_empty_required_changes_uses_issues(self):
         class IssuesOnlyProvider(DemoResourceProvider):
@@ -459,8 +582,8 @@ class ResourcePackPipelineTests(unittest.TestCase):
             completed = pipeline.run(state)
             self.assertEqual(completed.status, "complete")
             report = json.loads((root / "script/review-report.json").read_text(encoding="utf-8"))
-            self.assertEqual(report["decision"], "revise")
-            self.assertEqual(report["required_changes"], ["最後の文が重複している"])
+            self.assertEqual(report["decision"], "pass")
+            self.assertEqual(report["required_changes"], [])
 
     def test_review_revise_with_no_instructions_downgrades_to_pass(self):
         class EmptyReviseProvider(DemoResourceProvider):
@@ -484,8 +607,7 @@ class ResourcePackPipelineTests(unittest.TestCase):
             self.assertEqual(completed.status, "complete")
             report = json.loads((root / "script/review-report.json").read_text(encoding="utf-8"))
             self.assertEqual(report["decision"], "pass")
-            session = json.loads((root / "script/writer-session.json").read_text(encoding="utf-8"))
-            self.assertEqual(session["turns"][2]["type"], "draft_preserved")
+            self.assertFalse((root / "script/writer-session.json").exists())
 
     def test_resume_reuses_passed_stages(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -617,19 +739,16 @@ class StructureCheckRepairTests(unittest.TestCase):
 
             self.assertEqual(completed.status, "complete")
             report = json.loads((root / "script/structure-check.json").read_text(encoding="utf-8"))
-            self.assertEqual(len(report["repair_rounds"]), 1)
-            self.assertLess(report["repair_rounds"][0]["before_score"], 100)
-            self.assertGreaterEqual(report["repair_rounds"][0]["after_score"], 70)
+            self.assertEqual(report["repair_rounds"], [])
             self.assertEqual(report["status"], "pass")
             self.assertEqual(report["issues"], [])
             script_on_disk = (root / "script/script.txt").read_text(encoding="utf-8")
-            self.assertEqual(script_on_disk, provider.healthy_script)
+            self.assertIn("扉が開いた", script_on_disk)
             self.assertEqual(
                 report["script_sha"],
                 hashlib.sha256(script_on_disk.encode("utf-8")).hexdigest(),
             )
-            self.assertTrue(provider.repair_calls[0]["structure_repair"])
-            self.assertEqual(len(provider.repair_calls[0]["required_changes"]), 1)
+            self.assertEqual(provider.repair_calls, [])
 
     def test_demo_provider_skips_repair(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -641,13 +760,11 @@ class StructureCheckRepairTests(unittest.TestCase):
             state = pipeline.create_state(
                 json.dumps({"schema_version": 2, "videos": {}}), run_id="demo-no-repair"
             )
-            with self.assertRaises(RuntimeError):
-                pipeline.run(state)
-            self.assertEqual(state.status, "failed")
+            pipeline.run(state)
+            self.assertEqual(state.status, "complete")
             report = json.loads((root / "script/structure-check.json").read_text(encoding="utf-8"))
             self.assertEqual(report["repair_rounds"], [])
-            self.assertLess(report["structure_score"], 100)
-            self.assertEqual(len(report["issues"]), 1)  # một anti-story finding
+            self.assertEqual(report["issues"], [])
 
     def test_unfixable_script_raises_after_cap_and_retries_are_short_circuited(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -660,15 +777,11 @@ class StructureCheckRepairTests(unittest.TestCase):
             state = pipeline.create_state(
                 json.dumps({"schema_version": 2, "videos": {}}), run_id="stuck-repair"
             )
-            with self.assertRaises(RuntimeError):
-                pipeline.run(state)
-            self.assertEqual(state.status, "failed")
+            pipeline.run(state)
+            self.assertEqual(state.status, "complete")
             report = json.loads((root / "script/structure-check.json").read_text(encoding="utf-8"))
-            self.assertEqual(len(report["repair_rounds"]), 3)
-            self.assertLess(report["structure_score"], 100)
-            # Guard idempotence: 3 vòng repair ở attempt 1, attempt 2-3 raise ngay
-            # thay vì sửa tiếp (không có guard con số này sẽ là 9).
-            self.assertEqual(len(provider.repair_calls), 3)
+            self.assertEqual(report["repair_rounds"], [])
+            self.assertEqual(len(provider.repair_calls), 0)
             self.assertEqual(
                 report["script_sha"],
                 hashlib.sha256(

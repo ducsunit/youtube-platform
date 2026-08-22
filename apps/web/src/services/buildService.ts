@@ -12,6 +12,12 @@ import { API_BASE, request } from './apiClient';
 export const getBuildStatus = (runId: string) =>
   request<BuildStatus>(`/build/runs/${encodeURIComponent(runId)}/status`);
 
+export const mergeTtsChunks = (runId: string) =>
+  request<{ run_id: string; output: string; chunks: number; size_bytes: number }>(
+    `/build/runs/${encodeURIComponent(runId)}/merge-tts-chunks`,
+    { method: 'POST', body: '{}' },
+  );
+
 export const getSubStyle = (runId: string) =>
   request<{ run_id: string; style: SubStyle }>(
     `/build/runs/${encodeURIComponent(runId)}/sub-style`,

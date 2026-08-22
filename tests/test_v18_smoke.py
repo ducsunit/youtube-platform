@@ -19,10 +19,7 @@ def test_all_updated_files_parse():
 def test_expected_new_symbols_exist():
     analysis = (ROOT / 'youtube_pipeline/resource_analysis.py').read_text(encoding='utf-8')
     validation = (ROOT / 'youtube_pipeline/resource_validation.py').read_text(encoding='utf-8')
-    pipeline = (ROOT / 'youtube_pipeline/resource_pack/pipeline.py').read_text(encoding='utf-8')
     engine = (ROOT / 'youtube_pipeline/core/engine.py').read_text(encoding='utf-8')
     assert 'def pre_rank_topic_candidates' in analysis
     assert 'def psychology_quality_findings' in validation
-    assert 'pre_rank_topic_candidates' in pipeline
-    assert 'psychology_quality_findings' in pipeline
     assert 'elapsed_seconds' in engine

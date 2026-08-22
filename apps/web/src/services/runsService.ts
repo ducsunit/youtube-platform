@@ -51,6 +51,11 @@ export const resumeRun = (runId: string) =>
     `/runs/${encodeURIComponent(runId)}/resume`,
     { method: 'POST', body: '{}' },
   );
+export const updateTopicStatus = (runId: string, status: 'drafted' | 'published' | 'archived') =>
+  request<{ run_id: string; topic_status: string }>(
+    `/runs/${encodeURIComponent(runId)}/topic-status`,
+    { method: 'POST', body: JSON.stringify({ status }) },
+  );
 export const cancelRun = (runId: string) =>
   request<{ cancelled: boolean; run_id: string }>(
     `/runs/${encodeURIComponent(runId)}/cancel`,

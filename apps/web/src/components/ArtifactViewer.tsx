@@ -83,6 +83,9 @@ export function ArtifactViewer({ runId, path }: Props) {
 
   const kind = kindOf(path);
   const downloadHref = artifactUrl(runId, path, true);
+  // Thumbnail prompts are meant to be copied verbatim into an image model.
+  // Do not visually truncate their long style/identity/negative-prompt tail.
+  const isFullCopyPrompt = /(^|\/)(thumbnail-prompt(?:-text)?|.*-prompt)\.txt$/i.test(path);
 
   let body: ReactNode = null;
   if (error) {
@@ -107,7 +110,7 @@ export function ArtifactViewer({ runId, path }: Props) {
     body = (
       <pre
         className="log-viewer"
-        style={{ maxHeight: 420 }}
+        style={isFullCopyPrompt ? { maxHeight: 'none', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' } : { maxHeight: 420 }}
         data-kind={kind}
       >
         {text ?? '…'}
@@ -172,7 +175,7 @@ export function ArtifactViewer({ runId, path }: Props) {
                 style={{ padding: '4px 10px', fontSize: 12 }}
               >
                 {copied ? <Check size={13} style={{ color: 'var(--ok)' }} /> : <Copy size={13} />}
-                {copied ? 'Copied' : 'Copy'}
+                {copied ? 'Đã copy toàn bộ' : isFullCopyPrompt ? 'Copy full prompt' : 'Copy'}
               </button>
             )}
             <a className="btn btn-ghost" href={downloadHref} download style={{ padding: '4px 10px', fontSize: 12 }}>
@@ -186,4 +189,3 @@ export function ArtifactViewer({ runId, path }: Props) {
     </div>
   );
 }
-

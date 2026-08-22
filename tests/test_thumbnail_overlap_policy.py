@@ -19,12 +19,12 @@ def test_long_title_copy_is_hard_failure():
 
 def test_validate_thumbnail_returns_overlap_warning_not_issue():
     value = {
-        "concepts": [{"mode": "SELF_RECOGNITION", "text": "嫌われた？"}],
+        "concepts": [{"mode": "SELF_RECOGNITION", "text": "嫌われた気がする"}],
         "chosen_mode": "SELF_RECOGNITION",
-        "thumbnail_text": "嫌われた？",
+        "thumbnail_text": "嫌われた気がする",
         "text_color": "#FFD700",
         "background_color": "#1A2332",
-        "image_prompt": "16:9 flat illustrated cartoon, thick black outline, navy background, no text, fictional character",
+        "image_prompt": "16:9 high-contrast black ink illustration, thick black outline, off-white paper field, gold accent, no text, fictional character",
         "negative_prompt": "watermark",
         "overlay_spec": {"lines": 1},
     }

@@ -9,10 +9,10 @@ from .source_catalog import APPROVED_SOURCE_CATALOG
 WHITESPACE_RE = re.compile(r"\s+")
 JAPANESE_RE = re.compile(r"[\u3040-\u30ff\u3400-\u9fff々〆ヶ]")
 LATIN_TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z0-9_-]*")
-# Advisory Japanese narration range for the unified editorial flow. Fifteen
-# minutes is a review warning, never a quota that triggers filler.
-SCRIPT_TARGET_MIN_CHARS = 2300
-SCRIPT_TARGET_MAX_CHARS = 6000
+# Advisory Japanese narration range for the 思考の深淵-inspired long-form flow.
+# It remains diagnostic only and never authorizes filler or a blind rewrite.
+SCRIPT_TARGET_MIN_CHARS = 13600
+SCRIPT_TARGET_MAX_CHARS = 17500
 
 
 def _source_citation_tokens() -> set[str]:
@@ -98,8 +98,61 @@ def japanese_script_metrics(
     }
 
 
-def validate_japanese_script(script: str) -> Dict[str, Any]:
-    metrics = japanese_script_metrics(script)
+def japanese_spoken_cadence(script: str) -> Dict[str, Any]:
+    """Report narration cadence without imposing a script-length template.
+
+    Most findings are advisory: the writer needs room for an occasional longer
+    analytical sentence. Only an extremely long sentence without a terminal
+    pause is treated as malformed enough to block TTS production.
+    """
+    paragraphs = [paragraph.strip() for paragraph in re.split(r"\n\s*\n", script) if paragraph.strip()]
+    sentences = [sentence.strip() for sentence in re.split(r"(?<=[。！？!?])", script) if sentence.strip()]
+    sentence_lengths = [non_whitespace_chars(sentence) for sentence in sentences]
+    long_sentences = [length for length in sentence_lengths if length > 115]
+    warnings: list[str] = []
+    issues: list[str] = []
+    if long_sentences:
+        warnings.append("TTS cadence: có %d câu phân tích dài hơn 115 ký tự." % len(long_sentences))
+    paragraphs_many_sentences = sum(
+        1 for paragraph in paragraphs
+        if len([item for item in re.split(r"(?<=[。！？!?])", paragraph) if item.strip()]) > 5
+    )
+    if paragraphs_many_sentences:
+        warnings.append("TTS cadence: có %d đoạn chứa hơn 5 câu; cân nhắc tách theo insight." % paragraphs_many_sentences)
+    connector_patterns = ("では、なぜ", "つまり", "そのため", "だから")
+    connector_repetition = {
+        connector: script.count(connector)
+        for connector in connector_patterns
+        if script.count(connector) >= 3
+    }
+    if connector_repetition:
+        warnings.append("TTS cadence: connector lặp nhiều: %s." % ", ".join(connector_repetition))
+    for paragraph in paragraphs:
+        compact_length = non_whitespace_chars(paragraph)
+        has_terminal = bool(re.search(r"[。！？!?]", paragraph))
+        if compact_length > 180 and not has_terminal:
+            issues.append("TTS cadence: đoạn quá dài không có dấu kết câu.")
+        elif compact_length > 160 and not has_terminal:
+            warnings.append("TTS cadence: đoạn dài thiếu dấu kết câu.")
+    return {
+        "paragraph_count": len(paragraphs),
+        "sentence_count": len(sentences),
+        "long_sentence_count": len(long_sentences),
+        "longest_sentence_chars": max(sentence_lengths, default=0),
+        "paragraphs_over_five_sentences": paragraphs_many_sentences,
+        "connector_repetition": connector_repetition,
+        "warnings": warnings,
+        "issues": issues,
+        "passed": not issues,
+    }
+
+
+def validate_japanese_script(
+    script: str,
+    target_min_chars: int = SCRIPT_TARGET_MIN_CHARS,
+    target_max_chars: int = SCRIPT_TARGET_MAX_CHARS,
+) -> Dict[str, Any]:
+    metrics = japanese_script_metrics(script, target_min_chars=target_min_chars, target_max_chars=target_max_chars)
     issues = []
     # Length is a production guideline, not a blocking quota. A concise script
     # is valid when it completes the editorial argument without filler.
@@ -108,7 +161,15 @@ def validate_japanese_script(script: str) -> Dict[str, Any]:
     invalid_tokens = foreign_tokens(script)
     if invalid_tokens:
         issues.append("Foreign tokens chưa whitelist: %s" % ", ".join(invalid_tokens))
-    return {**metrics, "foreign_tokens": invalid_tokens, "issues": issues, "passed": not issues}
+    cadence = japanese_spoken_cadence(script)
+    issues.extend(cadence["issues"])
+    return {
+        **metrics,
+        "foreign_tokens": invalid_tokens,
+        "spoken_cadence": cadence,
+        "issues": issues,
+        "passed": not issues,
+    }
 
 
 def build_pause_map(script: str) -> list[dict[str, Any]]:

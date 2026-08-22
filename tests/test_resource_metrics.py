@@ -15,6 +15,7 @@ from youtube_pipeline.sections import (
     PAUSE_PARAGRAPH_BREAK,
     insert_pause_tags,
     split_script_sections,
+    split_tts_chunks,
     strip_minimax_tags,
 )
 from youtube_pipeline import resource_pipeline, resource_prompts
@@ -33,6 +34,7 @@ from youtube_pipeline.resource_validation import (
     validate_plan,
     validate_prompt_pack,
 )
+from youtube_pipeline.resource_pack.validation import normalize_audit_report
 
 
 def _clean_audit(**overrides) -> dict:
@@ -73,12 +75,25 @@ class AuditGateTests(unittest.TestCase):
         self.assertTrue(audit_passes(_clean_audit(decision="revise")))
         self.assertFalse(audit_passes(_clean_audit(unsupported_claims=["claim ngoài source"])))
         self.assertFalse(audit_passes(_clean_audit(missing_outline_points=["S4"])))
-        self.assertFalse(audit_passes(_clean_audit(source_alignment=False)))
+        # A bare alignment opinion is normalized to advisory; a source block
+        # must identify an inspectable unsupported claim.
+        audit = normalize_audit_report(_clean_audit(source_alignment=False))
+        self.assertTrue(audit_passes(audit))
         self.assertFalse(audit_passes(_clean_audit(outline_coverage=False)))
         self.assertFalse(audit_passes(_clean_audit(title_alignment=False)))
 
     def test_language_alignment_false_alone_does_not_block(self):
         self.assertTrue(audit_passes(_clean_audit(language_alignment=False)))
+
+
+class TTSChunkTests(unittest.TestCase):
+    def test_tts_chunks_preserve_script_and_respect_provider_limit(self):
+        script = "".join("これは日本語のナレーションです。" for _ in range(900))
+        chunks = split_tts_chunks(script, max_chars=4800)
+        self.assertGreater(len(chunks), 1)
+        self.assertEqual("".join(chunk.text for chunk in chunks), script)
+        self.assertTrue(all(chunk.chars <= 4800 for chunk in chunks))
+        self.assertEqual(chunks[0].file, "001.txt")
 
 
 class PsychologySemanticGateTests(unittest.TestCase):

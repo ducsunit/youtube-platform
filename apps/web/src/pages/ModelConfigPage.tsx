@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AlertCircle, CheckCircle2, Plus, RefreshCw, Save, Sliders } from '../components/Icons';
-import { getModelConfig, updateModelConfig } from '../api';
+import { getModelConfig, preflightModelConfig, updateModelConfig } from '../api';
 import { useT } from '../i18n';
-import type { ModelConfig, ModelProfileConfig, ModelProviderType } from '../types';
+import type { ModelConfig, ModelPreflightResult, ModelProfileConfig, ModelProviderType } from '../types';
 
 type DraftProfile = ModelProfileConfig & { api_key: string };
 
@@ -41,6 +41,8 @@ export function ModelConfigPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [checking, setChecking] = useState(false);
+  const [preflight, setPreflight] = useState<ModelPreflightResult[] | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -102,6 +104,19 @@ export function ModelConfigPage() {
     }
   };
 
+  const checkConnections = async () => {
+    setChecking(true);
+    setError(null);
+    try {
+      const result = await preflightModelConfig();
+      setPreflight(result.results);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Không thể kiểm tra kết nối provider.');
+    } finally {
+      setChecking(false);
+    }
+  };
+
   if (loading && !config) {
     return <main className="page"><div className="empty-state">{t('providers.refresh')}...</div></main>;
   }
@@ -117,6 +132,9 @@ export function ModelConfigPage() {
         <button type="button" className="btn" onClick={() => void load()} disabled={loading || saving}>
           <RefreshCw size={14} className={loading ? 'spin' : ''} /> {t('providers.refresh')}
         </button>
+        <button type="button" className="btn" onClick={() => void checkConnections()} disabled={checking || saving}>
+          <RefreshCw size={14} className={checking ? 'spin' : ''} /> {checking ? 'Đang kiểm tra' : 'Kiểm tra kết nối'}
+        </button>
         <button type="button" className="btn btn-primary" onClick={() => void save()} disabled={saving || profileNames.length === 0}>
           <Save size={14} /> {saving ? t('providers.saving') : t('providers.save')}
         </button>
@@ -124,6 +142,20 @@ export function ModelConfigPage() {
 
       {error && <div className="error-text provider-alert"><AlertCircle size={15} /> {error}</div>}
       {saved && <div className="success-text provider-alert"><CheckCircle2 size={15} /> {t('providers.saved')}</div>}
+      {preflight && (
+        <section className="panel provider-section">
+          <div className="panel-title"><RefreshCw size={16} /> Kiểm tra endpoint</div>
+          <div className="panel-body" style={{ display: 'grid', gap: 8 }}>
+            {preflight.map((result) => (
+              <div key={result.profile} className={result.status === 'failed' ? 'error-text' : result.status === 'ok' ? 'success-text' : ''}>
+                <strong>{result.profile}</strong>: {result.detail}
+                {result.base_url ? ` (${result.base_url})` : ''}
+                {result.technical_detail ? <small style={{ display: 'block', marginTop: 3 }}>{result.technical_detail}</small> : null}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       <section className="panel provider-section">
         <div className="panel-title"><Sliders size={16} /> {t('providers.roles')}</div>

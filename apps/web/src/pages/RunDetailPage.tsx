@@ -20,6 +20,7 @@ import {
   getRun,
   getRunStatus,
   logDownloadUrl,
+  updateTopicStatus,
 } from '../api';
 import { connectRunEvents } from '../services/runsService';
 import type { RunDiagnostics, RunStatus } from '../types';
@@ -187,6 +188,17 @@ export function RunDetailPage() {
     }
   };
 
+  const markPublished = async () => {
+    if (!window.confirm('Đánh dấu topic này đã xuất bản? Các run sau sẽ chặn topic trùng mạnh hơn.')) return;
+    setActionError(null);
+    try {
+      await updateTopicStatus(runId, 'published');
+      refreshAll();
+    } catch (e) {
+      setActionError(String(e));
+    }
+  };
+
   if (detailError) {
     return (
       <div className="page">
@@ -338,6 +350,11 @@ export function RunDetailPage() {
                     <Download size={13} />
                     {t('detail.manifest')}
                   </a>
+                )}
+                {finished && (
+                  <button type="button" className="btn btn-ghost" onClick={() => void markPublished()}>
+                    Đánh dấu đã xuất bản
+                  </button>
                 )}
               </div>
               {nextSteps && (
