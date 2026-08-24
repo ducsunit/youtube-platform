@@ -226,6 +226,8 @@ class ResourceContentProvider(Protocol):
     def select_topic(self, candidates: dict, research: dict, performance: dict) -> dict: ...
     def lock_source(self, topic: str, snapshot: dict, performance: dict) -> dict: ...
     def create_psychology_brief(self, topic: str, source_pack: dict, performance: dict) -> dict: ...
+    def extract_commitments(self, topic: str, plan: dict, hints: list[dict]) -> dict: ...
+    def repair_commitments(self, plan: dict, commitments: dict, issues: list[str], hints: list[dict]) -> dict: ...
     def create_contract(self, topic: str, source_pack: dict, performance: dict, psychology_brief: dict, validation_feedback: str = "") -> dict: ...
     def create_plan(self, contract: dict, source_pack: dict, psychology_brief: dict, validation_feedback: str = "") -> dict: ...
     def write_script(self, contract: dict, plan: dict, source_pack: dict, psychology_brief: dict | None = None) -> str: ...
@@ -339,6 +341,21 @@ class AIResourceProvider:
             config=types.GenerateContentConfig(**config_kwargs),
         )
 
+    def _chat_with_compat(self, client, kwargs):
+        """Gọi chat completion; proxy litellm từ chối temperature cho gpt-5 family
+        (chỉ chấp nhận 1) → tự bỏ temperature rồi thử lại đúng 1 lần. Lỗi khác
+        raise nguyên trạng."""
+        try:
+            return client.chat.completions.create(**kwargs)
+        except Exception as exc:
+            message = str(exc)
+            if "temperature" not in kwargs or not any(
+                marker in message for marker in ("UnsupportedParamsError", "don't support temperature")
+            ):
+                raise
+            retry_kwargs = {k: v for k, v in kwargs.items() if k != "temperature"}
+            return client.chat.completions.create(**retry_kwargs)
+
     def _call_json(self, role: str, label: str, system: str, prompt: str) -> dict:
         if not hasattr(self, "router"):
             legacy = {"analysis": "_gemini_json", "reviewer": "_gemini_json", "auditor": "_gemini_json", "writer": "_deepseek_json", "editor": "_deepseek_json", "packaging": "_deepseek_json"}[role]
@@ -369,7 +386,7 @@ class AIResourceProvider:
             )
             if output_limit:
                 kwargs["max_tokens"] = int(output_limit)
-            response = client.chat.completions.create(**kwargs)
+            response = self._chat_with_compat(client, kwargs)
             raw = response.choices[0].message.content or ""
         trace_raw_response(label, label, raw)
         value = parse_json_object(raw)
@@ -398,7 +415,7 @@ class AIResourceProvider:
             }
             if profile.max_output_tokens:
                 kwargs["max_tokens"] = profile.max_output_tokens
-            response = client.chat.completions.create(**kwargs)
+            response = self._chat_with_compat(client, kwargs)
             value = response.choices[0].message.content or ""
         if not value.strip():
             raise ValueError(f"{label}: model trả nội dung rỗng.")
@@ -426,11 +443,11 @@ class AIResourceProvider:
             value = response.text or ""
         else:
             client = self._client_for(profile)
-            response = client.chat.completions.create(
-                model=profile.model,
-                messages=[{"role": "system", "content": system}, *messages],
-                temperature=temperature,
-            )
+            response = self._chat_with_compat(client, {
+                "model": profile.model,
+                "messages": [{"role": "system", "content": system}, *messages],
+                "temperature": temperature,
+            })
             value = response.choices[0].message.content or ""
         if not value.strip():
             raise ValueError(f"{label}: model trả nội dung rỗng.")
@@ -453,6 +470,16 @@ class AIResourceProvider:
 
     def create_psychology_brief(self, topic: str, source_pack: dict, performance: dict) -> dict:
         return self._call_json("analysis", "RP_PSYCHOLOGY_BRIEF", PSYCHOLOGY_BRIEF_SYSTEM, psychology_brief_prompt(topic, source_pack, performance))
+
+    def extract_commitments(self, topic: str, plan: dict, hints: list[dict]) -> dict:
+        from .commitments import COMMITMENTS_SYSTEM, extraction_prompt
+
+        return self._call_json("analysis", "RP_COMMITMENTS", COMMITMENTS_SYSTEM, extraction_prompt(topic, plan, hints))
+
+    def repair_commitments(self, plan: dict, commitments: dict, issues: list[str], hints: list[dict]) -> dict:
+        from .commitments import COMMITMENTS_REPAIR_SYSTEM, repair_prompt
+
+        return self._call_json("analysis", "RP_COMMITMENTS_REPAIR", COMMITMENTS_REPAIR_SYSTEM, repair_prompt(plan, commitments, issues, hints))
 
     def create_contract(self, topic: str, source_pack: dict, performance: dict, psychology_brief: dict | None = None, validation_feedback: str = "") -> dict:
         brief = _normalize_psychology_context(psychology_brief)
@@ -810,6 +837,13 @@ class DemoResourceProvider:
             "editorial_application": "返信の遅れによる罪悪感へ課題の分離を応用する",
             "overlap_with_recent_videos": "課題の分離は既出だが、返信という新しい生活場面に限定する",
         }
+
+    def extract_commitments(self, topic: str, plan: dict, hints: list[dict]) -> dict:
+        # Demo mode: không có cam kết định lượng nào để kiểm.
+        return {"commitments": []}
+
+    def repair_commitments(self, plan: dict, commitments: dict, issues: list[str], hints: list[dict]) -> dict:
+        return {"commitments": commitments.get("commitments") if isinstance(commitments, dict) else [], "plan_patches": []}
 
     def create_psychology_brief(self, topic: str, source_pack: dict, performance: dict) -> dict:
         mechanism = source_pack["source_concept"]

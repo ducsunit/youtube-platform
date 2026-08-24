@@ -14,6 +14,8 @@ from unittest import mock
 
 from fastapi.testclient import TestClient
 
+from youtube_pipeline.resource_pack.pipeline import VOICEVOX_PROFILE
+
 from youtube_pipeline.api import app
 from youtube_pipeline.api import paths
 from youtube_pipeline.api.runner import (
@@ -25,7 +27,7 @@ from youtube_pipeline.api.runner import (
 STAGE_NAMES = [
     "ingest", "performance", "topic_research", "topic_candidates", "topic_selection",
     "source_lock", "claim_ledger", "narrative_brief", "writing", "script_audit",
-    "script_qa", "structure_check", "psychology_format_check", "translate_script_vi", "sections", "thumbnail_contract", "image_strategy", "image_prompts",
+    "script_qa", "structure_check", "psychology_format_check", "translate_script_vi", "sections", "tts_generate", "thumbnail_contract", "image_strategy", "image_prompts",
     "publish_draft", "resource_pack",
 ]
 
@@ -63,7 +65,7 @@ def _make_state(
         "created_at": "2026-08-09T00:00:00+00:00",
         "updated_at": updated_at,
         "config_snapshot": {
-            "minimax_tts_profile": {"speed": 1.02, "pitch": -1, "volume": 1.02},
+            "tts_profile": {"provider": "VOICEVOX", "speaker": 21},
             "target_duration_minutes": [6, 12],
             "target_chars": [2300, 6000],
         },
@@ -122,7 +124,7 @@ class TestSystem(ApiServerTestCase):
         self.assertEqual(r.status_code, 200)
         body = r.json()
         self.assertEqual(body["stage_order"], STAGE_NAMES)
-        self.assertTrue(body["minimax_profile"]["reference_cpm_min"] == 380)
+        self.assertTrue(body["tts_profile"]["reference_cpm_min"] == VOICEVOX_PROFILE["reference_cpm_min"])
         names = [f["name"] for f in body["input_files"]]
         self.assertIn("data/channels/youtube_data.json", names)
         self.assertIsNone(body["active_run"])

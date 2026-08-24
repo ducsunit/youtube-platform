@@ -19,6 +19,7 @@ from .resource_pack.validation import (
     normalize_review_list,
     normalize_thumbnail_prompt,
     psychology_review_gate_verdict,
+    select_video_candidates,
     title_hook_alignment,
     validate_contract as _validate_contract_canonical,
     validate_psychology_brief as _validate_psychology_brief_canonical,
@@ -887,65 +888,5 @@ TEXT_SCENE_BLOCKLIST = (
 ACTION_WORDS = ("scholar", "worker", "hand", "pen", "book", "scale",
                 "bubble", "speech", "ticking", "checklist")
 
-
-def select_video_candidates(
-    images: list[dict],
-    storyboard: list[dict],
-    beats: list[dict] | None = None,
-    min_count: int = 3,
-    max_count: int = 8,
-) -> list[str]:
-    """Chọn ảnh NÊN gen image-to-video (6-8 clip/run) — heuristic thuần, không gọi model.
-
-    Block vĩnh viễn: prompt chứa token TEXT_SCENE_BLOCKLIST (cảnh chữ). Còn lại
-    score: hook (event đầu) +3, closer (event cuối) +3, +2 mỗi event ảnh xuất
-    hiện (density), +1 beat đầu ảnh mode metaphor, +1 từ hành động. Sort
-    (-score, image_id) → lấy max_count; nếu eligible < min_count thì trả hết
-    eligible (không bao giờ lôi ảnh chữ vào).
-    """
-    blocklist = tuple(token.lower() for token in TEXT_SCENE_BLOCKLIST)
-    action_words = tuple(word.lower() for word in ACTION_WORDS)
-    beat_by_id = {str(beat.get("id")): beat for beat in (beats or [])}
-
-    first_event_by_image: dict[str, dict] = {}
-    density: dict[str, int] = {}
-    order: list[str] = []
-    for event in storyboard:
-        image_id = event.get("image_id")
-        if not image_id:
-            continue
-        if image_id not in density:
-            order.append(str(image_id))
-            density[str(image_id)] = 0
-        density[str(image_id)] += 1
-        first_event_by_image.setdefault(str(image_id), event)
-    if not order:
-        return []
-
-    prompt_by_id = {str(image.get("image_id")): str(image.get("prompt", "")).lower() for image in images}
-    eligible = []
-    for image in images:
-        image_id = str(image.get("image_id"))
-        prompt = prompt_by_id.get(image_id, "")
-        if any(token in prompt for token in blocklist):
-            continue
-        eligible.append(image_id)
-
-    def _score(image_id: str) -> int:
-        score = 0
-        if image_id == order[0]:
-            score += 3
-        if image_id == order[-1]:
-            score += 3
-        score += 2 * density.get(image_id, 0)
-        first_event = first_event_by_image.get(image_id)
-        if first_event is not None:
-            beat = beat_by_id.get(str(first_event.get("beat_id")))
-            if beat and str(beat.get("mode")) == "metaphor":
-                score += 1
-        if any(word in prompt_by_id.get(image_id, "") for word in action_words):
-            score += 1
-        return score
-
-    ranked = sorted(eligible, key=lambda image_id: (-_score(image_id), image_id))
-    return ranked[:max_count]
+# select_video_candidates được re-export từ resource_pack.validation (canonical)
+# ở đầu file — bản duplicate tại đây đã bị xóa để hai đường import không lệch code.

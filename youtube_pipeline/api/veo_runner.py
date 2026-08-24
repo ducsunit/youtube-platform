@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Optional
 
 from . import paths
-from .datapull import _pid_alive, _read_pid_info, read_log_page
+from .datapull import _pid_alive, _read_pid_info, kill_process_group, read_log_page
 
 
 def _now_iso() -> str:
@@ -228,12 +228,36 @@ class VeoRunner:
                 return True
         info = _read_pid_info(veo_jobs_dir() / ("%s.pid" % job_id))
         if info is not None and _pid_alive(info["pid"]):
-            try:
-                os.killpg(os.getpgid(info["pid"]), signal.SIGTERM)
-            except (ProcessLookupError, PermissionError):
-                return False
-            return True
+            return kill_process_group(info["pid"])
         return False
+
+    def cancel_for_run(self, run_id: str) -> list[str]:
+        """Hủy mọi Veo job thuộc run (kể cả orphan sau server restart)."""
+        cancelled: list[str] = []
+        with self._lock:
+            if (
+                self._proc is not None
+                and self._job is not None
+                and self._job.get("run_id") == run_id
+                and self._proc.poll() is None
+            ):
+                self._terminate(self._proc)
+                cancelled.append(self._job["id"])
+        jobs_dir = veo_jobs_dir()
+        if not jobs_dir.is_dir():
+            return cancelled
+        for pid_file in jobs_dir.glob("*.pid"):
+            if pid_file.stem in cancelled:
+                continue
+            info = _read_pid_info(pid_file)
+            if (
+                info is not None
+                and info.get("run_id") == run_id
+                and _pid_alive(info["pid"])
+                and kill_process_group(info["pid"])
+            ):
+                cancelled.append(pid_file.stem)
+        return cancelled
 
     @staticmethod
     def _terminate(proc: subprocess.Popen) -> None:

@@ -13,6 +13,7 @@ export const startImageGenerate = (runId: string, body: {
   size?: string;
   quality?: string;
   skip_existing?: boolean;
+  concurrency?: number;
 }) => request<{ job_id: string | null; run_id: string; images: string[]; status?: string }>(
   `/images/runs/${encodeURIComponent(runId)}/generate`,
   { method: 'POST', body: JSON.stringify(body) },

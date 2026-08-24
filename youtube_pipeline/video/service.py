@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -32,6 +33,10 @@ from .timeline import build_timeline, find_audio_file, probe_duration
 from .logo_cleanup import clean_clips
 from .build import (
     ANIM_MODES,
+    FX_GRAIN_DEFAULT,
+    FX_GRAIN_MAX,
+    FX_GRAIN_MIN,
+    FX_MODES,
     build_marks_tsv,
     build_video_script,
     clip_status,
@@ -807,6 +812,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--animation", type=str, default=None,
                         choices=ANIM_MODES,
                         help="Mode animation: %s (mặc định zoom)." % "|".join(ANIM_MODES))
+    parser.add_argument("--fx", type=str, default="none", choices=FX_MODES,
+                        help="Hiệu ứng nhiễu: %s (mặc định none). auto = xen kẽ có seed." % "|".join(FX_MODES))
+    parser.add_argument("--grain", type=int, default=FX_GRAIN_DEFAULT,
+                        help="Cường độ nhiễu %d-%d (mặc định %d)." % (FX_GRAIN_MIN, FX_GRAIN_MAX, FX_GRAIN_DEFAULT))
+    parser.add_argument("--hw", type=str, default="auto", choices=("auto", "on", "off"),
+                        help="Hardware encoder: auto (VideoToolbox nếu có) / on / off.")
+    parser.add_argument("--jobs", type=int, default=0,
+                        help="Số luồng render segment song song 1-8 (0 = tự chọn theo CPU).")
     parser.add_argument("--transition", type=float, default=BUILD_DEFAULTS["transition"],
                         help="Độ dài transition giây (mặc định %.1f)." % BUILD_DEFAULTS["transition"])
     parser.add_argument("--resolution", type=str, default="%dx%d" % tuple(BUILD_DEFAULTS["resolution"]),
@@ -829,6 +842,10 @@ def main(argv: Optional[list[str]] = None) -> int:
     options: dict[str, Any] = {
         "motion": not args.no_motion,
         "animation": args.animation or BUILD_DEFAULTS["animation"],
+        "fx": args.fx,
+        "fx_intensity": max(FX_GRAIN_MIN, min(FX_GRAIN_MAX, int(args.grain))),
+        "hw": args.hw,
+        "build_jobs": max(1, min(8, int(args.jobs))) if args.jobs else max(1, min(4, (os.cpu_count() or 4) // 2)),
         "transition": args.transition,
         "resolution": args.resolution,
         "render": not args.prepare_only,

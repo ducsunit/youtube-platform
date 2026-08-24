@@ -805,6 +805,16 @@ ADAPTIVE PLAN:
 SOURCE PACK:
 {_json(source_pack)}
 
+COMMITMENT MANIFEST RULE: plan.commitments は本runの確定した約束一覧（唯一の基準）である。
+- type=enumeration: 指定 sections 内で items を count どおり過不足なく列挙する。
+  視聴者に「N個」と伝える以上、items を全部明示すること。数を減らしたり、manifest に無い
+  項目を足したりしない。number_framing=symbolic の場合、title の数字は象徴的な表現なので
+  気にせず、manifest の items を自然な流れで全部扱う。
+- type=factual_claim: framing=rhetorical の数値は比喩として扱い、断定・出典暗示をしない
+  （「あくまでたとえとして」等のガードを添える）。framing=sourced は ledger_ref の範囲内
+  でのみ使う。
+- manifest に無い数値・構造的約束を新たに作らない。
+
 内部で一度だけeditorial self-checkを行ってください：
 (1) psychological spineを一文で確認する。
 (2) 各sectionが「何を起こすか」ではなく「何を理解させるか」を確認する。
@@ -981,6 +991,17 @@ unsupported mechanism, treat that as a planning defect; do not require the
 script to repeat an unsupported claim. Only report missing outline points that
 are source-supported and materially necessary to the promise.
 
+COMMITMENT GROUND TRUTH RULE: khi `plan.commitments` tồn tại, đó là GROUND TRUYỆT
+duy nhất của `outline_coverage` — không đối chiếu con số trong title/prose nữa.
+- type=enumeration: chỉ kiểm script có cover đúng `items` với đúng `count` trong
+  `sections` đã ghi hay không. Script cover đủ items của manifest → outline_coverage=true.
+  number_framing=symbolic → title nói "Nつ" nhưng nguồn đóng khung số là tượng trưng:
+  KHÔNG yêu cầu script đủ N, chỉ yêu cầu đủ items manifest liệt kê.
+- type=factual_claim: framing=rhetorical → số được dùng như ẩn dụ là source_aligned,
+  không đưa vào unsupported_claims; framing=sourced → chỉ được dùng trong khung ledger_ref.
+- KHÔNG được yêu cầu script thỏa con số/cam kết KHÔNG có trong manifest.
+- manifest rỗng [] → không có cam kết định lượng; đừng tự suy ra số từ title.
+
 EDITORIAL APPLICATION RULE: A bounded application of a source concept to the
 viewer's behavior is allowed only when it stays inside
 `source_pack.editorial_application` and `allowed_paraphrases`. It must be
@@ -1088,6 +1109,13 @@ Hãy trả lại toàn bộ script tiếng Nhật cuối cùng, không giải th
 DRAFT ở lượt trước được truyền trong message assistant ngay trước message này; không tự đổi topic hoặc title (đã khóa trong contract)."""
 
 
+def _thumb_text_color() -> str:
+    """Headline color of the active channel profile (default lemon gold)."""
+    from ..channel_profile import active_style_colors
+
+    return active_style_colors().get("text_color") or "#FFE500"
+
+
 def thumbnail_prompt(contract: dict, script: str, competitor_context: str = "") -> str:
     prompt = f"""CONTRACT:
 {_json(contract)}
@@ -1099,7 +1127,7 @@ STYLE LOCK: {CHARACTER_STYLE_LOCK}. COMPOSITION LOCK: {THUMBNAIL_COMPOSITION_LOC
 Keep image generation text-free; add Japanese text as manual overlay.
 Do not default to a figure at a desk, phone, notebook, or calendar; choose a topic-specific symbolic conflict first.
 Return JSON:
-{{"concepts":[{{"mode":"SELF_RECOGNITION","text":"","scene":"","emotion":"","score":0}}],"chosen_mode":"","thumbnail_text":"","title_carries":"","thumbnail_carries":"","click_hypothesis":"","hook_alignment":"","text_color":"#FFE500","text_outline":"10-14px thick black outline","background_color":"#111111","image_prompt":"English prompt, 16:9, no text, {THUMBNAIL_COMPOSITION_LOCK}, {CHARACTER_STYLE_LOCK}, optional exact mascot only when useful, anonymous silhouettes allowed, fictional characters","negative_prompt":"","overlay_spec":{{"lines":1,"font_family":"Noto Sans JP Black","font_weight":"900","letter_spacing":"-0.04em","height_percent":27,"position":"top","safe_margin_percent":5,"stroke":"10-14px black","shadow":"subtle black 3-5px","text_zone":"Protected charcoal #111111 overlay zone behind headline; soft ink gradient into the scene, never a hard split."}},"manual_squint_test":"PENDING_USER"}}
+{{"concepts":[{{"mode":"SELF_RECOGNITION","text":"","scene":"","emotion":"","score":0}}],"chosen_mode":"","thumbnail_text":"","title_carries":"","thumbnail_carries":"","click_hypothesis":"","hook_alignment":"","text_color":"{_thumb_text_color()}","text_outline":"10-14px thick black outline","background_color":"#111111","image_prompt":"English prompt, 16:9, no text, {THUMBNAIL_COMPOSITION_LOCK}, {CHARACTER_STYLE_LOCK}, optional exact mascot only when useful, anonymous silhouettes allowed, fictional characters","negative_prompt":"","overlay_spec":{{"lines":1,"font_family":"Noto Sans JP Black","font_weight":"900","letter_spacing":"-0.04em","height_percent":27,"position":"top","safe_margin_percent":5,"stroke":"10-14px black","shadow":"subtle black 3-5px","text_zone":"Protected charcoal #111111 overlay zone behind headline; soft ink gradient into the scene, never a hard split."}},"manual_squint_test":"PENDING_USER"}}
 Create exactly 3 concepts but choose one. Overlay Japanese only, normally 5-11 characters, hard max 14.
 PACKAGING RULE: The thumbnail may share topic/emotion keywords with the title. Do NOT optimize for character-level overlap avoidance. Avoid copying the full title, repeating the same sentence structure, or restating the same promise. Prefer a short self-recognition hook, emotional tension, contradiction, or unresolved question (e.g. 「嫌われた？」, 「私、何かした？」) that complements rather than duplicates the title.
 CLICK/HOLD ALIGNMENT: `click_hypothesis` must state why this exact behavior + visual conflict will make the intended viewer click. `hook_alignment` must name the exact opening behavior or contradiction in OPENING SCRIPT that pays off the thumbnail within 20 seconds. The thumbnail must show one focal action/emotion and one visual conflict; do not use a generic sad mascot, a vague psychology symbol, a busy collage, a two-panel split, or fake urgency badges. Prefer a bold symbolic transformation or threat/release image over a literal room illustration. Use one controlled gold accent against the off-white ink scene; headline and focal visual must remain legible from a TV grid."""

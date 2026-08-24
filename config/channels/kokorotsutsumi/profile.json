@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "channel_id": "kokorotsutsumi",
+  "display_name": "こころ包み – 静かな人のための心理学",
+  "language": "ja",
+  "youtube_channel_ids": [
+    "UCL3xuEku7ezoFg2C9pwcTXg"
+  ],
+  "notes": "No overrides: this channel uses the built-in psychology defaults (competitor 思考の深淵, ink-paper style lock, Jungian claim wall). Add 'competitor'/'sources'/'claims'/'style_locks' sections only when this channel must diverge.",
+  "tts": {
+    "speaker": 21,
+    "speed_scale": 1.05,
+    "pitch_scale": 0.0,
+    "intonation_scale": 0.85
+  }
+}

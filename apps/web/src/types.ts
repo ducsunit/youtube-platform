@@ -122,6 +122,7 @@ export interface RunSummary {
   warnings: unknown[];
   errors: unknown[];
   has_manifest: boolean;
+  topic_status?: string | null;
   timeline_status: string | null;
   executing: boolean;
 }
@@ -236,12 +237,94 @@ export type ArtifactTree = Record<string, Record<string, ArtifactInfo>>;
 
 export interface NewRunBody {
   mode: 'demo' | 'production';
+  /** Channel profile id trong config/channels/<id>/profile.json. Bỏ trống = tự dò từ dataset. */
+  channel?: string;
   channel_data_mode?: 'refresh' | 'snapshot' | 'none';
   input_file?: string;
   /** Optional operator override. Empty + channel_data_mode=none means competitor-led topic discovery. */
   manual_topic?: string;
   run_id?: string;
   output_dir?: string;
+}
+
+export interface VoiceStyle {
+  id: number;
+  name: string;
+}
+export interface VoiceCharacter {
+  character: string;
+  styles: VoiceStyle[];
+}
+export interface TtsVoicesResponse {
+  available: boolean;
+  base_url?: string;
+  voices: VoiceCharacter[];
+}
+export interface RunTtsStatus {
+  status?: 'running' | 'done' | 'failed' | 'cancelled';
+  error?: string;
+  started_at?: string;
+  finished_at?: string;
+  progress?: { chunk: number; total_chunks: number; piece: number; total_pieces: number };
+  summary?: { files: string[]; merged: string; total_chars: number; speaker?: number };
+  engine_available?: boolean | null;
+  merged_exists?: boolean;
+  chunks_count?: number;
+}
+export interface RunTtsSettings {
+  channel_id: string;
+  tts: { speaker: number; speed_scale: number; pitch_scale: number; intonation_scale: number };
+}
+export interface RunTtsChunk {
+  id: string;
+  index: number;
+  chars: number;
+  path: string;
+  audio_output: string;
+  exists: boolean;
+  preview: string;
+}
+export interface RunTtsChunksResponse {
+  manifest_exists: boolean;
+  total: number;
+  generated: number;
+  merge_exists?: boolean;
+  chunks: RunTtsChunk[];
+}
+
+export interface BackgroundJob {
+  id: string;
+  kind: 'pipeline' | 'tts' | 'build' | 'veo' | 'image' | 'srt' | 'data';
+  run_id?: string | null;
+  started_at?: string | null;
+  log_path?: string | null;
+  orphaned?: boolean;
+  /** % tiến độ (tính từ log/state) — null với job chưa đo được. */
+  progress?: { percent: number; detail: string } | null;
+}
+
+export interface PublishRunInfo {
+  run_id: string;
+  topic: string;
+  status: string;
+  topic_status?: string | null;
+  updated_at?: string | null;
+  has_video?: boolean;
+}
+export interface PublishSchedule {
+  cadence: { weekdays: number[]; time: string };
+  assignments: Record<string, { date: string | null; topic_status?: string | null }>;
+  runs: PublishRunInfo[];
+}
+
+export interface ChannelInfo {
+  channel_id: string;
+  display_name: string;
+  language?: string | null;
+  youtube_channel_ids?: string[];
+  has_overrides?: boolean;
+  valid?: boolean;
+  error?: string;
 }
 
 // ---- Kéo data YouTube (youtube_pipeline/api/data_routes.py) ----------------
@@ -356,7 +439,8 @@ export interface BuildPackFiles {
 
 export interface BuildStatus {
   run_id: string;
-  active_job: ActiveDataJob | null;
+  /** Global build_runner.active_job() — có thể thuộc run khác đang dựng. */
+  active_job: { id: string; run_id?: string | null; started_at: string | null; log_path?: string; orphaned?: boolean } | null;
   busy: boolean;
   pipeline_ready: boolean;
   missing_artifacts: string[];

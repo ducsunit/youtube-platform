@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
   ArrowLeft,
   RefreshCw,
   Square,
   Layers,
+  Loader2,
+  PlayCircle,
   Info,
   AlertTriangle,
   AlertOctagon,
@@ -22,8 +24,8 @@ import {
   logDownloadUrl,
   updateTopicStatus,
 } from '../api';
-import { connectRunEvents } from '../services/runsService';
-import type { RunDiagnostics, RunStatus } from '../types';
+import { connectRunEvents, cancelRunTts, getRunTts, startRunTts } from '../services/runsService';
+import type { RunDiagnostics, RunStatus, RunTtsStatus } from '../types';
 import { ArtifactBrowser } from '../components/ArtifactBrowser';
 import { ArtifactViewer } from '../components/ArtifactViewer';
 import { LogViewer } from '../components/LogViewer';
@@ -295,6 +297,8 @@ export function RunDetailPage() {
         </div>
       </div>
 
+      <TtsCard runId={runId ?? ''} />
+
       <div className="grid-detail">
         <div>
           <div className="panel" style={{ marginBottom: 20 }}>
@@ -456,6 +460,121 @@ export function RunDetailPage() {
           intervalMs={intervalMs}
         />
         <ArtifactViewer runId={runId} path={selected} />
+      </div>
+    </div>
+  );
+}
+
+
+/** Card VOICEVOX audio: trạng thái + nút gen + player nghe thử. */
+function TtsCard({ runId }: { runId: string }) {
+  const [tts, setTts] = useState<RunTtsStatus | null>(null);
+  const [starting, setStarting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    try {
+      setTts(await getRunTts(runId));
+    } catch {
+      /* endpoint lỗi: im lặng, card chỉ hiện idle */
+    }
+  }, [runId]);
+
+  useEffect(() => {
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), 5000);
+    return () => window.clearInterval(timer);
+  }, [refresh]);
+
+  const running = tts?.status === 'running';
+  const done = Boolean(tts?.merged_exists);
+  const engineOnline = tts?.engine_available === true;
+
+  const generate = async () => {
+    setStarting(true);
+    setError(null);
+    try {
+      await startRunTts(runId);
+      await refresh();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setStarting(false);
+    }
+  };
+
+  return (
+    <div className="panel" style={{ marginBottom: 20 }}>
+      <div className="panel-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        Giọng đọc (VOICEVOX)
+        <span
+          style={{
+            fontSize: 11,
+            padding: '2px 8px',
+            borderRadius: 999,
+            background: engineOnline ? 'rgba(16,185,129,0.15)' : 'rgba(245,158,11,0.15)',
+            color: engineOnline ? 'var(--ok)' : 'var(--warn)',
+          }}
+        >
+          {engineOnline ? 'engine online' : 'engine offline'}
+        </span>
+        <div className="spacer" />
+        {running && (
+          <button
+            type="button"
+            className="btn btn-danger"
+            onClick={async () => {
+              setError(null);
+              try {
+                await cancelRunTts(runId);
+                await refresh();
+              } catch (e) {
+                setError(String(e));
+              }
+            }}
+            title="Dừng job TTS đang chạy"
+          >
+            <Square size={14} />
+            Hủy
+          </button>
+        )}
+        <button
+          type="button"
+          className="btn btn-primary"
+          onClick={() => void generate()}
+          disabled={starting || running || !engineOnline}
+          title={!engineOnline ? 'Bật app VOICEVOX (port 50021) rồi thử lại' : 'Gen toàn bộ audio từ script/audio-chunks'}
+        >
+          {running || starting ? <Loader2 size={14} className="animate-spin" /> : <PlayCircle size={14} />}
+          {running ? 'Đang gen...' : done ? 'Gen lại audio' : 'Gen audio'}
+        </button>
+      </div>
+      <div className="panel-body">
+        {!done && !running && (
+          <div style={{ fontSize: 13, color: 'var(--muted)' }}>
+            Chưa có narration-merged.mp3. Bấm "Gen audio" để đọc toàn bộ script bằng giọng đã chọn trong profile kênh.
+          </div>
+        )}
+        {running && (
+          <div style={{ fontSize: 13, color: 'var(--blue)' }}>
+            Đang tổng hợp giọng... ({tts?.chunks_count ?? 0} chunk mp3 đã có)
+          </div>
+        )}
+        {tts?.status === 'cancelled' && (
+          <div style={{ fontSize: 13, color: 'var(--warn)' }}>Job TTS đã bị hủy — chunk đã gen vẫn giữ, bấm "Gen audio" để chạy tiếp phần thiếu.</div>
+        )}
+        {tts?.status === 'failed' && (
+          <div className="error-text">{tts.error ?? 'Job TTS thất bại — xem log.'}</div>
+        )}
+        {done && (
+          <div>
+            <audio controls preload="none" src={artifactUrl(runId, 'audio/narration-merged.mp3')} style={{ width: '100%' }} />
+            <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 6 }}>
+              narration-merged.mp3 · {(tts?.summary?.total_chars ?? 0).toLocaleString()} ký tự · speaker {tts?.summary?.speaker ?? '?'}
+            </div>
+          </div>
+        )}
+        {error && <div className="error-text" style={{ marginTop: 8 }}>{error}</div>}
       </div>
     </div>
   );

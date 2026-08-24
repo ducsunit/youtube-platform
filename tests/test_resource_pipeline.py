@@ -6,10 +6,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
 
-from youtube_pipeline.cli import main
-from youtube_pipeline.resource_pipeline import MINIMAX_PROFILE, ResourcePackPipeline
+from youtube_pipeline.resource_pipeline import VOICEVOX_PROFILE, ResourcePackPipeline
 from youtube_pipeline.resource_provider import AIResourceProvider, DemoResourceProvider
-from youtube_pipeline.resource_cli import build_resource_parser
 from youtube_pipeline.resource_prompts import vietnamese_translation_prompt
 from youtube_pipeline.resource_validation import unsupported_source_claims, validate_plan
 from youtube_pipeline.resource_pack.pipeline import _finalize_source_audit_after_scrub
@@ -286,10 +284,6 @@ class ResourcePackPipelineTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             validate_plan(plan, source)
 
-    def test_resource_cli_has_no_topic_override(self):
-        with self.assertRaises(SystemExit):
-            build_resource_parser().parse_args(["--demo", "--topic", "manual topic"])
-
     def _run(self, root: Path):
         pipeline = ResourcePackPipeline(
             DemoResourceProvider(),
@@ -313,7 +307,7 @@ class ResourcePackPipelineTests(unittest.TestCase):
                 "resource_manifest.json",
                 "script/script.txt",
                 "script/sections.json",
-                "script/minimax-prompt.txt",
+                "script/tts-prompt.txt",
                 "thumbnail/thumbnail-prompt.txt",
                 "thumbnail/thumbnail-prompt-text.txt",
                 "visuals/storyboard.json",
@@ -327,9 +321,8 @@ class ResourcePackPipelineTests(unittest.TestCase):
             self.assertTrue((root / "research/topic-selection.json").exists())
             manifest = json.loads((root / "resource_manifest.json").read_text(encoding="utf-8"))
             self.assertEqual(manifest["topic"], "返信を後回しにしたあとの罪悪感")
-            self.assertEqual(manifest["minimax_tts_profile"]["speed"], 1.02)
-            self.assertEqual(manifest["minimax_tts_profile"]["pitch"], -1)
-            self.assertEqual(manifest["minimax_tts_profile"]["volume"], 1.02)
+            self.assertEqual(manifest["tts_profile"]["provider"], "VOICEVOX")
+            self.assertEqual(manifest["tts_profile"]["speaker"], VOICEVOX_PROFILE["speaker"])
             self.assertFalse(manifest.get("final_video"))
             self.assertFalse(list((root / "visuals/prompts").glob("prompts-batch-*.txt")))
             state_payload = json.loads((root / "run_state.json").read_text(encoding="utf-8"))
@@ -453,10 +446,11 @@ class ResourcePackPipelineTests(unittest.TestCase):
             completed = pipeline.run(state)
             self.assertEqual(completed.status, "complete")
             script = (root / "script/script.txt").read_text(encoding="utf-8")
-            prompt = (root / "script/minimax-prompt.txt").read_text(encoding="utf-8")
+            prompt = (root / "script/tts-prompt.txt").read_text(encoding="utf-8")
             self.assertEqual(strip_minimax_tags(prompt), script)
             sections = json.loads((root / "script/sections.json").read_text(encoding="utf-8"))
-            self.assertEqual(sections["pause_policy"]["minimax_prompt_source"], "deterministic_sections")
+            self.assertEqual(sections["pause_policy"]["prompt_source"], "deterministic_sections")
+            self.assertEqual(sections["tts_profile"]["provider"], "VOICEVOX")
             self.assertEqual(sections["pause_policy"]["syntax"], "<#x#>")
             self.assertFalse(state.stage_records["sections"].warnings)
 
@@ -482,11 +476,12 @@ class ResourcePackPipelineTests(unittest.TestCase):
             )
             completed = pipeline.run(state)
             self.assertEqual(completed.status, "complete")
-            prompt = (root / "script/minimax-prompt.txt").read_text(encoding="utf-8")
+            prompt = (root / "script/tts-prompt.txt").read_text(encoding="utf-8")
             script = (root / "script/script.txt").read_text(encoding="utf-8")
             self.assertEqual(strip_minimax_tags(prompt), script)
             sections = json.loads((root / "script/sections.json").read_text(encoding="utf-8"))
-            self.assertEqual(sections["pause_policy"]["minimax_prompt_source"], "deterministic_sections")
+            self.assertEqual(sections["pause_policy"]["prompt_source"], "deterministic_sections")
+            self.assertEqual(sections["tts_profile"]["provider"], "VOICEVOX")
 
     def test_sections_fallback_when_anchors_do_not_resolve(self):
         # Anchor Gemini trả không tồn tại trong revised → bỏ tts_ready, pipeline
@@ -511,10 +506,11 @@ class ResourcePackPipelineTests(unittest.TestCase):
             completed = pipeline.run(state)
             self.assertEqual(completed.status, "complete")
             script = (root / "script/script.txt").read_text(encoding="utf-8")
-            prompt = (root / "script/minimax-prompt.txt").read_text(encoding="utf-8")
+            prompt = (root / "script/tts-prompt.txt").read_text(encoding="utf-8")
             self.assertEqual(strip_minimax_tags(prompt), script)
             sections = json.loads((root / "script/sections.json").read_text(encoding="utf-8"))
-            self.assertEqual(sections["pause_policy"]["minimax_prompt_source"], "deterministic_sections")
+            self.assertEqual(sections["pause_policy"]["prompt_source"], "deterministic_sections")
+            self.assertEqual(sections["tts_profile"]["provider"], "VOICEVOX")
 
     def test_review_findings_return_to_editor_and_session_is_persisted(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -633,56 +629,21 @@ class ResourcePackPipelineTests(unittest.TestCase):
             self.assertNotIn("final_script", payload)
             self.assertLess((root / "run_state.json").stat().st_size, 100_000)
 
-    def test_cli_resource_pack_demo(self):
+    def test_worker_resource_pack_demo(self):
+        from youtube_pipeline.api.pipeline_job import main as worker_main
+
         with tempfile.TemporaryDirectory() as directory:
-            code = main(
+            code = worker_main(
                 [
-                    "resource-pack",
                     "--demo",
                     "--run-id",
-                    "cli-test",
+                    "worker-test",
                     "--output-dir",
                     directory,
                 ]
             )
             self.assertEqual(code, 0)
             self.assertTrue((Path(directory) / "resource_manifest.json").exists())
-
-    def test_cli_migrates_only_raw_data_from_legacy_checkpoint(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            legacy = root / "legacy.json"
-            legacy.write_text(
-                json.dumps(
-                    {
-                        "raw_youtube_data": json.dumps({"schema_version": 2, "videos": {}}),
-                        "gemini_proposal": {"suggested_title": "legacy"},
-                        "deepseek_draft": "legacy draft",
-                        "final_script": "legacy final",
-                        "completed_steps": ["analysis", "writing", "review"],
-                    },
-                    ensure_ascii=False,
-                ),
-                encoding="utf-8",
-            )
-            output = root / "migrated"
-            code = main(
-                [
-                    "resource-pack",
-                    "--demo",
-                    "--resume-legacy",
-                    str(legacy),
-                    "--output-dir",
-                    str(output),
-                ]
-            )
-            self.assertEqual(code, 0)
-            migration = json.loads(
-                (output / "research/legacy-migration.json").read_text(encoding="utf-8")
-            )
-            self.assertEqual(migration["reused"], ["raw_youtube_data"])
-            script = (output / "script/script.txt").read_text(encoding="utf-8")
-            self.assertNotIn("legacy final", script)
 
 
 def _break_structure(healthy: str) -> str:

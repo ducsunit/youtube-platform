@@ -37,6 +37,18 @@ def build_job_command(run_dir: Path, options: dict) -> list[str]:
     animation = options.get("animation")
     if animation:
         argv += ["--animation", animation]
+    fx = options.get("fx")
+    if fx and fx != "none":
+        argv += ["--fx", str(fx)]
+        intensity = options.get("fx_intensity")
+        if intensity is not None:
+            argv += ["--grain", str(int(intensity))]
+    hw = options.get("hw")
+    if hw and hw != "auto":
+        argv += ["--hw", str(hw)]
+    jobs_n = options.get("build_jobs")
+    if jobs_n:
+        argv += ["--jobs", str(int(jobs_n))]
     if options.get("transition") is not None:
         argv += ["--transition", str(options["transition"])]
     resolution = options.get("resolution")

@@ -32,6 +32,7 @@ def _parser() -> argparse.ArgumentParser:
     source.add_argument("--no-channel-data", action="store_true")
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--run-id")
+    parser.add_argument("--channel", help="Channel profile trong config/channels/<id>/profile.json")
     return parser
 
 
@@ -78,6 +79,7 @@ def _run_new(args: argparse.Namespace) -> tuple[ResourcePackPipeline, object, st
     pipeline = ResourcePackPipeline(
         provider, args.output_dir, max_retries=1 if args.demo else provider.max_retries,
         retry_delay=0 if args.demo else 1, progress=print,
+        channel_id=args.channel,
     )
     state = pipeline.create_state(raw_data, run_id=args.run_id)
     state.config_snapshot["input_provenance"] = provenance
@@ -102,6 +104,7 @@ def _run_resume(args: argparse.Namespace) -> tuple[ResourcePackPipeline, object,
     pipeline = ResourcePackPipeline(
         provider, args.output_dir, max_retries=provider.max_retries,
         retry_delay=1, progress=print,
+        channel_id=getattr(args, "channel", None) or (state.config_snapshot.get("channel_profile") or {}).get("channel_id"),
     )
     return pipeline, state, "resume"
 

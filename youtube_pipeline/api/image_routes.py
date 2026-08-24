@@ -12,13 +12,13 @@ from . import paths
 from .image_runner import ImageBusyError, image_runner
 from .. import image_config
 from .routes import _check_run_id, _require_state
+from ..image_gen import is_valid_image_file
 
 router = APIRouter(prefix="/api/images")
 _IMAGE_ID_RE = re.compile(r"^IMG-\d{1,4}$")
 DEFAULT_MODEL = "gpt-image-2"
-MODELS = image_config.SUPPORTED_MODELS
-SIZES = image_config.SUPPORTED_SIZES
-QUALITIES = image_config.SUPPORTED_QUALITIES
+SUPPORTED_SIZES = image_config.SUPPORTED_SIZES
+SUPPORTED_QUALITIES = image_config.SUPPORTED_QUALITIES
 logger = logging.getLogger(__name__)
 
 
@@ -58,7 +58,7 @@ def _prompt_rows(run_id: str) -> tuple[Path, list[dict]]:
 def _find_image(run_dir: Path, image_id: str) -> Path | None:
     for ext in ("png", "jpg", "jpeg", "webp"):
         candidate = run_dir / "video-build" / "images" / (image_id + "." + ext)
-        if candidate.is_file():
+        if is_valid_image_file(candidate):
             return candidate
     return None
 
@@ -71,7 +71,9 @@ def image_status() -> dict:
         sdk_ready = True
     except ImportError:
         sdk_ready = False
-    return {"available": _has_key() and sdk_ready, "has_api_key": _has_key(), "sdk_ready": sdk_ready, "model": DEFAULT_MODEL, "models": list(MODELS), "sizes": list(SIZES), "qualities": list(QUALITIES), "active_job": image_runner.active_job(), "busy": image_runner.busy()}
+    backend_root = paths.backend_root()
+    supported_models = image_config.get_supported_models(backend_root)
+    return {"available": _has_key() and sdk_ready, "has_api_key": _has_key(), "sdk_ready": sdk_ready, "model": DEFAULT_MODEL, "models": list(supported_models), "sizes": list(SUPPORTED_SIZES), "qualities": list(SUPPORTED_QUALITIES), "active_job": image_runner.active_job(), "busy": image_runner.busy()}
 
 
 @router.get("/runs/{run_id}/prompts")
@@ -109,7 +111,8 @@ def start_image_generation(run_id: str, body: dict) -> dict:
     model = str(body.get("model") or configured["model"])
     size = str(body.get("size") or configured["default_size"])
     quality = str(body.get("quality") or configured["default_quality"])
-    if model not in MODELS or size not in SIZES or quality not in QUALITIES:
+    supported_models = image_config.get_supported_models(paths.backend_root())
+    if model not in supported_models or size not in SUPPORTED_SIZES or quality not in SUPPORTED_QUALITIES:
         raise HTTPException(status_code=400, detail="model/size/quality không được hỗ trợ.")
     if not _has_key():
         raise HTTPException(status_code=400, detail={"message": "Thiếu OPENAI_API_KEY trên API server.", "key": "images.noKey"})
@@ -122,7 +125,9 @@ def start_image_generation(run_id: str, body: dict) -> dict:
         logger.info("image_generation skipped run=%s reason=all_images_exist", run_id)
         return {"job_id": None, "run_id": run_id, "status": "complete", "images": [], "message": "Tất cả ảnh đã tồn tại."}
     try:
-        job = image_runner.start(run_id, paths.run_dir(run_id), indices, model, size, quality)
+        concurrency = body.get("concurrency", 1)
+        concurrency = concurrency if isinstance(concurrency, int) and not isinstance(concurrency, bool) and 1 <= concurrency <= 4 else 1
+        job = image_runner.start(run_id, paths.run_dir(run_id), indices, model, size, quality, concurrency=concurrency)
     except ImageBusyError as exc:
         raise HTTPException(status_code=409, detail={"message": str(exc), "key": "busy", "active_job_id": exc.job_id}) from exc
     logger.info("image_generation accepted job=%s run=%s model=%s size=%s quality=%s images=%d", job["id"], run_id, model, size, quality, len(indices))

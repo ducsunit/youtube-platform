@@ -15,6 +15,16 @@ from .metrics import non_whitespace_chars
 from .source_catalog import KNOWN_SOURCE_URLS
 
 
+def _profile_accent_color() -> str:
+    """Single warm-accent color of the active channel profile (default gold)."""
+    try:
+        from ..channel_profile import active_style_colors
+
+        return active_style_colors().get("accent_color") or "#FFD700"
+    except Exception:  # pragma: no cover - telemetry-grade fallback
+        return "#FFD700"
+
+
 # Claims in these categories require an explicit verified source. They are not
 # safe to infer from a philosophy/self-help source or from an LLM-generated plan.
 SENSITIVE_CLAIM_MARKERS = (
@@ -1515,8 +1525,11 @@ def normalize_thumbnail_prompt(value: dict) -> None:
     except ValueError:
         has_safe_contrast = False
     if not has_safe_contrast:
-        value["text_color"] = "#FFE500"
-        value["background_color"] = "#111111"
+        from ..channel_profile import active_style_colors
+
+        colors = active_style_colors()
+        value["text_color"] = colors.get("text_color") or "#FFE500"
+        value["background_color"] = colors.get("background_color") or "#111111"
         overlay = value.get("overlay_spec")
         if isinstance(overlay, dict):
             overlay["text_zone"] = (
@@ -1537,7 +1550,9 @@ def normalize_thumbnail_prompt(value: dict) -> None:
     if "off-white" not in lowered and "white paper" not in lowered:
         additions.append("Off-white paper field with high-contrast black ink composition.")
     if "gold" not in lowered and "yellow" not in lowered:
-        additions.append("One controlled gold #FFD700 accent.")
+        additions.append(
+            "One controlled gold %s accent." % _profile_accent_color()
+        )
     if "fictional" not in lowered:
         additions.append("Fictional anonymous character.")
     if "full-bleed" not in lowered and "full bleed" not in lowered:
@@ -1990,6 +2005,48 @@ TEXT_SCENE_BLOCKLIST = (
 ACTION_WORDS = ("scholar", "worker", "hand", "pen", "book", "scale",
                 "bubble", "speech", "ticking", "checklist")
 
+# Trigger phủ định trong prompt: nhãn "Negative:", "no ...", "do not ...",
+# "without ...", "avoid ...", "Text-free". Match blocklist CHỈ trên phần còn
+# lại sau khi che các vùng này — nếu không mọi ảnh có mục negative constraint
+# (template prompt mới) đều bị coi là cảnh chữ và prompts-video.txt thành rỗng.
+_NEGATION_TRIGGER_RE = re.compile(
+    r"\bnegative\s*:"
+    r"|\b(?:no|not|never|without|avoid|avoids|avoiding|exclude|excludes|excluding|omit|omitting)\b"
+    r"|\bfree\s+(?:of|from)\b"
+    r"|\b\w+-free\b",
+    re.IGNORECASE,
+)
+_CONTRAST_RE = re.compile(r"\b(?:but|however|although|though|yet|except)\b", re.IGNORECASE)
+
+
+def strip_negative_context(prompt: str) -> str:
+    """Che các vùng phủ định của prompt để blocklist không ăn nhầm.
+
+    Từ mỗi trigger phủ định, che tới hết câu hoặc tới từ tương phản đầu tiên
+    ("but", "however"...). Chỉ dùng cho match heuristic — không đổi prompt gốc.
+    """
+    if not prompt:
+        return ""
+    kept: list[str] = []
+    for sentence in re.split(r"(?<=[.;!?\n])", prompt):
+        spans: list[tuple[int, int]] = []
+        for match in _NEGATION_TRIGGER_RE.finditer(sentence):
+            start = match.start()
+            if any(s <= start < e for s, e in spans):
+                continue  # đã nằm trong vùng bị che trước đó
+            contrast = _CONTRAST_RE.search(sentence, match.end())
+            end = contrast.start() if contrast else len(sentence)
+            spans.append((start, end))
+        if not spans:
+            kept.append(sentence)
+            continue
+        prev = 0
+        for s, e in spans:
+            kept.append(sentence[prev:s])
+            prev = max(prev, e)
+        kept.append(sentence[prev:])
+    return "".join(kept)
+
 
 def select_video_candidates(
     images: list[dict],
@@ -2000,7 +2057,9 @@ def select_video_candidates(
 ) -> list[str]:
     """Chọn ảnh NÊN gen image-to-video (6-8 clip/run) — heuristic thuần, không gọi model.
 
-    Block vĩnh viễn: prompt chứa token TEXT_SCENE_BLOCKLIST (cảnh chữ). Còn lại
+    Block vĩnh viễn: prompt chứa token TEXT_SCENE_BLOCKLIST (cảnh chữ) — chỉ
+    tính phần mô tả tích cực (strip_negative_context bỏ qua mục "Negative:",
+    "no ...", "Text-free"...). Còn lại
     score: hook (event đầu) +3, closer (event cuối) +3, +2 mỗi event ảnh xuất
     hiện (density), +1 beat đầu ảnh mode metaphor, +1 từ hành động. Sort
     (-score, image_id) → lấy max_count; nếu eligible < min_count thì trả hết
@@ -2025,7 +2084,11 @@ def select_video_candidates(
     if not order:
         return []
 
-    prompt_by_id = {str(image.get("image_id")): str(image.get("prompt", "")).lower() for image in images}
+    prompt_by_id = {
+        str(image.get("image_id")):
+            strip_negative_context(str(image.get("prompt", ""))).lower()
+        for image in images
+    }
     eligible = []
     for image in images:
         image_id = str(image.get("image_id"))

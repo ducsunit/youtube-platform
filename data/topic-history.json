@@ -77,22 +77,6 @@
       ]
     },
     {
-      "run_id": "video-11",
-      "status": "published",
-      "topic": "自分で決められるのに、誰かに決めてもらうまで動けない心理",
-      "selected_topic": "自分で決められるのに、誰かに決めてもらうまで動けない心理",
-      "title": "自分で決められるのに誰かの許可を待つ心理",
-      "source_concept": "過去に自分の行動が結果を変えられるという制御可能性を十分に経験できなかったり、予測不能な反応を学習したりすると、その後も行動と結果のつながりを感じにくくなることがある。決断の先送りを能力不足や人格の弱さと同一視せず、経験によって形成されたコントロール感の反応として捉える。",
-      "source_work": "Learned helplessness at fifty: Insights from neuroscience (2016)",
-      "audience_moment": "選択肢も自分の希望も分かっているのに、誰かの確認や許可を求め続け、決断を先送りしてしまう。",
-      "promise": "決断できない状態を能力不足と決めつけず、どの経験や反応がコントロール感を弱め、誰かに決めてもらうまで動けない状態を作っているのかを見直せる。",
-      "angle": "",
-      "mechanisms": [
-        "学習されたコントロールと無力感",
-        "課題の分離"
-      ]
-    },
-    {
       "selected_topic": "家に帰ると、やるべきことより先に同じ行動を繰り返してしまう心理",
       "selected_candidate_id": "T03",
       "selection_reason": "帰宅後にスマホを見るという具体的な生活場面があり、チャンネルの主要な視聴者痛点と最も直接的に一致する。『怠け』ではなく文脈依存の習慣として説明でき、9〜11分の構成でも、状況提示、行動連鎖の分解、環境を変える小さな観察実験まで無理なく展開できる。Wendy WoodとDennis Rungerの研究もテーマに適合しており、ただし既存の玄関関連動画が弱かったため、タイトルと冒頭の具体性を改善して検証する前提で選定した。",
@@ -154,7 +138,7 @@
     },
     {
       "run_id": "video-09",
-      "status": "drafted",
+      "status": "published",
       "topic": "【ユング心理学】なぜ他人の成功が苦しく見えるのか——「窓辺」の嫉妬、シャドウ、魂の目覚め",
       "selected_topic": "【ユング心理学】なぜ他人の成功が苦しく見えるのか——「窓辺」の嫉妬、シャドウ、魂の目覚め",
       "title": "なぜ友人の成功が苦しいのか——窓辺の嫉妬と認めにくい願望【ユング心理学】",
@@ -182,6 +166,70 @@
       "mechanisms": [
         "シャドウ",
         "個性化"
+      ]
+    },
+    {
+      "run_id": "video-11",
+      "status": "drafted",
+      "topic": "【ユング心理学】なぜ、過去の自分を恥じるほど前に進めないのか――古い写真と個性化・シャドウ",
+      "selected_topic": "【ユング心理学】なぜ、過去の自分を恥じるほど前に進めないのか――古い写真と個性化・シャドウ",
+      "title": "過去の自分を恥じて消すほど、なぜ前に進めなくなるのか――個性化とシャドウ",
+      "source_concept": "シャドウ・ペルソナ・個性化・自己統合。過去の自分への羞恥や他者の視線を、確定的な原因や診断ではなく、現在の自己像が拒絶した部分を読み直すための象徴的な仮説として扱う。課題の分離は、他者評価と自分の人生の選択を区別する補助線として使用する。",
+      "source_work": "The Archetypes and the Collective Unconscious; Aion; 嫌われる勇気",
+      "audience_moment": "昔の写真や過去の投稿を見て、以前の自分を消したくなる夜。",
+      "promise": "過去の自分を恥じるほど前に進めなくなる構造を、1.現在の純粋さを守るための過去の切断、2.他者の視線を内面化した羞恥のペルソナ、3.過去を美化することによる別の分離、4.消去した自己像として現れるシャドウ、5.古い写真の中の自分を現在の物語へ位置づけ直す個性化、という5つの角度から読み替える。",
+      "angle": "",
+      "mechanisms": [
+        "シャドウ",
+        "個性化"
+      ]
+    },
+    {
+      "run_id": "video-12",
+      "status": "drafted",
+      "topic": "【ユング心理学】なぜ「いい人」をやめられないのか？シャドウ・個性化・無意識から見る7つの静かなサイン",
+      "selected_topic": "【ユング心理学】なぜ「いい人」をやめられないのか？シャドウ・個性化・無意識から見る7つの静かなサイン",
+      "title": "なぜ「いい人」をやめられないのか？拒否と怒りを消す無意識の仕組み――ユング心理学",
+      "source_concept": "シャドウ・個性化・自己と他者の課題の分離・環境への適応とそのコスト",
+      "source_work": "The Collected Works of C. G. Jung, Vol. 9 Part 2: Aion／嫌われる勇気／Hidden talents in harsh environments",
+      "audience_moment": "断りたい誘いにも笑顔で応じ、相手の期待を先回りしてしまう日常",
+      "promise": "親切と自己消失の境界、抑え込んだ拒絶感情の意味、他者の評価に預けた自己、関係の中で現れる小さな怒り、個性化に向かう問いを5段階で見つめる",
+      "angle": "",
+      "mechanisms": [
+        "シャドウと自己統合",
+        "習慣としての自動化"
+      ]
+    },
+    {
+      "run_id": "video-13",
+      "status": "drafted",
+      "topic": "【ユング心理学】なぜ「始めたいのに動けない」のか？シャドウ・無意識・個性化から読む5つの静かな抵抗",
+      "selected_topic": "【ユング心理学】なぜ「始めたいのに動けない」のか？シャドウ・無意識・個性化から読む5つの静かな抵抗",
+      "title": "なぜ始める直前で止まるのか？意志の弱さではない5つの静かな抵抗｜ユング心理学",
+      "source_concept": "シャドウ・個性化・無意識 được dùng như khung diễn giải biểu tượng; trải nghiệm kiểm soát có thể ảnh hưởng đến phản ứng sau này; thói quen hình thành qua lặp lại và tín hiệu bối cảnh.",
+      "source_work": "Aion; The Archetypes and the Collective Unconscious; Learned helplessness at fifty: Insights from neuroscience; Psychology of Habit",
+      "audience_moment": "Biết việc cần làm nhưng cứ trì hoãn ngay trước lúc bắt đầu, dù không muốn tự gọi mình là lười biếng.",
+      "promise": "Giải mã 5 lớp ý nghĩa của trạng thái không thể bắt đầu: tự quy kết, phản ứng phòng vệ, tín hiệu bối cảnh, xung đột giữa bản ngã hiện tại và phần bị che khuất, cùng một cách quan sát bản thân không biến trì hoãn thành chẩn đoán.",
+      "angle": "",
+      "mechanisms": [
+        "Thói quen được định hình bởi sự lặp lại và bối cảnh",
+        "Kinh nghiệm về quyền kiểm soát"
+      ]
+    },
+    {
+      "run_id": "video-14",
+      "status": "drafted",
+      "topic": "5つの秘密――なぜ昔は役に立った反応が、今の自分を苦しめるのか？ シャドウと個性化を「古い鍵」から読む",
+      "selected_topic": "5つの秘密――なぜ昔は役に立った反応が、今の自分を苦しめるのか？ シャドウと個性化を「古い鍵」から読む",
+      "title": "昔は自分を守った反応が、なぜ今の自分を苦しめるのか――ユングのシャドウ",
+      "source_concept": "環境に応じて形成された適応的な反応には、現在の文脈で役立つ面と負担になる面の両方があり得るという観点。これを、Jungのペルソナ・シャドウ・個性化による象徴的な自己観察として解釈する。過去の環境やトラウマを視聴者に断定しない。",
+      "source_work": "Hidden talents in harsh environments／The Archetypes and the Collective Unconscious; Aion",
+      "audience_moment": "以前は慎重さや空気を読む力で問題を避けられたのに、現在は考えすぎて疲れ、決断できなくなっている時。",
+      "promise": "自分を苦しめる反応を『間違った性格』とせず、かつての適応が現在の文脈で別の意味を持ち始めた可能性を考えられる。",
+      "angle": "",
+      "mechanisms": [
+        "反復と状況の手がかりによる習慣",
+        "環境への適応技能"
       ]
     }
   ]

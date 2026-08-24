@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import hashlib
+import os
 import logging
 import re
 import shutil
@@ -14,7 +15,8 @@ from .sections import PAUSE_BEFORE_OUTRO, PAUSE_BETWEEN_SECTIONS, PAUSE_PARAGRAP
 from .metrics import build_pause_map, non_whitespace_chars, scrub_source_citation_tokens, validate_japanese_script
 from .analysis import build_channel_snapshot, build_performance_review
 from .competitor import competitor_inject_text
-from .providers import DemoResourceProvider, ResourceContentProvider, _run_provider_tasks_parallel
+from .providers import AIResourceProvider, DemoResourceProvider, ResourceContentProvider, _run_provider_tasks_parallel
+from .. import channel_profile as _channel_profile
 from .claim_ledger import (
     attach_claim_ledger,
     build_claim_ledger,
@@ -73,13 +75,21 @@ from .validation import (
 
 logger = logging.getLogger(__name__)
 
-MINIMAX_PROFILE = {
-    "provider": "MiniMax",
-    "speed": 1.02,
-    "pitch": -1,
-    "volume": 1.02,
-    "reference_cpm_min": 380,
-    "reference_cpm_max": 400,
+# VOICEVOX local TTS — thay thế hoàn toàn MiniMax từ v11.
+# Giọng mặc định: 剣崎雌雄 ノーマル (speaker 21) — kênh psychology JP;
+# kênh khác override qua channel profile section "tts".
+VOICEVOX_PROFILE = {
+    "provider": "VOICEVOX",
+    "engine_url": os.getenv("VOICEVOX_URL", "http://127.0.0.1:50021"),
+    "speaker": int(os.getenv("VOICEVOX_SPEAKER", "21")),
+    "speed_scale": float(os.getenv("VOICEVOX_SPEED", "1.0")),
+    "pitch_scale": float(os.getenv("VOICEVOX_PITCH", "0.0")),
+    "intonation_scale": float(os.getenv("VOICEVOX_INTONATION", "0.85")),
+    "pre_phoneme_length": 0.4,
+    "post_phoneme_length": 0.6,
+    # đo thực tế 剣崎雌雄 @1.0 ≈ 357 ký tự/phút trên script video-10
+    "reference_cpm_min": 330,
+    "reference_cpm_max": 370,
     "calibration_required": False,
 }
 
@@ -193,6 +203,18 @@ def _topic_research(context: RunContext) -> StageResult:
     )
 
 
+def _channel_id(context: RunContext) -> str | None:
+    block = (context.config or {}).get("channel_profile") or {}
+    return block.get("channel_id") or None
+
+
+def _competitor_text(context: RunContext) -> str:
+    """Competitor context for the run's channel profile (default: built-in)."""
+    block = (context.config or {}).get("channel_profile") or {}
+    text = block.get("competitor_block")
+    return str(text) if text else competitor_inject_text()
+
+
 def _topic_candidates(context: RunContext) -> StageResult:
     topic = _manual_topic(context)
     if topic:
@@ -220,9 +242,9 @@ def _topic_candidates(context: RunContext) -> StageResult:
         _json(context, "topic_research"),
         _json(context, "channel_snapshot"),
         _json(context, "performance_review"),
-        competitor_inject_text(),
+        _competitor_text(context),
     )
-    history = load_history(context.store.root)
+    history = load_history(context.store.root, channel_id=_channel_id(context))
     value = annotate_candidates(value, history)
     validate_topic_candidates(value)
     ref = context.store.put_json("topic_candidates", "research/topic-candidates.json", value, "topic_candidates")
@@ -255,7 +277,7 @@ def _topic_selection(context: RunContext) -> StageResult:
         _json(context, "topic_research"),
         _json(context, "performance_review"),
     )
-    history = load_history(context.store.root)
+    history = load_history(context.store.root, channel_id=_channel_id(context))
     published_history = [row for row in history if row.get("status") == "published"]
     if duplicate_reason(value, published_history):
         available = [row for row in candidates.get("candidates", []) if not duplicate_reason(row, published_history)]
@@ -450,6 +472,61 @@ def _narrative_plan(brief: dict) -> dict:
     }
 
 
+def _apply_commitment_manifest(context: RunContext, plan: dict) -> dict:
+    """L1+L2+L3 commitment manifest: trích xuất → validate deterministic →
+    1 lần repair manifest/plan-patch → vẫn hụt thì fail EARLY ở đây (rẻ),
+    không để script_audit chết sau khi tốn chi phí viết script."""
+    from .commitments import (
+        normalize_commitments,
+        numeric_hints,
+        validate_commitments,
+    )
+
+    provider = context.provider
+    topic = str(context.topic or "")
+    hints = numeric_hints(topic, plan)
+    if not hints:
+        # Không có con số/khẩu hình định lượng nào → không có manifest cũng không
+        # thể tự mâu thuẫn kiểu video-12. Vẫn lưu manifest rỗng để auditor biết
+        # ground truth là "không có cam kết định lượng".
+        plan["commitments"] = []
+        return plan
+
+    ledger_text = json.dumps(_json(context, "claim_ledger"), ensure_ascii=False)
+    commitments = normalize_commitments(provider.extract_commitments(topic, plan, hints))
+    issues = validate_commitments(commitments, plan, hints, ledger_text)
+
+    if issues:
+        repaired = provider.repair_commitments(plan, {"commitments": commitments}, issues, hints)
+        commitments = normalize_commitments(repaired)
+        # L3: plan_patches — sửa psychological_job bỏ con số KHÔNG phải cam kết thật.
+        patched = False
+        for patch in (repaired.get("plan_patches") or []) if isinstance(repaired, dict) else []:
+            if not isinstance(patch, dict):
+                continue
+            section_id = str(patch.get("section") or "")
+            new_job = str(patch.get("psychological_job") or "").strip()
+            if not section_id or not new_job:
+                continue
+            for section in plan.get("sections") or []:
+                if isinstance(section, dict) and str(section.get("id")) == section_id:
+                    section["psychological_job"] = new_job
+                    patched = True
+        if patched:
+            # Số trong psychological_job đã đổi → tính lại hints (hint topic giữ nguyên:
+            # title là cam kết cứng, patch không được phép xoá).
+            hints = numeric_hints(topic, plan)
+        issues = validate_commitments(commitments, plan, hints, ledger_text)
+        if issues:
+            raise ValueError(
+                "Commitment manifest không tự nhất quán sau 1 lần repair (fail EARLY "
+                "trước khi viết script): %s" % "; ".join(issues)
+            )
+
+    plan["commitments"] = commitments
+    return plan
+
+
 def _narrative_brief(context: RunContext) -> StageResult:
     """One skill-led creative brief replaces brief, contract and plan calls."""
     topic_context = _psychology_topic_context(context)
@@ -495,6 +572,7 @@ def _narrative_brief(context: RunContext) -> StageResult:
     validate_contract(contract)
     plan = _narrative_plan(brief)
     validate_plan(plan, _source_policy(context), brief)
+    plan = _apply_commitment_manifest(context, plan)
     refs = [
         context.store.put_json("psychology_brief", "script/psychology-brief.json", brief, "narrative_brief"),
         context.store.put_json("script_contract", "script/contract.json", contract, "narrative_brief"),
@@ -592,7 +670,7 @@ def _review(context: RunContext) -> StageResult:
     plan = _json(context, "planning")
     source_pack = _source_policy(context)
     draft = _text(context, "script_draft")
-    review = context.provider.review_script(contract, plan, source_pack, draft, competitor_inject_text())
+    review = context.provider.review_script(contract, plan, source_pack, draft, _competitor_text(context))
     if "final_script" in review:
         raise ValueError("Reviewer không được trả final_script; chỉ trả revised_draft_clean.")
     # Reviewer schemas drift in the wild: a provider may return issue objects or a
@@ -1190,7 +1268,7 @@ def _put_script_qa(context: RunContext, script: str, producer: str) -> tuple:
         raise ValueError("; ".join(qa["issues"]))
     pauses = {
         "format": "non_spoken_pause_cues",
-        "usage": "Tham khảo nhịp đọc/dựng; minimax-prompt.txt mang tag <#x#> (rule v9) — script.txt luôn sạch.",
+        "usage": "Tham khảo nhịp đọc/dựng; tts-prompt.txt mang tag <#x#> (rule v9) — script.txt luôn sạch.",
         "cues": build_pause_map(script),
     }
     qa_ref = context.store.put_json("script_qa", "script/script_qa.json", qa, producer)
@@ -1540,8 +1618,8 @@ def _sections(context: RunContext) -> StageResult:
     section_count = len([s for s in planning.get("sections", []) if s.get("id")])
     if section_count < 1:
         raise ValueError("planning.json thiếu sections — không xác định được số section.")
-    cpm_min = MINIMAX_PROFILE["reference_cpm_min"]
-    cpm_max = MINIMAX_PROFILE["reference_cpm_max"]
+    cpm_min = VOICEVOX_PROFILE["reference_cpm_min"]
+    cpm_max = VOICEVOX_PROFILE["reference_cpm_max"]
     sections, policy = split_script_sections(script, section_count, cpm_min=cpm_min, cpm_max=cpm_max)
     rows = [
         {"index": sec.index, "id": sec.id, "chars": sec.chars, "file": sec.file, "text": sec.text}
@@ -1564,24 +1642,24 @@ def _sections(context: RunContext) -> StageResult:
         minimax_prompt = insert_pause_tags(script, sections)
         prompt_source = "deterministic_sections"
     if normalize_text(strip_minimax_tags(minimax_prompt)) != normalize_text(script):
-        raise ValueError("minimax-prompt không khớp script sau khi bỏ tag <#x#>.")
+        raise ValueError("tts-prompt không khớp script sau khi bỏ tag <#x#>.")
     payload = {
-        "tts_profile": MINIMAX_PROFILE,
+        "tts_profile": VOICEVOX_PROFILE,
         "section_policy": policy,
         "sections": rows,
         "total_chars": sum(row["chars"] for row in rows),
         "round_trip_passed": "".join(sec.text for sec in sections) == script,
         "pause_policy": {
-            "format": "minimax_t2a_tag",
+            "format": "voicevox_silence",
             "syntax": "<#x#>",
             "between_sections": PAUSE_BETWEEN_SECTIONS,
             "before_outro": PAUSE_BEFORE_OUTRO,
             "paragraph_break": PAUSE_PARAGRAPH_BREAK,
-            "minimax_prompt_source": prompt_source,
+            "prompt_source": prompt_source,
         },
     }
     sections_ref = context.store.put_json("sections", "script/sections.json", payload, "sections")
-    prompt_ref = context.store.put_text("minimax_prompt", "script/minimax-prompt.txt", minimax_prompt, "sections")
+    prompt_ref = context.store.put_text("tts_prompt", "script/tts-prompt.txt", minimax_prompt, "sections")
     # TTS providers commonly cap a request at 5,000 characters. These chunks
     # are intentionally separate from planning sections: changing their count
     # must never break beat-to-section timing in the video builder.
@@ -1627,7 +1705,7 @@ def _sections(context: RunContext) -> StageResult:
 
 def _thumbnail(context: RunContext) -> StageResult:
     contract = _json(context, "script_contract")
-    value = context.provider.create_thumbnail(contract, _text(context, "final_script"), competitor_inject_text())
+    value = context.provider.create_thumbnail(contract, _text(context, "final_script"), _competitor_text(context))
     normalize_thumbnail_prompt(value)
     qa = validate_thumbnail(value, contract["chosen_title"])
     if qa.get("warnings"):
@@ -1830,7 +1908,7 @@ def _publish(context: RunContext) -> StageResult:
 RESOURCE_PACK_REQUIRED = (
     "channel_snapshot", "performance_review", "topic_research", "topic_candidates", "selected_topic",
     "source_pack", "psychology_brief", "script_contract", "planning",
-    "final_script", "script_vi", "resource_audits", "script_qa", "pause_map", "sections", "minimax_prompt",
+    "final_script", "script_vi", "resource_audits", "script_qa", "pause_map", "sections", "tts_prompt",
     "psychology_format_check",
     "thumbnail_contract",
     "thumbnail_prompt", "thumbnail_prompt_text", "image_strategy", "storyboard", "image_prompts_all", "image_prompt_qa",
@@ -1849,7 +1927,7 @@ def _resource_pack(context: RunContext) -> StageResult:
         "run_id": context.state.run_id,
         "topic": context.topic,
         "profile": context.state.profile,
-        "minimax_tts_profile": MINIMAX_PROFILE,
+        "tts_profile": VOICEVOX_PROFILE,
         "policy_reference": "privacy/privacy.md",
         "thumbnail_style_reference": "thumbnail-template/thumbnail-video1.png",
         "artifacts": {
@@ -1858,7 +1936,7 @@ def _resource_pack(context: RunContext) -> StageResult:
             if name != "channel_input"
         },
         "manual_next_steps": [
-            "Gen MiniMax MỘT lần từ script/minimax-prompt.txt (bản có tag <#x#> theo rule v9 — strip tag ra đúng script.txt; script.txt luôn sạch) với speed 1.02, pitch -1, volume 1.02 (không chia chunk, không ghép).",
+            "Stage tts_generate đã gen sẵn audio/chunks/*.mp3 + audio/narration-merged.mp3 bằng VOICEVOX (engine local). Chỉ gen tay khi stage bị skip (engine offline).",
             "Đối chiếu script/pause-map.json để kiểm tra nhịp nghỉ; không đọc cue thành lời.",
             "Chọn `thumbnail/thumbnail-prompt.txt` để gen nền không chữ + overlay thủ công, hoặc `thumbnail/thumbnail-prompt-text.txt` để AI gen sẵn headline Nhật; luôn chạy squint test.",
             "Rà soát privacy/privacy.md và Altered/Synthetic Content trước khi upload.",
@@ -1871,7 +1949,7 @@ def _resource_pack(context: RunContext) -> StageResult:
     qa = {"passed": True, "required_artifacts": len(required), "missing": [], "corrupt": [], "pack_assembled": True, "video_export": "manual", "auto_render": False}
     checklist = """# Manual production checklist
 
-1. Gen MiniMax MỘT lần từ script/minimax-prompt.txt (bản có tag <#x#> — strip tag ra đúng script.txt) với speed 1.02, pitch -1, volume 1.02 (không chia chunk, không ghép).
+1. Audio đã có sẵn: stage tts_generate dùng VOICEVOX gen audio/chunks/*.mp3 và narration-merged.mp3. Nếu thiếu, bật VOICEVOX app rồi resume run.
 2. Đối chiếu pause-map.json và nghe lỗi phát âm.
 3. Đo audio thật; ghi duration và CPM vào manual_results.json.
 4. Gen thumbnail theo style lock ink-paper của đối thủ Nhật: `thumbnail-prompt.txt` cho nền không chữ + overlay thủ công; `thumbnail-prompt-text.txt` cho AI gen sẵn headline Nhật. Luôn kiểm tra spelling/squint test; chỉ đổi tư thế, biểu cảm và cảm xúc của nhân vật.
@@ -1886,6 +1964,55 @@ def _resource_pack(context: RunContext) -> StageResult:
     qa_ref = context.store.put_json("resource_pack_qa", "qa/resource_pack_qa.json", qa, "resource_pack")
     checklist_ref = context.store.put_text("manual_production_checklist", "qa/manual-production-checklist.md", checklist, "resource_pack")
     return StageResult([manifest_ref, qa_ref, checklist_ref], qa)
+
+
+def _tts_generate(context: RunContext) -> StageResult:
+    """VOICEVOX local TTS: synth mọi chunk trong manifest + merge narration.
+
+    Skip mềm (warning) khi: demo provider, VOICEVOX_AUTO_TTS=0, hoặc engine
+    offline — run vẫn complete, người dùng gen tay như flow cũ nếu muốn.
+    """
+    import shutil
+    from ..tts_voicevox import engine_available, generate_run_audio
+
+    if not isinstance(context.provider, AIResourceProvider):
+        # Chỉ production thật (worker UI/CLI) mới gen audio; demo & test
+        # fake-provider phải bỏ qua để không đụng mạng/local engine.
+        return StageResult([], {"skipped": "non_production_provider"})
+    if os.getenv("VOICEVOX_AUTO_TTS", "1") == "0":
+        return StageResult([], {"skipped": "env_disabled"}, warnings=["VOICEVOX_AUTO_TTS=0 — bỏ qua gen audio."])
+
+    profile = dict(VOICEVOX_PROFILE)
+    block = (context.config or {}).get("channel_profile") or {}
+    overrides = block.get("tts") or {}
+    for key in ("speaker", "speed_scale", "pitch_scale", "intonation_scale"):
+        if key in overrides:
+            profile[key] = type(profile[key])(overrides[key])
+
+    if not engine_available(profile["engine_url"]):
+        return StageResult(
+            [],
+            {"skipped": "voicevox_offline"},
+            warnings=["VOICEVOX engine offline (%s) — bật app rồi resume để gen audio, hoặc gen tay." % profile["engine_url"]],
+        )
+    if shutil.which("ffmpeg") is None:
+        return StageResult([], {"skipped": "ffmpeg_missing"}, warnings=["Thiếu ffmpeg — không convert được MP3."])
+
+    settings = {
+        "speedScale": profile["speed_scale"],
+        "pitchScale": profile["pitch_scale"],
+        "intonationScale": profile["intonation_scale"],
+        "prePhonemeLength": profile["pre_phoneme_length"],
+        "postPhonemeLength": profile["post_phoneme_length"],
+        "outputSamplingRate": 44100,
+    }
+    summary = generate_run_audio(context.store.root, int(profile["speaker"]), profile["engine_url"], settings)
+    summary.update({"provider": "VOICEVOX", "speaker": int(profile["speaker"])})
+    ref = context.store.put_json("tts_audio", "audio/tts-summary.json", summary, "tts_generate")
+    context.progress(
+        "VOICEVOX: %d chunks | merged=%s" % (len(summary["files"]), summary.get("merged"))
+    )
+    return StageResult([ref], {"tts_chunks_generated": len(summary["files"]), "voicevox_speaker": int(profile["speaker"])})
 
 
 def resource_pack_stages(output_dir: Path | None = None) -> list[FunctionStage]:
@@ -1905,7 +2032,7 @@ def resource_pack_stages(output_dir: Path | None = None) -> list[FunctionStage]:
         # One skill-led creative brief emits compatibility artifacts consumed by
         # downstream packaging/visual stages. It replaces three independent
         # model calls (brief -> contract -> planning).
-        FunctionStage("narrative_brief", _narrative_brief, requires=("selected_topic", "source_pack", "claim_ledger", "performance_review"), version="6"),
+        FunctionStage("narrative_brief", _narrative_brief, requires=("selected_topic", "source_pack", "claim_ledger", "performance_review"), version="7"),
         FunctionStage("writing", _writing, requires=("script_contract", "planning", "source_pack", "claim_ledger", "psychology_brief"), version="11"),
         # One audit plus at most one targeted repair; no generic review pass.
         FunctionStage("script_audit", _script_audit, requires=("script_draft", "script_contract", "planning", "source_pack", "claim_ledger", "psychology_brief"), version="5"),
@@ -1914,6 +2041,7 @@ def resource_pack_stages(output_dir: Path | None = None) -> list[FunctionStage]:
         FunctionStage("psychology_format_check", _psychology_format_check, requires=("final_script", "structure_check", "psychology_brief", "script_contract"), version="4"),
         FunctionStage("translate_script_vi", _translate_script_vi, requires=("final_script", "structure_check"), version="2"),
         FunctionStage("sections", _sections, requires=("final_script", "script_qa", "planning"), version="3"),
+        FunctionStage("tts_generate", _tts_generate, requires=("sections",), version="1"),
         FunctionStage("thumbnail_contract", _thumbnail, requires=("final_script", "script_contract"), version="10"),
         FunctionStage("image_strategy", _image_strategy, requires=("final_script", "script_qa", "sections", "script_contract", "planning", "thumbnail_contract"), version="8"),
         FunctionStage("image_prompts", _image_prompts, requires=("image_strategy", "script_qa", "sections", "script_contract", "planning"), version="8"),
@@ -1929,13 +2057,26 @@ class ResourcePackPipeline:
         output_dir: Path,
         max_retries: int = 3,
         retry_delay: float = 1.0,
-        progress: Callable[[str], None] = print,
+        progress: Callable[[str], str] = print,
+        channel_id: str | None = None,
     ) -> None:
         self.provider = provider
         self.output_dir = output_dir
         self.store = ArtifactStore(output_dir)
         self.engine = PipelineEngine(resource_pack_stages(self.output_dir), max_retries=max_retries, retry_delay=retry_delay)
         self.progress = progress
+        # Explicit channel binding (--channel). Auto-detection from the input
+        # dataset happens in create_state; resumes re-activate from the stored
+        # config snapshot inside run().
+        self.channel_id = channel_id
+
+    def _resolved_channel_block(self, raw_data: str | None) -> dict:
+        """Resolve + activate the channel profile for this run."""
+        explicit = getattr(self, "channel_id", None)
+        channel_id, profile = _channel_profile.resolve_channel_id(self.output_dir, explicit, raw_data)
+        block = _channel_profile.build_config_block(channel_id, profile)
+        _channel_profile.activate(block)
+        return block
 
     def create_state(self, raw_data: str, run_id: str | None = None) -> RunState:
         routing_snapshot = None
@@ -1944,12 +2085,16 @@ class ResourcePackPipeline:
             routing_snapshot = router.snapshot()
         config_snapshot = {
             "production_policy_version": PRODUCTION_POLICY_VERSION,
-            "minimax_tts_profile": MINIMAX_PROFILE,
+            "tts_profile": VOICEVOX_PROFILE,
             "target_duration_minutes": [35, 45],
             "target_duration_max_warning_minutes": 55,
             "target_chars": [13600, 17500],
             "target_chars_is_guideline": True,
         }
+        # Channel identity: explicit --channel > auto-detect from the dataset >
+        # built-in defaults. The resolved block rides inside config_snapshot so
+        # stage fingerprints (and therefore resume reuse) are per-channel.
+        config_snapshot["channel_profile"] = self._resolved_channel_block(raw_data)
         if routing_snapshot is not None:
             config_snapshot["model_routing"] = routing_snapshot
         state = RunState(
@@ -1969,6 +2114,12 @@ class ResourcePackPipeline:
 
     def run(self, state: RunState, raw_data: str | None = None) -> RunState:
         source = raw_data if raw_data is not None else self.store.read_text("channel_input", state)
+        stored_channel_block = state.config_snapshot.get("channel_profile")
+        if isinstance(stored_channel_block, dict) and stored_channel_block:
+            # Resume path: re-activate overrides from the checkpointed block.
+            _channel_profile.activate(stored_channel_block)
+        else:
+            self._resolved_channel_block(source)
         context = RunContext(
             state=state,
             store=self.store,
@@ -1982,5 +2133,9 @@ class ResourcePackPipeline:
         selected = self.store.read_json("selected_topic", result)
         brief = self.store.read_json("psychology_brief", result)
         contract = self.store.read_json("script_contract", result)
-        record_drafted(self.output_dir, result.run_id, {**selected, "chosen_title": contract.get("chosen_title", "")}, brief)
+        record_drafted(
+            self.output_dir, result.run_id,
+            {**selected, "chosen_title": contract.get("chosen_title", "")},
+            brief, channel_id=(state.config_snapshot.get("channel_profile") or {}).get("channel_id"),
+        )
         return result

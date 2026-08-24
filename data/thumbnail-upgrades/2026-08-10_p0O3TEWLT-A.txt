@@ -1,0 +1,20 @@
+═══ NEW TITLE (copy vào YouTube Studio) ═══
+【アドラー心理学】「断れない」のは優しさのせいじゃない――自分を削る「いい人」が境界線を引き直す方法
+
+═══ HEADLINE trên thumbnail ═══
+「断れない」
+
+═══ PROMPT GEN (copy từ đây xuống cuối file) ═══
+Create exactly ONE finished 16:9 Japanese YouTube thumbnail, ready for a TV-grid view. Creative context only. Do NOT render the video title as text.
+
+EDITORIAL INTENT: Title carries: saying yes is not kindness — it is self-erasure, and the boundary line can be redrawn. Thumbnail carries: the moment of holding yet another request while your own plans quietly slip away. The headline 「断れない」 is the exact inability.
+
+VISUAL STYLE: high-contrast black ink illustration, thick black outline, sparse hand-drawn brush texture, off-white paper field, black silhouettes, one controlled gold #FFD700 accent, 16:9. Full-bleed 16:9 symbolic ink tableau, one immediate emotional image. Reserve the top 24-30% for a single oversized Japanese headline, integrated through white paper or a soft ink fade — never a banner, hard split, panel, collage, or two backgrounds. Below it: one dominant psychological symbol and one clear human tension, readable in one second at TV-grid size.
+
+CHARACTER CONTINUITY: keep one recurring fictional chalk-line figure — anonymous adult Japanese silhouette, off-white ink lines, round unfeatured head, restrained dot eyes only when emotion is needed, slim proportions, black charcoal clothing blocks. No identifiable real-person features, no second named figure.
+
+SELECTED SCENE: the recurring chalk-line figure stands arms overloaded with stacked ink-drawn boxes — each box a request accepted — while one box tips and falls from the pile. Behind them, a single bold ink line is drawn across the floor like a boundary that stops mid-draw, unfinished. The single gold #FFD700 accent: one small empty box set safely apart from the pile — the thing they kept for themselves. Paper texture fades softly; no hard split.
+
+TEXT RENDERING: The Japanese headline 「断れない」 printed EXTRA LARGE and BOLD in bright lemon-GOLD #FFE500 kanji, Noto Sans JP Black / ultra-heavy rounded Gothic, tight tracking, 10-14px thick BLACK outline and subtle black shadow, one line across the upper 24-30% of the frame, fully readable from a TV grid. This is the ONLY readable text in the image. Do not render the video title, labels, captions, signs, or any other characters.
+
+Negative: English letters, logo, banner, hard split, collage, panels, two backgrounds, blank upper half, photorealistic person, celebrity likeness, detailed anime character, multiple protagonists, busy crowd with faces, melodramatic crying, medical imagery, diagnosis imagery, glow, bevel, glossy 3D, colorful palette, more than one gold accent, gold clothing, clutter, low contrast, thin weak outlines, watermark, extra people with detail, distorted hands, deformed fingers, extra limbs, photorealistic, 3D render, readable labels, captions, signs, interface text, any text other than the exact headline.

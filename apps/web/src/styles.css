@@ -1,3 +1,32 @@
+@import "tailwindcss";
+
+/*
+ * Tailwind v4 theme bridge: map design-system tokens (styles.css vars, cả
+ * dark/light qua [data-theme]) thành Tailwind utilities. Ví dụ:
+ *   bg-panel, bg-panel-2, bg-bg-subtle, text-heading, text-secondary,
+ *   text-muted, border-line, text-accent, text-ok, text-err, text-warn,
+ *   text-blue, ring-accent...
+ */
+@theme {
+  --color-panel: var(--panel);
+  --color-panel-hover: var(--panel-hover);
+  --color-panel-2: var(--panel-2);
+  --color-base: var(--bg);
+  --color-base-subtle: var(--bg-subtle);
+  --color-line: var(--border);
+  --color-content: var(--text);
+  --color-heading: var(--text-heading);
+  --color-secondary: var(--text-secondary);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-blue: var(--blue);
+  --color-ok: var(--ok);
+  --color-err: var(--err);
+  --color-warn: var(--warn);
+  --font-sans: 'Plus Jakarta Sans', 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', SFMono-Regular, Consolas, monospace;
+}
+
 /* ==========================================================================
    YouTube V3 Automation Studio — Modern Design System (Light & Dark Theme)
    ========================================================================== */
@@ -1214,4 +1243,34 @@ select {
   font-size: 12.5px;
   color: var(--muted);
   font-style: italic;
+}
+
+.msg-banner {
+  margin-top: 14px;
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.msg-ok {
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  color: var(--ok);
+}
+
+.msg-err {
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  color: var(--err);
+}
+
+.spin,
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }

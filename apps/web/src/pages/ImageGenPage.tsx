@@ -62,6 +62,7 @@ export function ImageGenPage() {
   const [resolution, setResolution] = useState('1K');
   const [quality, setQuality] = useState('medium');
   const [skipExisting, setSkipExisting] = useState(true);
+  const [concurrency, setConcurrency] = useState(2);
   const [selectedRunId, setSelectedRunId] = useState('');
   const [jobId, setJobId] = useState<string | null>(null);
   const [job, setJob] = useState<ImageJob | null>(null);
@@ -109,7 +110,7 @@ export function ImageGenPage() {
     if (!runId || !selectedList.length) return;
     setError(null);
     try {
-      const result = await startImageGenerate(runId, { images: selectedList, model, size, quality, skip_existing: skipExisting });
+      const result = await startImageGenerate(runId, { images: selectedList, model, size, quality, skip_existing: skipExisting, concurrency });
       if (result.job_id) { setJobId(result.job_id); setJob(null); }
       else await promptsPoll.refresh();
     } catch (e) { setError(errorText(e)); }
@@ -171,7 +172,17 @@ export function ImageGenPage() {
             </div>
             <div className="form-row" style={{ marginBottom: 0, minWidth: 130 }}><label htmlFor="image-quality">Quality</label><select id="image-quality" value={quality} onChange={(e) => setQuality(e.target.value)} disabled={running}><option>low</option><option>medium</option><option>high</option></select></div>
           </div>
-          <label style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 14, fontSize: 13 }}><input type="checkbox" checked={skipExisting} onChange={(e) => setSkipExisting(e.target.checked)} disabled={running} /> Bỏ qua ảnh đã tồn tại</label>
+          <div className="toolbar" style={{ flexWrap: 'wrap', gap: 14, marginTop: 14, alignItems: 'center' }}>
+            <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 }}><input type="checkbox" checked={skipExisting} onChange={(e) => setSkipExisting(e.target.checked)} disabled={running} /> Bỏ qua ảnh đã tồn tại</label>
+            <div className="form-row" style={{ marginBottom: 0, minWidth: 190 }}>
+              <label htmlFor="image-concurrency">Gen song song</label>
+              <select id="image-concurrency" value={concurrency} onChange={(e) => setConcurrency(Number(e.target.value))} disabled={running}>
+                <option value={1}>Tuần tự (an toàn nhất)</option>
+                <option value={2}>2 ảnh cùng lúc</option>
+                <option value={3}>3 ảnh cùng lúc</option>
+              </select>
+            </div>
+          </div>
         </div>
       </div>
 

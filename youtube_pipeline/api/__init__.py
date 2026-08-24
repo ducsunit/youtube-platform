@@ -16,6 +16,7 @@ from starlette.exceptions import HTTPException
 
 from .build_routes import router as build_router
 from .data_routes import router as data_router
+from .job_routes import router as job_router
 from .routes import router
 from .veo_routes import router as veo_router
 from .image_routes import router as image_router
@@ -47,6 +48,7 @@ def create_app() -> FastAPI:
     )
     app.include_router(router)
     app.include_router(data_router)
+    app.include_router(job_router)
     app.include_router(build_router)
     app.include_router(veo_router)
     app.include_router(image_router)

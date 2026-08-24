@@ -415,6 +415,87 @@ def burn_subtitles(video_in, ass_path, video_out):
 
 ANIM_MODES = ["none", "zoom", "zoom-out", "pan-h", "pan-v", "auto"]
 
+# ---- Tăng tốc render --------------------------------------------------------
+# HW encoder (VideoToolbox trên macOS) nhanh 3-8x libx264; auto-detect 1 lần.
+_HW_ENCODER_CACHE = None
+
+
+def detect_hw_encoder():
+    """'h264_videotoolbox' nếu ffmpeg có, ngược lại None (dùng CPU)."""
+    global _HW_ENCODER_CACHE
+    if _HW_ENCODER_CACHE is None:
+        try:
+            r = subprocess.run(['ffmpeg', '-hide_banner', '-encoders'],
+                               capture_output=True, text=True, timeout=20)
+            _HW_ENCODER_CACHE = 'h264_videotoolbox' \
+                if 'h264_videotoolbox' in (r.stdout or '') else 'none'
+        except Exception:
+            _HW_ENCODER_CACHE = 'none'
+    return _HW_ENCODER_CACHE if _HW_ENCODER_CACHE != 'none' else None
+
+
+_HW_BITRATE_BY_W = {1280: '6M', 1920: '12M', 2560: '20M', 3840: '32M'}
+
+
+def video_codec_args(res, hw='auto', still=True):
+    """Args encode video dùng chung mọi pass.
+
+    hw=auto/on → VideoToolbox nếu có (bitrate theo width); else libx264
+    preset faster (still=True thêm -tune stillimage cho segment ảnh tĩnh).
+    """
+    if hw in ('auto', 'on'):
+        enc = detect_hw_encoder()
+        if enc:
+            bitrate = _HW_BITRATE_BY_W.get(res[0] if res else 1920, '12M')
+            return ['-c:v', enc, '-b:v', bitrate, '-pix_fmt', 'yuv420p']
+    args = ['-c:v', 'libx264', '-preset', 'faster', '-crf', '21']
+    if still:
+        args += ['-tune', 'stillimage']
+    args += ['-pix_fmt', 'yuv420p']
+    return args
+
+
+def audio_codec_args():
+    return ['-c:a', 'aac', '-b:a', '192k']
+
+
+# ---- FX nhieu (grain/glitch/vhs) — ap cho tung segment --------------------
+FX_MODES = ["none", "grain", "glitch", "vhs", "auto"]
+DEFAULT_FX_GRAIN = 8  # cuong do mac dinh (2-30)
+
+
+def fx_for(mode, seg_index):
+    """auto: da phan segment sach, thi thoang grain/glitch — seed co dinh nen
+    render lai ra y he (cung tinh than voi anim_for)."""
+    if mode != "auto":
+        return mode
+    roll = random.Random(777000 + seg_index * 13).random()
+    if roll < 0.60:
+        return "none"
+    if roll < 0.85:
+        return "grain"
+    return "glitch"
+
+
+def fx_vf(fx, grain):
+    """Filter ffmpeg cho hieu ung nhieu. None = khong ap dung.
+
+    Ap SAU zoompan → grain nam o screen-space, khong bi zoom phong to.
+    """
+    if fx in ("", "none") or grain <= 0:
+        return None
+    if fx == "grain":
+        return f"noise=alls={grain}:allf=t+u"
+    shift = max(2, min(7, round(grain / 3)))
+    if fx == "glitch":
+        # lech kenh R/B nhu loi tin hieu so + noise
+        return f"noise=alls={grain}:allf=t+u,rgbashift=rh=-{shift}:bh={shift}"
+    if fx == "vhs":
+        # bang tu cu: noise + rgb shift + mo nhe + nhat mau + vignette
+        return (f"noise=alls={grain}:allf=t+u,rgbashift=rh=-{shift}:bh={shift},"
+                f"gblur=sigma=0.6,eq=saturation=0.82:contrast=1.06,vignette=PI/5")
+    return None
+
 
 def anim_for(mode, seg_index, rng=None):
     """auto: chon nhanh mode cho segment (co dinh theo seed — chay lai van giong)."""
@@ -427,7 +508,8 @@ def anim_for(mode, seg_index, rng=None):
 
 def zoompan_vf(mode, dur, w, h):
     """Filter zoompan theo mode. Tra ve None neu khong can animation.
-    Zoom chuan hoa theo do dai segment: dat toi da o frame cuoi (cam giac dong deu)."""
+    Zoom chuan hoa theo do dai segment: dat toi da o frame cuoi (cam giac dong deu).
+    Supersample chi 1.3x (du cho zoommax 1.2 + pan) thay vi 2x — giam nang CPU."""
     if mode == "none":
         return None
     frames = max(2, int(dur * FPS))
@@ -449,35 +531,51 @@ def zoompan_vf(mode, dur, w, h):
         y = f"(ih-ih/zoom)*{step}"
     else:
         return None
-    return (f"scale={w*2}:{h*2},zoompan=z='{z}':x='{x}':y='{y}':d=1"
+    sw, sh = int(w * 1.3) // 2 * 2, int(h * 1.3) // 2 * 2
+    return (f"scale={sw}:{sh},zoompan=z='{z}':x='{x}':y='{y}':d=1"
             f":s={w}x{h}:fps={FPS},format=yuv420p")
 
 
-def render_segment(img_path, out, dur, res, mode):
+def render_segment(img_path, out, dur, res, mode, fx='none', grain=0, hw='auto'):
     w, h = res
     vf = f"scale={w}:{h}:force_original_aspect_ratio=decrease,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2,format=yuv420p"
     zp = zoompan_vf(mode, dur, w, h)
     if zp:
         vf = zp
+    extra = fx_vf(fx, grain)
+    if extra:
+        vf = f"{vf},{extra}"
     subprocess.run(['ffmpeg', '-y', '-v', 'error', '-loop', '1', '-framerate', str(FPS), '-i', img_path,
                     '-t', f"{dur:.2f}", '-vf', vf, '-r', str(FPS),
-                    '-c:v', 'libx264', '-preset', 'medium', '-crf', '20', out], check=True)
+                    *video_codec_args(res, hw, still=True), out], check=True)
 
 
-def render_segment_clip(clip_path, out, dur, res):
+def render_segment_clip(clip_path, out, dur, res, fx='none', grain=0, hw='auto'):
     """Clip image-to-video đã có chuyển động sẵn: loop phủ segment dài hơn clip,
     không zoompan (Ken Burns). `-an` bắt buộc — engine mux audio riêng ở cuối."""
     w, h = res
     vf = (f"scale={w}:{h}:force_original_aspect_ratio=decrease,"
           f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2,format=yuv420p")
+    extra = fx_vf(fx, grain)
+    if extra:
+        vf = f"{vf},{extra}"
     subprocess.run(['ffmpeg', '-y', '-v', 'error', '-stream_loop', '-1',
                     '-i', clip_path, '-t', f"{dur:.2f}", '-vf', vf,
-                    '-an', '-r', str(FPS), '-c:v', 'libx264',
-                    '-preset', 'medium', '-crf', '20', out], check=True)
+                    '-an', '-r', str(FPS), *video_codec_args(res, hw, still=False),
+                    out], check=True)
 
 
-def concat_with_xfade(seg_files, transition, out):
-    """Nối các segment bằng xfade chéo (re-encode). Tra ve file video da noi."""
+def _ass_filter_path(path: str) -> str:
+    """Escape đường dẫn cho filter arg của ffmpeg (dấu ' và : là ký tự đặc biệt)."""
+    return path.replace('\\', '\\\\').replace(':', '\\:').replace("'", "\\'")
+
+
+def concat_with_xfade(seg_files, transition, out, hw='auto', ass_path=None):
+    """Nối các segment bằng xfade chéo (re-encode). Tra ve file video da noi.
+
+    ass_path: burn phụ đề NGAY TRONG pass này (tiết kiệm nguyên 1 pass
+    encode full-video so với burn riêng sau mux).
+    """
     n = len(seg_files)
     t = transition
     inputs = []
@@ -495,13 +593,16 @@ def concat_with_xfade(seg_files, transition, out):
     chain = []
     prev = "0:v"
     for k in range(1, n):
-        outl = f"v{k}" if k < n - 1 else "vout"
+        outl = f"v{k}"
         chain.append(f"[{prev}][{k}:v]xfade=transition=fade:duration={t}:offset={offsets[k-1]:.3f}[{outl}]")
         prev = outl
+    if ass_path is not None:
+        chain.append(f"[{prev}]ass={ass_path}[vout]")
+        prev = "vout"
     fc = ";".join(chain)
     subprocess.run(['ffmpeg', '-y', '-v', 'error', *inputs,
                     '-filter_complex', fc, '-map', f"[{prev}]",
-                    '-c:v', 'libx264', '-preset', 'medium', '-crf', '20', out], check=True)
+                    *video_codec_args(None, hw, still=False), out], check=True)
 
 
 def main():
@@ -523,6 +624,42 @@ def main():
         if i + 1 >= len(sys.argv):
             sys.exit("--transition can kem so giay (0-1)")
         transition = float(sys.argv[i + 1])
+    fx = 'none'
+    if '--fx' in sys.argv:
+        i = sys.argv.index('--fx')
+        if i + 1 >= len(sys.argv):
+            sys.exit("--fx can kem mode: none|grain|glitch|vhs|auto")
+        fx = sys.argv[i + 1]
+        if fx not in FX_MODES:
+            sys.exit(f"--fx: mode '{fx}' khong hop le — {FX_MODES}")
+    grain = DEFAULT_FX_GRAIN
+    if '--grain' in sys.argv:
+        i = sys.argv.index('--grain')
+        if i + 1 >= len(sys.argv):
+            sys.exit(f"--grain can kem cuong do ({DEFAULT_FX_GRAIN}-30)")
+        try:
+            grain = int(sys.argv[i + 1])
+        except ValueError:
+            sys.exit("--grain phai la so nguyen")
+        if not 2 <= grain <= 30:
+            sys.exit("--grain phai nam trong 2-30")
+    hw = 'auto'
+    if '--hw' in sys.argv:
+        i = sys.argv.index('--hw')
+        if i + 1 >= len(sys.argv):
+            sys.exit("--hw can kem mode: auto|on|off")
+        hw = sys.argv[i + 1]
+        if hw not in ('auto', 'on', 'off'):
+            sys.exit("--hw: mode '%s' khong hop le — auto|on|off" % hw)
+    jobs_n = max(1, min(8, (os.cpu_count() or 4) // 2))
+    if '--jobs' in sys.argv:
+        i = sys.argv.index('--jobs')
+        if i + 1 >= len(sys.argv):
+            sys.exit("--jobs can kem so luong (1-8)")
+        try:
+            jobs_n = max(1, min(8, int(sys.argv[i + 1])))
+        except ValueError:
+            sys.exit("--jobs phai la so nguyen")
     if '--import-images' in sys.argv:
         i = sys.argv.index('--import-images')
         if i + 1 >= len(sys.argv):
@@ -645,57 +782,96 @@ def main():
 
     tmp = tempfile.mkdtemp(prefix="build-video-")
     try:
-        seg_files = []
         total_seg = len(scaled)
         anim_label = anim if anim != 'auto' else 'auto (xen kẽ zoom/zoom-out/pan)'
-        print(f"Animation: {anim_label}" + (f" · fade {transition:.1f}s" if transition else " · cắt cứng"))
+        hw_enc = detect_hw_encoder() if hw != 'off' else None
+        print(f"Animation: {anim_label}" + (f" · fade {transition:.1f}s" if transition else " · cắt cứng")
+              + (f" · FX {fx} (grain {grain})" if fx != 'none' else "")
+              + f" · encoder {'h264_videotoolbox' if hw_enc else 'libx264-faster'} · {jobs_n} luồng",
+              flush=True)
+
+        # Precompute mọi tham số theo index (deterministic) trước khi chạy parallel —
+        # anim_for/fx_for seed theo index nên không phụ thuộc thứ tự hoàn thành.
+        tasks = []
         img_anim_idx = 0  # đếm riêng số segment dùng ảnh — clips không tiêu slot auto-animation
         for k, (d, img, b) in enumerate(scaled, 1):
             out = os.path.join(tmp, f"seg_{k:03d}.mp4")
+            seg_fx = fx_for(fx, k)
             # bù fade: mỗi segment (trừ cuối) dài thêm `transition` giây để sau xfade
             # tổng video vẫn == tổng audio (không bị -shortest cắt đuôi audio)
             render_dur = d + transition if (transition > 0 and k < total_seg) else d
             clip = find_clip(root, img)
+            mode = None
+            if not clip:
+                mode = anim_for(anim, img_anim_idx)
+                img_anim_idx += 1
+            tasks.append((k, d, img, out, render_dur, clip, mode, seg_fx))
+
+        def render_one(task):
+            k, d, img, out, render_dur, clip, mode, seg_fx = task
+            fx_label = f" · FX:{seg_fx}" if seg_fx != 'none' else ""
             clip_label = " · CLIP" if clip else ""
-            print(f"[{k}/{total_seg}] dang rap {img} ({d:.1f}s"
-                  + (f"+{transition:.1f}s fade)" if render_dur > d else ")")
-                  + clip_label, flush=True)
+            print(f"[{k}/{total_seg}] dang rap {img} ({d:.1f}s)" + clip_label + fx_label, flush=True)
             if clip:
                 clip_dur = float(subprocess.run(
                     ['ffprobe', '-v', 'error', '-show_entries', 'format=duration',
                      '-of', 'csv=p=0', clip], capture_output=True, text=True).stdout.strip())
                 if clip_dur >= render_dur:
                     # clip đủ dài — dùng clip, không loop
-                    render_segment_clip(clip, out, render_dur, res)
+                    render_segment_clip(clip, out, render_dur, res, seg_fx, grain, hw)
                 else:
-                    # clip ngắn hơn segment: phát hết clip rồi dùng ảnh gốc (images/IMG-xx) fill phần còn lại
+                    # clip ngắn hơn segment: phát hết clip rồi dùng ảnh gốc fill phần còn lại
                     tail_dur = render_dur - clip_dur
                     clip_part = os.path.join(tmp, f"seg_{k:03d}_clip.mp4")
                     still_part = os.path.join(tmp, f"seg_{k:03d}_still.mp4")
-                    render_segment_clip(clip, clip_part, clip_dur, res)
-                    # ảnh gốc — cùng IMG id, nằm trong images/
+                    render_segment_clip(clip, clip_part, clip_dur, res, seg_fx, grain, hw)
                     source_img = find_image(root, img)
-                    render_segment(source_img, still_part, tail_dur, res, 'none')
-                    # nối clip + ảnh tĩnh thành segment hoàn chỉnh
+                    render_segment(source_img, still_part, tail_dur, res, 'none', seg_fx, grain, hw)
                     listf = os.path.join(tmp, f"seg_{k:03d}_list.txt")
                     with open(listf, 'w', encoding='utf-8') as lf:
                         lf.write(f"file '{clip_part}'\n")
                         lf.write(f"file '{still_part}'\n")
-                    # RE-ENCODE (không -c copy): concat demuxer copy để timestamps lệch
-                    # tại điểm nối (B-frame dts) → xfade nuốt mất phần ảnh tĩnh, video
-                    # bị cắt ngắn (bug video-final 76s). Re-encode làm sạch PTS/DTS.
+                    # RE-ENCODE: concat copy làm lệch timestamps → xfade nuốt segment.
                     subprocess.run(['ffmpeg', '-y', '-v', 'error', '-f', 'concat', '-safe', '0',
-                                    '-i', listf, '-c:v', 'libx264', '-preset', 'medium', '-crf', '20',
-                                    '-pix_fmt', 'yuv420p', out], check=True)
-                    print(f"  → clip {clip_dur:.1f}s + ảnh tĩnh {tail_dur:.1f}s (re-encode)", flush=True)
+                                    '-i', listf, *video_codec_args(res, hw, still=False), out], check=True)
+                    print(f"  → [{k}/{total_seg}] clip {clip_dur:.1f}s + ảnh tĩnh {tail_dur:.1f}s", flush=True)
             else:
-                render_segment(find_image(root, img), out, render_dur, res, anim_for(anim, img_anim_idx))
-                img_anim_idx += 1
-            seg_files.append(out)
+                render_segment(find_image(root, img), out, render_dur, res, mode, seg_fx, grain, hw)
+            print(f"[{k}/{total_seg}] xong {img}", flush=True)
+
+        if jobs_n > 1 and total_seg > 1:
+            from concurrent.futures import ThreadPoolExecutor
+            with ThreadPoolExecutor(max_workers=jobs_n) as pool:
+                list(pool.map(render_one, tasks))
+        else:
+            for task in tasks:
+                render_one(task)
+        seg_files = [t[3] for t in tasks]
+
+        # Chuẩn bị phụ đề (nếu có) — burn gộp vào pass ghép/mux, bỏ pass riêng.
+        ass_path = None
+        n_cue = 0
+        if subs:
+            srt_dir = os.path.join(root, 'srt')
+            srt_files = sorted(glob.glob(os.path.join(srt_dir, '*.srt')))
+            if not srt_files:
+                sys.exit(f"--subtitles: khong thay .srt nao trong {srt_dir}")
+            sub_style = load_sub_style(root, parse_sub_flags(sys.argv))
+            print(f"Phu de: {len(srt_files)} file srt ({sub_style['font']} "
+                  f"{sub_style['fontsize']}px) — burn gộp vào pass ghép...", flush=True)
+            ass_path = os.path.join(tmp, "subs.ass")
+            ass, n_cue = srt_to_ass_offset(
+                srt_files, [0.0] + [sum(real_chunks[:k]) for k in range(1, len(real_chunks))],
+                sub_style)
+            with open(ass_path, 'w', encoding='utf-8') as fh:
+                fh.write(ass)
+
         print("Rap xong tat ca segment, dang ghep video...", flush=True)
         if transition > 0:
             video_raw = os.path.join(tmp, "video_raw.mp4")
-            concat_with_xfade(seg_files, transition, video_raw)
+            # ass filter chạy ngay trong pass xfade → tiết kiệm nguyên 1 pass encode
+            concat_with_xfade(seg_files, transition, video_raw, hw,
+                              _ass_filter_path(ass_path) if ass_path else None)
         else:
             listf = os.path.join(tmp, "video-list.txt")
             with open(listf, 'w', encoding='utf-8') as f:
@@ -704,13 +880,16 @@ def main():
             video_raw = os.path.join(tmp, "video_raw.mp4")
             subprocess.run(['ffmpeg', '-y', '-v', 'error', '-f', 'concat', '-safe', '0',
                             '-i', listf, '-c', 'copy', video_raw], check=True)
+        # RE-ENCODE audio thay vì -c copy: các chunk cắt bằng -ss mang header
+        # LAME/Xing lệch timestamps → concat copy sinh "non monotonically
+        # increasing dts" và audio_concat hỏng ngầm. Re-encode mp3 ~vài chục giây.
         audio_concat = os.path.join(tmp, "audio_concat.mp3")
         alist = os.path.join(tmp, "audio-list.txt")
         with open(alist, 'w', encoding='utf-8') as f:
             for p in audio_files:
                 f.write(f"file '{p}'\n")
         subprocess.run(['ffmpeg', '-y', '-v', 'error', '-f', 'concat', '-safe', '0',
-                        '-i', alist, '-c', 'copy', audio_concat], check=True)
+                        '-i', alist, '-c:a', 'libmp3lame', '-q:a', '2', audio_concat], check=True)
         out_video = os.path.join(root, 'video-final.mp4')
         # Kiểm tra video_raw trước khi mux — nếu ngắn (xfade nuốt segment), -shortest
         # sẽ cắt video xuống đúng độ dài lỗi mà không hề báo lỗi.
@@ -721,33 +900,23 @@ def main():
             print(f"⚠️  video_raw chỉ dài {vr:.1f}s nhưng audio là {real_total:.1f}s — "
                   f"segment bị mất! Dừng để tránh xuất video cụt.", flush=True)
             sys.exit(f"FAIL: video_raw {vr:.1f}s != audio {real_total:.1f}s — lỗi ghép segment")
-        subprocess.run(['ffmpeg', '-y', '-v', 'error', '-i', video_raw, '-i', audio_concat,
-                        '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-shortest', out_video],
-                       check=True)
-        if subs:
-            srt_dir = os.path.join(root, 'srt')
-            srt_files = sorted(glob.glob(os.path.join(srt_dir, '*.srt')))
-            if not srt_files:
-                sys.exit(f"--subtitles: khong thay .srt nao trong {srt_dir}")
-            sub_style = load_sub_style(root, parse_sub_flags(sys.argv))
-            print(f"Burn phu de: {len(srt_files)} file srt ({sub_style['font']} "
-                  f"{sub_style['fontsize']}px, {sub_style['color']}, viền "
-                  f"{sub_style['outline']}px)...", flush=True)
-            ass_path = os.path.join(tmp, "subs.ass")
-            ass, n_cue = srt_to_ass_offset(
-                srt_files, [0.0] + [sum(real_chunks[:k]) for k in range(1, len(real_chunks))],
-                sub_style)
-            # Đóng trước khi ffmpeg đọc — buffer chưa flush thì ass rỗng/thiếu cue.
-            with open(ass_path, 'w', encoding='utf-8') as fh:
-                fh.write(ass)
-            subbed = os.path.join(tmp, "video-subbed.mp4")
-            burn_subtitles(out_video, ass_path, subbed)
-            os.replace(subbed, out_video)
+        if transition > 0 or not ass_path:
+            # phụ đề đã burn trong pass xfade (hoặc không có sub) → mux stream copy
+            subprocess.run(['ffmpeg', '-y', '-v', 'error', '-i', video_raw, '-i', audio_concat,
+                            '-c:v', 'copy', *audio_codec_args(), '-shortest', out_video],
+                           check=True)
+        else:
+            # transition=0 mà có sub: concat là -c copy nên burn ass ngay trong mux
+            subprocess.run(['ffmpeg', '-y', '-v', 'error', '-i', video_raw, '-i', audio_concat,
+                            '-vf', f"ass={_ass_filter_path(ass_path)}",
+                            *video_codec_args(res, hw, still=False), *audio_codec_args(),
+                            '-shortest', out_video], check=True)
+        if ass_path is not None:
             print(f"  ({n_cue} cue đã burn vào video)", flush=True)
         dur = subprocess.run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration',
                               '-of', 'csv=p=0', out_video], capture_output=True, text=True)
         d = float(dur.stdout.strip())
-        print(f"\n✅ Da tao: {out_video} · {d:.1f}s = {int(d//60)}:{int(d%60):02d}")
+        print(f"\n✅ Da tao: {out_video} · {d:.1f}s = {int(d//60)}:{int(d%60):02d}", flush=True)
         if abs(d - real_total) > 2.0:
             print(f"⚠️  Video thành phẩm {d:.1f}s khác audio {real_total:.1f}s — "
                   f"kiểm tra segment bị mất / mux lại!", flush=True)

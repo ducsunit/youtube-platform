@@ -16,13 +16,30 @@ DEFAULT_IMAGE_CONFIG = {
     "default_size": "1024x576",
     "default_quality": "medium",
 }
-SUPPORTED_MODELS = ("gpt-image-2",)
 SUPPORTED_SIZES = (
     "1024x1024", "1024x576", "576x1024",
     "2048x2048", "2048x1152", "1152x2048",
     "3840x3840", "3840x2160", "2160x3840",
 )
 SUPPORTED_QUALITIES = ("low", "medium", "high")
+
+
+def _supported_models_path(root: Path) -> Path:
+    return root / "config" / "image-models.json"
+
+
+def get_supported_models(root: Path) -> tuple[str, ...]:
+    """Đọc danh sách model hỗ trợ từ config/image-models.json, fallback về default."""
+    path = _supported_models_path(root)
+    if path.is_file():
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            models = data.get("models")
+            if isinstance(models, list) and models:
+                return tuple(str(m).strip() for m in models if str(m).strip())
+        except (OSError, json.JSONDecodeError):
+            pass
+    return (DEFAULT_IMAGE_CONFIG["model"],)
 
 
 def normalize_base_url(value: Any) -> str:
@@ -38,9 +55,10 @@ def config_path(root: Path) -> Path:
     return root / "config" / "image-generation.json"
 
 
-def _validate(data: dict[str, Any]) -> None:
-    if str(data.get("model", "")).strip() not in SUPPORTED_MODELS:
-        raise ValueError("GPT image model không được hỗ trợ.")
+def _validate(data: dict[str, Any], root: Path) -> None:
+    supported = get_supported_models(root)
+    if str(data.get("model", "")).strip() not in supported:
+        raise ValueError("GPT image model không được hỗ trợ: %s (hỗ trợ: %s)" % (data.get("model"), ", ".join(supported)))
     if str(data.get("default_size", "")).strip() not in SUPPORTED_SIZES:
         raise ValueError("default_size không hợp lệ.")
     if str(data.get("default_quality", "")).strip() not in SUPPORTED_QUALITIES:
@@ -59,7 +77,7 @@ def load(root: Path) -> dict[str, Any]:
         raise RuntimeError("Không đọc được image-generation.json.") from exc
     merged = {**DEFAULT_IMAGE_CONFIG, **data}
     merged["base_url"] = normalize_base_url(merged.get("base_url"))
-    _validate(merged)
+    _validate(merged, root)
     return merged
 
 
@@ -68,7 +86,7 @@ def snapshot(root: Path) -> dict[str, Any]:
     data.pop("api_key", None)
     env_name = str(data.get("api_key_env", "OPENAI_API_KEY"))
     data["api_key_configured"] = bool(str(load(root).get("api_key", "")).strip() or os.environ.get(env_name, "").strip())
-    data["models"] = list(SUPPORTED_MODELS)
+    data["models"] = list(get_supported_models(root))
     data["sizes"] = list(SUPPORTED_SIZES)
     data["qualities"] = list(SUPPORTED_QUALITIES)
     return data
@@ -80,7 +98,7 @@ def update(root: Path, payload: dict[str, Any]) -> dict[str, Any]:
     merged["base_url"] = normalize_base_url(merged.get("base_url"))
     if not str(merged.get("api_key", "")).strip():
         merged["api_key"] = current.get("api_key", "")
-    _validate(merged)
+    _validate(merged, root)
     path = config_path(root)
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, temp_name = tempfile.mkstemp(prefix="image-generation-", suffix=".json", dir=path.parent)

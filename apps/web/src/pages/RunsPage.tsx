@@ -51,37 +51,45 @@ export function RunsPage() {
   return (
     <div className="page">
       {/* Top Stat Overview Grid */}
-      <div className="stats-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16, marginBottom: 24 }}>
-        <div className="stat-card" style={{ background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 18 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ color: 'var(--muted)', fontSize: 13, fontWeight: 500 }}>Total Pipeline Runs</span>
-            <Layers size={18} style={{ color: 'var(--accent)' }} />
+      <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="panel flex items-center justify-between gap-3 p-[18px] transition duration-200 hover:-translate-y-0.5 hover:border-accent hover:shadow-lg">
+          <div className="min-w-0">
+            <span className="block truncate text-[13px] font-medium text-muted">Total Pipeline Runs</span>
+            <div className="mt-2 text-[26px] font-bold leading-none text-heading">{totalCount}</div>
           </div>
-          <div style={{ fontSize: 26, fontWeight: 700, marginTop: 8, color: 'var(--text-heading)' }}>{totalCount}</div>
+          <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent/15 text-accent">
+            <Layers size={18} />
+          </span>
         </div>
 
-        <div className="stat-card" style={{ background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 18 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ color: 'var(--muted)', fontSize: 13, fontWeight: 500 }}>Active Executions</span>
-            <PlayCircle size={18} style={{ color: 'var(--blue)' }} />
+        <div className="panel flex items-center justify-between gap-3 p-[18px] transition duration-200 hover:-translate-y-0.5 hover:border-accent hover:shadow-lg">
+          <div className="min-w-0">
+            <span className="block truncate text-[13px] font-medium text-muted">Active Executions</span>
+            <div className="mt-2 text-[26px] font-bold leading-none text-blue">{activeCount}</div>
           </div>
-          <div style={{ fontSize: 26, fontWeight: 700, marginTop: 8, color: 'var(--blue)' }}>{activeCount}</div>
+          <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue/15 text-blue">
+            <PlayCircle size={18} />
+          </span>
         </div>
 
-        <div className="stat-card" style={{ background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 18 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ color: 'var(--muted)', fontSize: 13, fontWeight: 500 }}>Success Rate</span>
-            <CheckCircle2 size={18} style={{ color: 'var(--ok)' }} />
+        <div className="panel flex items-center justify-between gap-3 p-[18px] transition duration-200 hover:-translate-y-0.5 hover:border-accent hover:shadow-lg">
+          <div className="min-w-0">
+            <span className="block truncate text-[13px] font-medium text-muted">Success Rate</span>
+            <div className="mt-2 text-[26px] font-bold leading-none text-ok">{successRate}%</div>
           </div>
-          <div style={{ fontSize: 26, fontWeight: 700, marginTop: 8, color: 'var(--ok)' }}>{successRate}%</div>
+          <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-ok/15 text-ok">
+            <CheckCircle2 size={18} />
+          </span>
         </div>
 
-        <div className="stat-card" style={{ background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 18 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ color: 'var(--muted)', fontSize: 13, fontWeight: 500 }}>Failed Runs</span>
-            <AlertCircle size={18} style={{ color: 'var(--err)' }} />
+        <div className="panel flex items-center justify-between gap-3 p-[18px] transition duration-200 hover:-translate-y-0.5 hover:border-accent hover:shadow-lg">
+          <div className="min-w-0">
+            <span className="block truncate text-[13px] font-medium text-muted">Failed Runs</span>
+            <div className="mt-2 text-[26px] font-bold leading-none text-err">{failedCount}</div>
           </div>
-          <div style={{ fontSize: 26, fontWeight: 700, marginTop: 8, color: 'var(--err)' }}>{failedCount}</div>
+          <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-err/15 text-err">
+            <AlertCircle size={18} />
+          </span>
         </div>
       </div>
 
@@ -121,7 +129,7 @@ export function RunsPage() {
       </div>
 
       {Boolean(runsPoll.error) && (
-        <div className="error-text" style={{ marginBottom: 16, padding: '12px 16px', background: 'rgba(239, 68, 68, 0.1)', borderRadius: 10, border: '1px solid rgba(239, 68, 68, 0.2)' }}>
+        <div className="msg-banner msg-err" style={{ marginBottom: 16 }}>
           {String(runsPoll.error)}
         </div>
       )}

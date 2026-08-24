@@ -13,7 +13,7 @@ from typing import Optional
 
 from . import paths
 from .build_runner import _pid_alive
-from .datapull import _read_pid_info, read_log_page
+from .datapull import _read_pid_info, kill_process_group, read_log_page
 
 
 def _now_iso() -> str:
@@ -105,13 +105,36 @@ class SrtRunner:
             return {"id": job_id, "status": "complete" if code == 0 else "failed", "exit_code": code, "output_path": "subtitles/subtitles.srt"}
         return None
 
-    def cancel(self, job_id: str) -> bool:
+    def _terminate_job(self, job_id: str) -> bool:
+        """Killpg proc trong bộ nhớ hoặc orphan qua pid file. True nếu đã gửi tín hiệu."""
         with self._lock:
-            proc = self._proc if self._job and self._job["id"] == job_id else None
-        if proc and proc.poll() is None:
-            proc.terminate()
-            return True
+            if self._proc is not None and self._job and self._job["id"] == job_id and self._proc.poll() is None:
+                if not kill_process_group(self._proc.pid):
+                    self._proc.terminate()  # fallback: SIGTERM riêng pid chính
+                return True
+        info = _read_pid_info(paths.srt_jobs_dir() / (job_id + ".pid"))
+        if info and _pid_alive(info["pid"]):
+            return kill_process_group(info["pid"])
         return False
+
+    def cancel(self, job_id: str) -> bool:
+        return self._terminate_job(job_id)
+
+    def cancel_for_run(self, run_id: str) -> list[str]:
+        """Hủy mọi job SRT thuộc run (kể cả orphan sau restart)."""
+        cancelled: list[str] = []
+        with self._lock:
+            if self._proc is not None and self._job and self._job.get("run_id") == run_id and self._proc.poll() is None:
+                kill_process_group(self._proc.pid)
+                cancelled.append(self._job["id"])
+        directory = paths.srt_jobs_dir()
+        if directory.is_dir():
+            for pid_file in directory.glob("*.pid"):
+                info = _read_pid_info(pid_file)
+                if info and info.get("run_id") == run_id and _pid_alive(info["pid"]) and pid_file.stem not in cancelled:
+                    if kill_process_group(info["pid"]):
+                        cancelled.append(pid_file.stem)
+        return cancelled
 
     def get_log(self, job_id: str, offset: int, limit: int) -> dict:
         return {"job_id": job_id, **read_log_page(paths.srt_jobs_dir() / (job_id + ".log"), offset, limit)}

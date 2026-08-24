@@ -342,22 +342,38 @@ def _pid_alive(pid: int) -> bool:
     return True
 
 
+def kill_process_group(pid: int, sig: int = signal.SIGTERM) -> bool:
+    """SIGTERM cả process group của pid — dùng chung cho mọi runner cancel.
+
+    Các job đều spawn với start_new_session=True nên group leader chính là
+    process con trực tiếp: killpg đảm bảo subprocess lồng nhau (ffmpeg...)
+    cũng nhận tín hiệu. Trả False khi process đã chết / không có quyền.
+    """
+    try:
+        os.killpg(os.getpgid(pid), sig)
+        return True
+    except (ProcessLookupError, PermissionError):
+        return False
+
+
 def _read_pid_info(pid_file: Path) -> Optional[dict]:
-    """pid file là json {pid, kind}; đọc linh hoạt cả trường hợp chỉ số thuần."""
+    """pid file là json {pid, kind, run_id?}; đọc linh hoạt cả số thuần."""
     try:
         raw = pid_file.read_text(encoding="utf-8").strip()
         data = json.loads(raw)
         if isinstance(data, dict):
             pid = int(data.get("pid") or 0)
             kind = data.get("kind")
+            run_id = data.get("run_id")
         else:
             pid = int(data)
             kind = None
+            run_id = None
     except (OSError, ValueError, TypeError, json.JSONDecodeError):
         return None
     if pid <= 0:
         return None
-    return {"pid": pid, "kind": kind}
+    return {"pid": pid, "kind": kind, "run_id": run_id}
 
 
 def _write_pid_info(pid_file: Path, pid: int, kind: str) -> None:

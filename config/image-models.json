@@ -1,0 +1,7 @@
+{
+  "models": [
+    "mem/gpt-image-2",
+    "dall-e-3",
+    "dall-e-2"
+  ]
+}

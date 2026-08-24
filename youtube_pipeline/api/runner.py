@@ -38,12 +38,12 @@ def build_new_run_command(
     input_file: Optional[Path] = None,
     manual_topic: Optional[str] = None,
     no_channel_data: bool = False,
+    channel: Optional[str] = None,
 ) -> list[str]:
     """Lệnh chạy resource-pack worker nội bộ cho UI.
 
-    Lưu ý: demo KHÔNG được kèm --input-file — resource_cli._new_input cho
-    input_file ưu tiên hơn --demo (nếu kèm cả hai, demo provider sẽ nhận
-    youtube_data.json thật).
+    Lưu ý: demo KHÔNG được kèm --input-file — pipeline_job cho input_file
+    ưu tiên hơn --demo (nếu kèm cả hai, demo provider sẽ nhận dataset thật).
     """
     argv = [
         sys.executable,
@@ -65,6 +65,8 @@ def build_new_run_command(
             argv.extend(["--input-file", str(input_file)])
         else:
             raise ValueError("production cần input_file hoặc manual_topic")
+    if channel:
+        argv.extend(["--channel", channel])
     return argv
 
 
@@ -160,11 +162,12 @@ class PipelineRunner:
         input_file: Optional[Path] = None,
         manual_topic: Optional[str] = None,
         no_channel_data: bool = False,
+        channel: Optional[str] = None,
     ) -> Path:
         """Spawn pipeline mới; trả về đường dẫn file log."""
         if (run_dir / "run_state.json").exists():
             raise FileExistsError("Run %s đã tồn tại — dùng resume hoặc chọn run_id khác" % run_id)
-        argv = build_new_run_command(run_id, run_dir, mode, input_file, manual_topic, no_channel_data)
+        argv = build_new_run_command(run_id, run_dir, mode, input_file, manual_topic, no_channel_data, channel=channel)
         return self._spawn(run_id, argv, mode)
 
     def resume(self, run_id: str, run_dir: Path) -> Path:

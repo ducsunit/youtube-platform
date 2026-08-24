@@ -39,6 +39,14 @@ const ANIMATIONS: ReadonlyArray<readonly [string, string]> = [
   ['auto', 'build.option.animation.auto'],
 ];
 
+const FX_PRESETS: ReadonlyArray<readonly [string, string]> = [
+  ['none', 'build.option.fx.none'],
+  ['grain', 'build.option.fx.grain'],
+  ['glitch', 'build.option.fx.glitch'],
+  ['vhs', 'build.option.fx.vhs'],
+  ['auto', 'build.option.fx.auto'],
+];
+
 const RESOLUTIONS = ['1280x720', '1376x768', '1920x1080'];
 
 // Copy SUB_DEFAULTS của youtube_pipeline/build-video.py — giữ đồng bộ thủ công.
@@ -109,6 +117,16 @@ export function BuildPage() {
     enabled: jobId !== null && !jobDone,
     intervalMs: JOB_INTERVAL_MS,
   });
+  // Job dựng chạy server-side (reload trang / quay lại đúng run) — tự gắn lại
+  // log theo dõi. active_job là GLOBAL nên phải khớp run_id của run đang xem.
+  useEffect(() => {
+    const active = status?.active_job;
+    if (jobId === null && active?.id && active.run_id === runId) {
+      setJobId(active.id);
+      setJob(null);
+      setJobError(null);
+    }
+  }, [status, runId, jobId]);
   useEffect(() => {
     if (jobPoll.data) setJob(jobPoll.data);
     if (jobPoll.error) setJobError(jobPoll.error);
@@ -116,6 +134,10 @@ export function BuildPage() {
 
   // Options dựng (faithful GUI: animation dropdown + fade slider + dry-run).
   const [animation, setAnimation] = useState('zoom');
+  const [fx, setFx] = useState('none');
+  const [fxIntensity, setFxIntensity] = useState(8);
+  const [hw, setHw] = useState('auto');
+  const [buildJobs, setBuildJobs] = useState(4);
   const [fade, setFade] = useState('0.5');
   const [resolution, setResolution] = useState('1280x720');
   const [dryRun, setDryRun] = useState(false);
@@ -218,6 +240,11 @@ export function BuildPage() {
       const body = {
         render: preview ? true : render,
         animation,
+        ...(fx !== 'none'
+          ? { fx, fx_intensity: Math.max(2, Math.min(30, fxIntensity)) }
+          : {}),
+        hw,
+        build_jobs: Math.max(1, Math.min(8, buildJobs)),
         ...(fade.trim() ? { transition: Number(fade) } : {}),
         ...(parts.length === 2 && parts.every((v) => Number.isFinite(v))
           ? { resolution: parts as [number, number] }
@@ -357,7 +384,6 @@ export function BuildPage() {
                     setJobId(null);
                     setJob(null);
                   }}
-                  disabled={busy}
                 >
                   {runs.map((r) => (
                     <option key={r.run_id} value={r.run_id}>
@@ -728,6 +754,54 @@ export function BuildPage() {
                   <option key={value} value={value}>{t(labelKey)}</option>
                 ))}
               </select>
+            </div>
+            <div className="form-row" style={{ marginBottom: 0 }}>
+              <label htmlFor="build-fx">{t('build.option.fx')}</label>
+              <select
+                id="build-fx"
+                value={fx}
+                onChange={(e) => setFx(e.target.value)}
+                disabled={busy}
+              >
+                {FX_PRESETS.map(([value, labelKey]) => (
+                  <option key={value} value={value}>{t(labelKey)}</option>
+                ))}
+              </select>
+            </div>
+            {fx !== 'none' && (
+              <div className="form-row" style={{ marginBottom: 0 }}>
+                <label htmlFor="build-fx-intensity">{t('build.option.fxIntensity')}</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <input
+                    id="build-fx-intensity"
+                    type="range"
+                    min={2}
+                    max={30}
+                    step={1}
+                    value={fxIntensity}
+                    onChange={(e) => setFxIntensity(Number(e.target.value))}
+                    disabled={busy}
+                    style={{ width: 140 }}
+                  />
+                  <span className="mono" style={{ width: 32, textAlign: 'right', fontWeight: 600 }}>
+                    {fxIntensity}
+                  </span>
+                </div>
+              </div>
+            )}
+            <div className="form-row" style={{ marginBottom: 0 }}>
+              <label htmlFor="build-hw">{t('build.option.hw')}</label>
+              <select id="build-hw" value={hw} onChange={(e) => setHw(e.target.value)} disabled={busy}>
+                <option value="auto">{t('build.option.hw.auto')}</option>
+                <option value="on">{t('build.option.hw.on')}</option>
+                <option value="off">{t('build.option.hw.off')}</option>
+              </select>
+            </div>
+            <div className="form-row" style={{ marginBottom: 0, width: 120 }}>
+              <label htmlFor="build-jobs">{t('build.option.jobs')}</label>
+              <input id="build-jobs" type="number" min={1} max={8} step={1} value={buildJobs}
+                     onChange={(e) => setBuildJobs(Number(e.target.value) || 1)} disabled={busy}
+                     className="mono" />
             </div>
             <div className="form-row" style={{ marginBottom: 0 }}>
               <label htmlFor="build-fade">{t('build.option.fade')}</label>

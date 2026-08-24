@@ -1,0 +1,20 @@
+═══ NEW TITLE (copy vào YouTube Studio) ═══
+【ユング心理学】夜になるとなぜか「あの時こうすればよかった」――一人反省会が止まらない本当の理由
+
+═══ HEADLINE trên thumbnail ═══
+「また反省会」
+
+═══ PROMPT GEN (copy từ đây xuống cuối file) ═══
+Create exactly ONE finished 16:9 Japanese YouTube thumbnail, ready for a TV-grid view. Creative context only. Do NOT render the video title as text.
+
+EDITORIAL INTENT: Title carries: the nightly one-person review meeting that replays and scores the day's conversations. Thumbnail carries: lying in bed while the day's words replay in a loop. The headline 「また反省会」 is the exact ritual.
+
+VISUAL STYLE: high-contrast black ink illustration, thick black outline, sparse hand-drawn brush texture, off-white paper field, black silhouettes, one controlled gold #FFD700 accent, 16:9. Full-bleed 16:9 symbolic ink tableau, one immediate emotional image. Reserve the top 24-30% for a single oversized Japanese headline, integrated through white paper or a soft ink fade — never a banner, hard split, panel, collage, or two backgrounds. Below it: one dominant psychological symbol and one clear human tension, readable in one second at TV-grid size.
+
+CHARACTER CONTINUITY: keep one recurring fictional chalk-line figure — anonymous adult Japanese silhouette, off-white ink lines, round unfeatured head, restrained dot eyes only when emotion is needed, slim proportions, black charcoal clothing blocks. No identifiable real-person features, no second named figure.
+
+SELECTED SCENE: a sparse night bedroom in minimal ink. The recurring chalk-line figure lies on their side on the bed, dot eyes open, facing a looping circle of ink tape that floats above them — inside the loop, small blank speech bubbles repeat around the ring like a film reel of the day's conversations. The loop is closed everywhere except one thin gold #FFD700 crack — the single exit point from the loop. Paper texture fades softly; no hard split.
+
+TEXT RENDERING: The Japanese headline 「また反省会」 printed EXTRA LARGE and BOLD in bright lemon-GOLD #FFE500 kanji, Noto Sans JP Black / ultra-heavy rounded Gothic, tight tracking, 10-14px thick BLACK outline and subtle black shadow, one line across the upper 24-30% of the frame, fully readable from a TV grid. This is the ONLY readable text in the image. Do not render the video title, labels, captions, signs, or any other characters.
+
+Negative: English letters, logo, banner, hard split, collage, panels, two backgrounds, blank upper half, photorealistic person, celebrity likeness, detailed anime character, multiple protagonists, busy crowd with faces, melodramatic crying, medical imagery, diagnosis imagery, glow, bevel, glossy 3D, colorful palette, more than one gold accent, gold clothing, clutter, low contrast, thin weak outlines, watermark, extra people with detail, distorted hands, deformed fingers, extra limbs, photorealistic, 3D render, readable labels, captions, signs, interface text, any text other than the exact headline.

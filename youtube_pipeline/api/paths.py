@@ -50,6 +50,11 @@ def srt_jobs_dir() -> Path:
     return _job_logs_dir("api-srt")
 
 
+def tts_jobs_dir() -> Path:
+    """Pid job TTS VOICEVOX — tách khỏi logs_dir để runner pipeline không nhầm."""
+    return _job_logs_dir("api-tts")
+
+
 
 def veo_jobs_dir() -> Path:
     """Log + pid của các job Veo — tách riêng khỏi build/data jobs."""

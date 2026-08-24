@@ -171,6 +171,27 @@ def _validated_options(body: dict) -> dict:
             raise ValueError("animation phải là một trong: %s"
                              % "|".join(build_service.ANIM_MODES))
         options["animation"] = body["animation"]
+    if "fx" in body:
+        if not isinstance(body["fx"], str) or body["fx"] not in build_service.FX_MODES:
+            raise ValueError("fx phải là một trong: %s" % "|".join(build_service.FX_MODES))
+        options["fx"] = body["fx"]
+    if "fx_intensity" in body:
+        intensity = body["fx_intensity"]
+        if not isinstance(intensity, int) or isinstance(intensity, bool):
+            raise ValueError("fx_intensity phải là số nguyên")
+        if not (build_service.FX_GRAIN_MIN <= intensity <= build_service.FX_GRAIN_MAX):
+            raise ValueError("fx_intensity phải nằm trong %d-%d"
+                             % (build_service.FX_GRAIN_MIN, build_service.FX_GRAIN_MAX))
+        options["fx_intensity"] = intensity
+    if "hw" in body:
+        if body["hw"] not in ("auto", "on", "off"):
+            raise ValueError("hw phải là: auto|on|off")
+        options["hw"] = body["hw"]
+    if "build_jobs" in body:
+        jobs_n = body["build_jobs"]
+        if not isinstance(jobs_n, int) or isinstance(jobs_n, bool) or not (1 <= jobs_n <= 8):
+            raise ValueError("build_jobs phải là số nguyên 1-8")
+        options["build_jobs"] = jobs_n
     if "dry_run" in body:
         if not isinstance(body["dry_run"], bool):
             raise ValueError("dry_run phải là boolean")

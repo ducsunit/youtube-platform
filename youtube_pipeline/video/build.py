@@ -28,6 +28,9 @@ CLIP_EXTENSIONS = (".mp4", ".mov", ".webm")
 # Các mode animation build-video.py nhận (engine đặt ngay trong package — bản
 # copy ổn định, không import chéo).
 ANIM_MODES = ("none", "zoom", "zoom-out", "pan-h", "pan-v", "auto")
+# Preset hiệu ứng nhiễu cho build-video.py --fx (grain/glitch/vhs/auto).
+FX_MODES = ("none", "grain", "glitch", "vhs", "auto")
+FX_GRAIN_MIN, FX_GRAIN_MAX, FX_GRAIN_DEFAULT = 2, 30, 8
 
 
 def build_video_script() -> Path:
@@ -254,18 +257,37 @@ def render_video(build_dir: Path, options: dict[str, Any]) -> tuple[bool, str]:
         command += ["--animation", animation]
     elif options.get("motion"):
         command.append("--motion")
+    fx = options.get("fx")
+    if fx and fx != "none":
+        command += ["--fx", str(fx)]
+        intensity = options.get("fx_intensity")
+        if intensity is not None:
+            command += ["--grain", str(int(intensity))]
     if options.get("transition"):
         command += ["--transition", str(options["transition"])]
     if options.get("resolution"):
         command += ["--resolution", "%dx%d" % tuple(options["resolution"])]
+    hw = options.get("hw", "auto")
+    if hw and hw != "auto":
+        command += ["--hw", str(hw)]
+    jobs_n = options.get("build_jobs")
+    if jobs_n:
+        command += ["--jobs", str(int(jobs_n))]
     dry_run = bool(options.get("dry_run"))
     if dry_run:
         command.append("--dry-run")
     # Phụ đề chỉ khi rap thật — giống GUI: không đốt phụ đề khi xem trước.
     if options.get("subtitles") and not dry_run:
         command.append("--subtitles")
-    result = subprocess.run(command, capture_output=True, text=True, timeout=3600)
-    output = (result.stdout or "") + (result.stderr or "")
+    # KHÔNG timeout: video dài (45+ phút × burn sub) cần hàng giờ; kill tuỳ ý
+    # qua tab Jobs nền. Timeout cứng 60' trước đây từng giết job giữa burn.
+    try:
+        result = subprocess.run(command)
+        output = ""
+    except KeyboardInterrupt:
+        return False, "build-video.py bị dừng thủ công."
     # dry-run KHÔNG tạo video-final.mp4 — thành công là returncode 0.
     ok = result.returncode == 0 and (dry_run or (build_dir / "video-final.mp4").is_file())
-    return ok, output[-4000:]
+    if not ok:
+        output = "build-video.py exit code %d — chi tiết trong job log." % result.returncode
+    return ok, output

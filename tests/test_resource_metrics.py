@@ -405,6 +405,32 @@ class ResourceMetricsTests(unittest.TestCase):
         self.assertEqual(selected, select_video_candidates(images, storyboard))
         self.assertIn("IMG-03", selected)
 
+    def test_select_video_candidates_ignores_negative_constraints(self):
+        # Token blocklist chỉ xuất hiện trong mục negative constraint → không bị chặn.
+        neg_tail = (
+            ". Negative: photorealism, melodrama, split screen, panels, collage, "
+            "explanatory diagram, text, symbols. Text-free image, no readable text, "
+            "no typography, no infographic."
+        )
+        images = [
+            {"image_id": "IMG-%02d" % i, "beat_ids": ["B%02d" % i],
+             "prompt": "a chalk-line figure in a quiet room by a window" + neg_tail}
+            for i in range(1, 6)
+        ]
+        storyboard = self._storyboard([im["image_id"] for im in images])
+        selected = select_video_candidates(images, storyboard)
+        self.assertEqual(len(selected), 5)
+
+    def test_select_video_candidates_still_blocks_positive_text_scenes(self):
+        # Cảnh chữ mô tả TRỰC TIẾP (không có từ phủ định) vẫn phải bị chặn.
+        images = [
+            {"image_id": "IMG-%02d" % i, "beat_ids": ["B%02d" % i],
+             "prompt": "an infographic diagram with split screen panels"}
+            for i in range(1, 5)
+        ]
+        storyboard = self._storyboard([im["image_id"] for im in images])
+        self.assertEqual(select_video_candidates(images, storyboard), [])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "channel_id": "example-history",
+  "display_name": "Example: Japanese history storytelling channel",
+  "language": "ja",
+  "youtube_channel_ids": ["UCxxxxxxxxxxxxxxxxxxxxxx"],
+
+  "competitor": {
+    "patterns": "## Competitor: 歴史チャンネル例 (Japanese history long-form reference)\n\n- Observed positioning: dramatic narrative history essays, 20-40 minutes.\n- Title grammar: a concrete artifact/era + a mystery question, e.g. 「〜の正体」.\n- Thumbnail: parchment tones, one artifact silhouette, deep red headline.",
+    "writing_dna": "- Open inside a scene at the artifact, then zoom out to the era question.\n- Three to five revelations from primary sources; never assert beyond them.\n- End by returning to the artifact with its meaning changed.",
+    "last_updated": "2026-08-22"
+  },
+
+  "sources": {
+    "approved_catalog": [
+      {
+        "title": "国立国会図書館デジタルコレクション",
+        "url": "https://ndlsearch.ndl.go.jp/",
+        "supports": "Primary-source bibliographic verification"
+      }
+    ]
+  },
+
+  "claims": {
+    "known_named_frameworks": [
+      "幕末史観", "マルクス史観", "近代化論"
+    ],
+    "framework_source_aliases": {
+      "幕末史観": ("幕末", "坂本龍馬"),
+      "マルクス史観": ("唯物史観", "マルクス"),
+      "近代化論": ("産業革命", "明治維新")
+    }
+  },
+
+  "style_locks": {
+    "CHARACTER_BIBLE": "anonymous Edo-period traveler silhouette drawn with sepia ink lines; round unfeatured head; no identifiable real-person features",
+    "CHARACTER_STYLE_LOCK": "high-contrast sepia ink illustration on aged parchment field, thick brush outline, sparse texture, one controlled deep-red #B22222 accent, 16:9",
+    "THUMBNAIL_COMPOSITION_LOCK": "full-bleed 16:9 symbolic parchment tableau, one focal artifact, oversized period silhouette, soft vignette fade into the headline zone",
+    "THUMBNAIL_TYPOGRAPHY_LOCK": "Shippori Mincho B1 ExtraBold; tight tracking (-0.03em to -0.06em); warm off-white #F5EFE0 fill with 12px dark-brown outline",
+    "text_color": "#F5EFE0",
+    "accent_color": "#B22222",
+    "background_color": "#2B2118"
+  }
+}

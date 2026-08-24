@@ -225,8 +225,15 @@ def build_claim_ledger(source_pack: dict[str, Any]) -> dict[str, Any]:
         for term in source_pack.get("forbidden_attributions") or []
         if str(term).strip()
     }
-    for term in KNOWN_NAMED_FRAMEWORKS:
-        aliases = FRAMEWORK_SOURCE_ALIASES.get(term, ())
+    # Channel profiles may replace the default named-framework wall (for a
+    # non-Jungian niche); absent an override, the built-in list applies.
+    from ..channel_profile import active_claim_policy
+
+    frameworks, framework_aliases = active_claim_policy()
+    frameworks = list(frameworks) if frameworks is not None else list(KNOWN_NAMED_FRAMEWORKS)
+    aliases_map = dict(framework_aliases) if framework_aliases is not None else FRAMEWORK_SOURCE_ALIASES
+    for term in frameworks:
+        aliases = aliases_map.get(term, ())
         if term not in evidence and not any(alias in evidence for alias in aliases):
             forbidden_terms.add(term)
 

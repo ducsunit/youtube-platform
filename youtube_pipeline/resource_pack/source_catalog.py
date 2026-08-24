@@ -278,3 +278,24 @@ APPROVED_SOURCE_CATALOG = [
 # Backward-compatible name used by existing imports and generated artifacts.
 KISHIMI_SOURCE_CATALOG = APPROVED_SOURCE_CATALOG
 KNOWN_SOURCE_URLS = {row["url"] for row in APPROVED_SOURCE_CATALOG}
+
+# Pristine copy so channel-profile activation can swap catalogs and reset.
+_DEFAULT_SOURCE_CATALOG = list(APPROVED_SOURCE_CATALOG)
+
+
+def apply_source_catalog(rows: list[dict]) -> None:
+    """Swap the active approved catalog in place.
+
+    Importers hold a reference to this same list object, so an in-place
+    replacement propagates everywhere without re-importing. The URL set is
+    rebuilt alongside it because source-lock validation checks membership.
+    """
+    if not isinstance(rows, list) or not rows:
+        raise ValueError("apply_source_catalog cần list khác rỗng.")
+    APPROVED_SOURCE_CATALOG[:] = rows
+    KNOWN_SOURCE_URLS.clear()
+    KNOWN_SOURCE_URLS.update(row.get("url") for row in rows if row.get("url"))
+
+
+def reset_source_catalog() -> None:
+    apply_source_catalog(_DEFAULT_SOURCE_CATALOG)

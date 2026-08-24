@@ -12,12 +12,16 @@ from typing import Any
 HISTORY_RELATIVE_PATH = Path("data/topic-history.json")
 
 
-def history_path(project_root: Path) -> Path:
+def history_path(project_root: Path, channel_id: str | None = None) -> Path:
     root = Path(project_root)
     # Pipeline artifacts live in <project>/runs/<run_id>. Accept either that
     # run directory or the project root so callers cannot create per-run logs.
     if root.name and root.parent.name == "runs":
         root = root.parent.parent
+    if channel_id:
+        # Per-channel scoping: two channels with different niches must never
+        # block each other's topics.
+        return root / "data" / "channels" / channel_id / "topic-history.json"
     return root / HISTORY_RELATIVE_PATH
 
 
@@ -25,8 +29,8 @@ def _text(value: Any) -> str:
     return re.sub(r"[^0-9a-zA-Zぁ-んァ-ン一-龯]+", "", str(value or "")).lower()
 
 
-def load_history(project_root: Path) -> list[dict[str, Any]]:
-    path = history_path(project_root)
+def load_history(project_root: Path, channel_id: str | None = None) -> list[dict[str, Any]]:
+    path = history_path(project_root, channel_id)
     root = path.parent.parent
     payload = {}
     if path.is_file():
@@ -130,8 +134,14 @@ def annotate_candidates(payload: dict[str, Any], history: list[dict[str, Any]]) 
     return result
 
 
-def record_drafted(project_root: Path, run_id: str, selected: dict[str, Any], brief: dict[str, Any] | None = None) -> None:
-    rows = load_history(project_root)
+def record_drafted(
+    project_root: Path,
+    run_id: str,
+    selected: dict[str, Any],
+    brief: dict[str, Any] | None = None,
+    channel_id: str | None = None,
+) -> None:
+    rows = load_history(project_root, channel_id)
     entry = {
         "run_id": run_id,
         "status": "drafted",
@@ -156,7 +166,7 @@ def record_drafted(project_root: Path, run_id: str, selected: dict[str, Any], br
         database = PlatformDatabase(database_path)
         if database.has_run(run_id):
             database.record_completed_topic(run_id, entry)
-    path = history_path(project_root)
+    path = history_path(project_root, channel_id)
     path.parent.mkdir(parents=True, exist_ok=True)
     content = (json.dumps({"schema_version": 1, "topics": rows}, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
     with tempfile.NamedTemporaryFile(dir=path.parent, prefix=path.name + ".", suffix=".tmp", delete=False) as handle:

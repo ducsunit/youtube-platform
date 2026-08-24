@@ -9,6 +9,9 @@ import {
   Moon,
   Globe,
   Activity,
+  Layers,
+  Mic,
+  CalendarDays,
   Sparkles
 } from '../ui/Icons';
 import { getConfig } from '../../api';
@@ -64,6 +67,10 @@ export function Header() {
           <Database size={16} />
           <span>{t('nav.data')}</span>
         </Link>
+        <Link to="/channels" className={location.pathname.startsWith('/channels') ? 'active' : ''}>
+          <Layers size={16} />
+          <span>Kênh</span>
+        </Link>
         <Link to="/build" className={location.pathname === '/build' ? 'active' : ''}>
           <Sliders size={16} />
           <span>{t('nav.build')}</span>
@@ -72,9 +79,21 @@ export function Header() {
           <Video size={16} />
           <span>{t('nav.videoGen')}</span>
         </Link>
+        <Link to="/audio-gen" className={location.pathname === '/audio-gen' ? 'active' : ''}>
+          <Mic size={16} />
+          <span>{t('nav.audioGen')}</span>
+        </Link>
         <Link to="/image-gen" className={location.pathname === '/image-gen' ? 'active' : ''}>
           <Sparkles size={16} />
           <span>{t('nav.imageGen')}</span>
+        </Link>
+        <Link to="/jobs" className={location.pathname === '/jobs' ? 'active' : ''}>
+          <Activity size={16} />
+          <span>{t('nav.jobs')}</span>
+        </Link>
+        <Link to="/calendar" className={location.pathname === '/calendar' ? 'active' : ''}>
+          <CalendarDays size={16} />
+          <span>{t('nav.calendar')}</span>
         </Link>
         <Link to="/settings/providers" className={location.pathname.startsWith('/settings') ? 'active' : ''}>
           <Sliders size={16} />

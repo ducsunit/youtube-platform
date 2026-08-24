@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { PlayCircle, X, FlaskConical, Rocket, FolderOutput, Loader2, RefreshCw } from './Icons';
-import { ApiError, getDataJob, getDataStatus, pullData, reportingData, startRun } from '../api';
+import { ApiError, getDataJob, getDataStatus, listChannels, pullData, reportingData, startRun } from '../api';
 import { useT } from '../i18n';
-import type { ServerConfig } from '../types';
+import type { ChannelInfo, ServerConfig } from '../types';
 
 interface Props {
   open: boolean;
@@ -25,6 +25,15 @@ export function NewRunDialog({ open, config, initialInputFile, onClose, onStarte
   const [outputDir, setOutputDir] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [channels, setChannels] = useState<ChannelInfo[] | null>(null);
+  const [channel, setChannel] = useState('');
+
+  useEffect(() => {
+    if (!open) return;
+    listChannels()
+      .then((data) => setChannels((data.channels ?? []).filter((c) => c.valid !== false)))
+      .catch(() => setChannels([]));
+  }, [open]);
 
   useEffect(() => {
     if (open) {
@@ -96,6 +105,7 @@ export function NewRunDialog({ open, config, initialInputFile, onClose, onStarte
       }
       const result = await startRun({
         mode,
+        ...(channel ? { channel } : {}),
         ...(mode === 'production' ? { channel_data_mode: channelDataMode } : {}),
         ...(mode === 'production' && channelDataMode !== 'none' && latestInputFile ? { input_file: latestInputFile } : {}),
         ...(mode === 'production' && channelDataMode === 'none' && manualTopic.trim() ? { manual_topic: manualTopic.trim() } : {}),
@@ -171,6 +181,28 @@ export function NewRunDialog({ open, config, initialInputFile, onClose, onStarte
               <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>Chạy pipeline dữ liệu thật</div>
             </div>
           </label>
+        </div>
+
+        <div className="form-row">
+          <label htmlFor="new-run-channel">Kênh (channel profile)</label>
+          <select
+            id="new-run-channel"
+            value={channel}
+            onChange={(event) => setChannel(event.target.value)}
+            disabled={submitting}
+            style={{ width: '100%' }}
+          >
+            <option value="">Tự động — dò từ dataset đã chọn</option>
+            {(channels ?? []).map((c) => (
+              <option key={c.channel_id} value={c.channel_id}>
+                {c.display_name} ({c.channel_id})
+              </option>
+            ))}
+          </select>
+          <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 5 }}>
+            Quyết định competitor intelligence, nguồn dẫn chiếu, claim policy và style lock cho run.
+            Quản lý profile ở trang Kênh.
+          </div>
         </div>
 
         {mode === 'production' && (
