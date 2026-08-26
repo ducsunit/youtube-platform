@@ -36,6 +36,52 @@ def _write_status(output_dir: Path, payload: dict) -> None:
     status_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
+# Pause tag kiểu MiniMax: 《n》 = chèn n ms im lặng tại vị trí đó (50–5000ms).
+_PAUSE_TAG_RE = re.compile(r"《\s*(\d{1,5})\s*》")
+PAUSE_MIN_SEC, PAUSE_MAX_SEC = 0.05, 5.0
+
+
+def expand_pause_tags(text: str) -> list[tuple[str, Any]]:
+    """Tách text tại pause tag 《n》 → [("speech", đoạn), ("pause", giây), ...].
+
+    Tag ngoài 50–5000ms được clamp; text trống giữa hai tag liên tiếp bỏ qua.
+    """
+    segments: list[tuple[str, Any]] = []
+    last = 0
+    for match in _PAUSE_TAG_RE.finditer(text):
+        chunk = text[last:match.start()]
+        if chunk.strip():
+            segments.append(("speech", chunk))
+        try:
+            ms = int(match.group(1))
+        except ValueError:
+            continue
+        ms = min(PAUSE_MAX_SEC * 1000, max(PAUSE_MIN_SEC * 1000, ms))
+        if segments:
+            segments.append(("pause", ms / 1000.0))
+        last = match.end()
+    tail = text[last:]
+    if tail.strip():
+        segments.append(("speech", tail))
+    return segments if segments else ([("speech", text)] if text.strip() else [])
+
+
+def make_silence_wav(out_path: Path, seconds: float, rate: int = 44100) -> bool:
+    """Tạo file WAV im lặng — dùng làm khoảng nghỉ giữa các đoạn speech."""
+    import wave
+
+    try:
+        frames = max(1, int(rate * seconds))
+        with wave.open(str(out_path), "wb") as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(rate)
+            wf.writeframes(b"\x00\x00" * frames)
+        return True
+    except Exception:
+        return False
+
+
 def split_for_synthesis(text: str, max_len: int = MAX_PIECE_LEN) -> list[str]:
     """Cắt text theo ranh giới câu thành các đoạn <= max_len."""
     sentences = [s for s in re.split(r"(?<=[。！？\n])", text) if s.strip()]
@@ -213,7 +259,7 @@ def generate_run_audio(
         text = text_path.read_text(encoding="utf-8").strip()
         if not text:
             continue
-        total_chars += len(text)
+        total_chars += len(_PAUSE_TAG_RE.sub("", text))
 
         chunk_mp3 = audio_dir / ("%03d.mp3" % chunk_num)
         if skip_existing and chunk_mp3.is_file():
@@ -228,19 +274,32 @@ def generate_run_audio(
                     inputs.append(gap)
             continue
 
-        pieces = split_for_synthesis(text)
-        total_pieces = len(pieces)
+        # Pause tag 《n》: tách text thành speech/pause xen kẽ rồi synth từng
+        # phần, chèn im lặng đúng n ms lúc ghép (MiniMax-style break).
+        segments = expand_pause_tags(text)
+        work: list[tuple[str, Any]] = []
+        for seg_kind, seg_value in segments:
+            if seg_kind == "pause":
+                work.append(("silence", seg_value))
+                continue
+            for piece in split_for_synthesis(seg_value):
+                work.append(("speech", piece))
+        total_pieces = len(work)
 
-        # synth từng mảnh câu -> wav
+        # synth từng mảnh câu -> wav (silence -> wav im lặng cùng format)
         piece_paths: list[Path] = []
-        for piece_index, piece in enumerate(pieces):
+        for piece_index, (kind, value) in enumerate(work):
             if progress_cb:
                 progress_cb(chunk_idx, total_chunks, piece_index, total_pieces)
-            wav_bytes = synthesize_wav(piece, speaker, base_url, settings)
             piece_path = piece_dir / ("%03d_%04d.wav" % (chunk_num, piece_index))
+            if kind == "silence":
+                make_silence_wav(piece_path, value)
+                piece_paths.append(piece_path)
+                continue
+            wav_bytes = synthesize_wav(value, speaker, base_url, settings)
             piece_path.write_bytes(wav_bytes)
             piece_paths.append(piece_path)
-            # Delay giữa các piece để VOICEVOX engine không bị quá tải
+            # Delay giữa các piece synth liên tiếp để engine không quá tải
             if piece_index < total_pieces - 1 and inter_piece_delay_sec > 0:
                 time.sleep(inter_piece_delay_sec)
 

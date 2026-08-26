@@ -73,7 +73,7 @@ def image_status() -> dict:
         sdk_ready = False
     backend_root = paths.backend_root()
     supported_models = image_config.get_supported_models(backend_root)
-    return {"available": _has_key() and sdk_ready, "has_api_key": _has_key(), "sdk_ready": sdk_ready, "model": DEFAULT_MODEL, "models": list(supported_models), "sizes": list(SUPPORTED_SIZES), "qualities": list(SUPPORTED_QUALITIES), "active_job": image_runner.active_job(), "busy": image_runner.busy()}
+    return {"available": _has_key() and sdk_ready, "has_api_key": _has_key(), "sdk_ready": sdk_ready, "model": (list(supported_models) or [DEFAULT_MODEL])[0], "models": list(supported_models), "sizes": list(SUPPORTED_SIZES), "qualities": list(SUPPORTED_QUALITIES), "active_job": image_runner.active_job(), "busy": image_runner.busy()}
 
 
 @router.get("/runs/{run_id}/prompts")
@@ -113,7 +113,14 @@ def start_image_generation(run_id: str, body: dict) -> dict:
     quality = str(body.get("quality") or configured["default_quality"])
     supported_models = image_config.get_supported_models(paths.backend_root())
     if model not in supported_models or size not in SUPPORTED_SIZES or quality not in SUPPORTED_QUALITIES:
-        raise HTTPException(status_code=400, detail="model/size/quality không được hỗ trợ.")
+        bad = []
+        if model not in supported_models:
+            bad.append(f"model '{model}' (supported: {', '.join(supported_models)})")
+        if size not in SUPPORTED_SIZES:
+            bad.append(f"size '{size}'")
+        if quality not in SUPPORTED_QUALITIES:
+            bad.append(f"quality '{quality}'")
+        raise HTTPException(status_code=400, detail="Không được hỗ trợ: %s" % "; ".join(bad))
     if not _has_key():
         raise HTTPException(status_code=400, detail={"message": "Thiếu OPENAI_API_KEY trên API server.", "key": "images.noKey"})
     if image_runner.busy():

@@ -596,6 +596,10 @@ class AIResourceProvider:
         return self._call_json("editor", "RP_REPAIR", REPAIR_SYSTEM, repair_prompt(contract, plan, source_pack, script, findings))
 
     def translate_to_vietnamese(self, script: str) -> str:
+        # Pause tag 《n》 là chỉ thị đọc — không thuộc bản dịch cho người đọc.
+        import re as _re
+
+        script = _re.sub(r"《\s*\d{1,5}\s*》", "", script)
         # A 35-45 minute Japanese narration can exceed 18k characters. Sending
         # it as one translation request regularly exceeds gateway timeouts even
         # though the writer model is healthy. Translation has no cross-chunk

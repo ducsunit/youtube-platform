@@ -17,7 +17,9 @@ def read_script(path: str) -> str:
     data = Path(path).read_bytes()
     for encoding in ("utf-8-sig", "utf-8", "cp932", "shift_jis"):
         try:
-            return data.decode(encoding).replace("\r\n", "\n").replace("\r", "\n")
+            text = data.decode(encoding).replace("\r\n", "\n").replace("\r", "\n")
+            # Pause tag 《n》 của engine TTS không bao giờ được xuất hiện trong phụ đề
+            return re.sub(r"《\s*\d{1,5}\s*》", "", text)
         except UnicodeDecodeError:
             continue
     raise ValueError("Không đọc được file script. Hãy dùng UTF-8 hoặc Shift-JIS.")

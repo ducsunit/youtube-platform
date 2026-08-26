@@ -215,6 +215,13 @@ def _competitor_text(context: RunContext) -> str:
     return str(text) if text else competitor_inject_text()
 
 
+def _used_topic_history(history: list[dict]) -> list[dict]:
+    """History chặn trùng chủ đề: mọi run đã tạo video — published lẫn
+    drafted/complete chưa đăng. Chỉ 'archived' (cố ý rút khỏi xuất bản)
+    mới được phép tái sử dụng chủ đề."""
+    return [row for row in history if row.get("status") != "archived"]
+
+
 def _topic_candidates(context: RunContext) -> StageResult:
     topic = _manual_topic(context)
     if topic:
@@ -245,7 +252,7 @@ def _topic_candidates(context: RunContext) -> StageResult:
         _competitor_text(context),
     )
     history = load_history(context.store.root, channel_id=_channel_id(context))
-    value = annotate_candidates(value, history)
+    value = annotate_candidates(value, _used_topic_history(history))
     validate_topic_candidates(value)
     ref = context.store.put_json("topic_candidates", "research/topic-candidates.json", value, "topic_candidates")
     return StageResult([ref], {"candidate_count": len(value["candidates"])})
@@ -278,12 +285,12 @@ def _topic_selection(context: RunContext) -> StageResult:
         _json(context, "performance_review"),
     )
     history = load_history(context.store.root, channel_id=_channel_id(context))
-    published_history = [row for row in history if row.get("status") == "published"]
-    if duplicate_reason(value, published_history):
-        available = [row for row in candidates.get("candidates", []) if not duplicate_reason(row, published_history)]
+    used_history = _used_topic_history(history)
+    if duplicate_reason(value, used_history):
+        available = [row for row in candidates.get("candidates", []) if not duplicate_reason(row, used_history)]
         if available:
             replacement = max(available, key=lambda row: int(row.get("novelty", 0)) if str(row.get("novelty", "")).isdigit() else 0)
-            value = {**value, "selected_topic": replacement["topic"], "selected_candidate_id": replacement["id"], "source_person": replacement.get("source_person", ""), "source_work": replacement.get("source_work", ""), "source_concept": replacement.get("source_concept", ""), "audience_moment": replacement.get("audience_moment", ""), "promise": replacement.get("promise", ""), "selection_reason": "Deterministically đổi sang candidate chưa xuất hiện trong topic history."}
+            value = {**value, "selected_topic": replacement["topic"], "selected_candidate_id": replacement["id"], "source_person": replacement.get("source_person", ""), "source_work": replacement.get("source_work", ""), "source_concept": replacement.get("source_concept", ""), "audience_moment": replacement.get("audience_moment", ""), "promise": replacement.get("promise", ""), "selection_reason": "Deterministically đổi sang candidate chưa xuất hiện trong topic history (kể cả run hoàn tất chưa đăng)."}
         else:
             raise RuntimeError("topic_selection deterministic failure: toàn bộ candidate đã xuất hiện trong topic history.")
     validate_topic_selection(value, candidates)

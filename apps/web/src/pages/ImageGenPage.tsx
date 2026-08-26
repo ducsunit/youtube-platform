@@ -56,7 +56,7 @@ export function ImageGenPage() {
   const runs = runsPoll.data?.runs ?? [];
   const [runId, setRunId] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [model, setModel] = useState('gpt-image-2');
+  const [model, setModel] = useState('');
   const [size, setSize] = useState('1024x576');
   const [aspect, setAspect] = useState('landscape');
   const [resolution, setResolution] = useState('1K');
@@ -86,6 +86,10 @@ export function ImageGenPage() {
     if (!config) return;
     setImageConfig(config);
     setConfigDraft((old) => ({ ...old, model: config.model, base_url: config.base_url, api_key_env: config.api_key_env, default_size: config.default_size, default_quality: config.default_quality }));
+    // Model: chỉ set theo config khi giá trị hiện tại không còn hợp lệ
+    // (tránh ghi đè lựa chọn tay của user mỗi lần config poll 12s)
+    const models: string[] = config.models ?? [];
+    setModel((old) => (old && models.includes(old) ? old : (config.model || models[0] || old)));
     setSize(config.default_size);
     setResolution(resolutionForSize(config.default_size));
     setAspect(aspectForSize(config.default_size));
@@ -157,7 +161,7 @@ export function ImageGenPage() {
                 {runs.map((run) => <option key={run.run_id} value={run.run_id}>{run.run_id}</option>)}
               </select>
             </div>
-            <div className="form-row" style={{ marginBottom: 0, minWidth: 150 }}><label htmlFor="image-model">Model</label><select id="image-model" value={model} onChange={(e) => setModel(e.target.value)} disabled={running}><option>gpt-image-2</option></select></div>
+            <div className="form-row" style={{ marginBottom: 0, minWidth: 150 }}><label htmlFor="image-model">Model</label><select id="image-model" value={model} onChange={(e) => setModel(e.target.value)} disabled={running}>{(imageConfig?.models ?? ['gpt-image-2']).map((m) => <option key={m} value={m}>{m}</option>)}</select></div>
             <div className="form-row" style={{ marginBottom: 0, minWidth: 190 }}>
               <span className="form-label">Tỷ lệ khung hình</span>
               <div className="segmented-control" role="group" aria-label="Tỷ lệ khung hình">

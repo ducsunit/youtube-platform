@@ -154,7 +154,7 @@
     },
     {
       "run_id": "video-10",
-      "status": "drafted",
+      "status": "published",
       "topic": "【ユング心理学】なぜ「大丈夫」と言うほど苦しくなるのか｜シャドウ・無意識・個性化",
       "selected_topic": "【ユング心理学】なぜ「大丈夫」と言うほど苦しくなるのか｜シャドウ・無意識・個性化",
       "title": "「大丈夫」と答えるほど自分が遠くなる理由｜認めにくい感情とユングのシャドウ",
@@ -170,7 +170,7 @@
     },
     {
       "run_id": "video-11",
-      "status": "drafted",
+      "status": "published",
       "topic": "【ユング心理学】なぜ、過去の自分を恥じるほど前に進めないのか――古い写真と個性化・シャドウ",
       "selected_topic": "【ユング心理学】なぜ、過去の自分を恥じるほど前に進めないのか――古い写真と個性化・シャドウ",
       "title": "過去の自分を恥じて消すほど、なぜ前に進めなくなるのか――個性化とシャドウ",
@@ -201,22 +201,6 @@
       ]
     },
     {
-      "run_id": "video-13",
-      "status": "drafted",
-      "topic": "【ユング心理学】なぜ「始めたいのに動けない」のか？シャドウ・無意識・個性化から読む5つの静かな抵抗",
-      "selected_topic": "【ユング心理学】なぜ「始めたいのに動けない」のか？シャドウ・無意識・個性化から読む5つの静かな抵抗",
-      "title": "なぜ始める直前で止まるのか？意志の弱さではない5つの静かな抵抗｜ユング心理学",
-      "source_concept": "シャドウ・個性化・無意識 được dùng như khung diễn giải biểu tượng; trải nghiệm kiểm soát có thể ảnh hưởng đến phản ứng sau này; thói quen hình thành qua lặp lại và tín hiệu bối cảnh.",
-      "source_work": "Aion; The Archetypes and the Collective Unconscious; Learned helplessness at fifty: Insights from neuroscience; Psychology of Habit",
-      "audience_moment": "Biết việc cần làm nhưng cứ trì hoãn ngay trước lúc bắt đầu, dù không muốn tự gọi mình là lười biếng.",
-      "promise": "Giải mã 5 lớp ý nghĩa của trạng thái không thể bắt đầu: tự quy kết, phản ứng phòng vệ, tín hiệu bối cảnh, xung đột giữa bản ngã hiện tại và phần bị che khuất, cùng một cách quan sát bản thân không biến trì hoãn thành chẩn đoán.",
-      "angle": "",
-      "mechanisms": [
-        "Thói quen được định hình bởi sự lặp lại và bối cảnh",
-        "Kinh nghiệm về quyền kiểm soát"
-      ]
-    },
-    {
       "run_id": "video-14",
       "status": "drafted",
       "topic": "5つの秘密――なぜ昔は役に立った反応が、今の自分を苦しめるのか？ シャドウと個性化を「古い鍵」から読む",
@@ -230,6 +214,38 @@
       "mechanisms": [
         "反復と状況の手がかりによる習慣",
         "環境への適応技能"
+      ]
+    },
+    {
+      "run_id": "video-13",
+      "status": "drafted",
+      "topic": "【ユング心理学】「怒れない人」の中に眠るシャドウとは何か｜境界線・無意識・個性化",
+      "selected_topic": "【ユング心理学】「怒れない人」の中に眠るシャドウとは何か｜境界線・無意識・個性化",
+      "title": "怒れない人ほど、あとで苦しくなる理由｜シャドウと境界線の心理学｜その心の奥で起きていること",
+      "source_concept": "シャドウ・ペルソナ・個性化",
+      "source_work": "The Collected Works of C. G. Jung, Vol. 9 Part 1 / Vol. 7",
+      "audience_moment": "傷ついても笑って済ませ、後から急に疲れや苛立ちがあふれる時。",
+      "promise": "怒りをそのまま行動に移さず、怒りが知らせている「ここから先は自分ではない」という境界を読み取る。",
+      "angle": "",
+      "mechanisms": [
+        "シャドウ",
+        "自己統合・個性化"
+      ]
+    },
+    {
+      "run_id": "video-15",
+      "status": "drafted",
+      "topic": "【ユング心理学】なぜ「始めたいのに始められない」のか？ シャドウ・無意識・個性化で読む、玄関の前に立ち尽くす心",
+      "selected_topic": "【ユング心理学】なぜ「始めたいのに始められない」のか？ シャドウ・無意識・個性化で読む、玄関の前に立ち尽くす心",
+      "title": "なぜ始めたいほど動けないのか――立ち尽くす心と、認めにくい自己【シャドウと個性化】",
+      "source_concept": "シャドウ・無意識・個性化・Selfを、行動不能の原因を断定する理論ではなく、玄関という境界に立つ自分を観察するための象徴的な枠組みとして用いる。習慣や文脈の研究は、意志力だけでなく環境も行動開始に関わるという補助的な観察として扱う。",
+      "source_work": "The Collected Works of C. G. Jung, Vol. 9 Part 1・Part 2",
+      "audience_moment": "やるべきことは分かっているのに、画面を開くことも靴を履くこともできず、また自分を責めてしまう瞬間。",
+      "promise": "あなたが立ち止まる玄関は、怠けの証拠ではなく、まだ言葉になっていない自己との境界かもしれない。",
+      "angle": "",
+      "mechanisms": [
+        "シャドウと個性化の象徴的解釈",
+        "習慣の反復と状況手がかり"
       ]
     }
   ]

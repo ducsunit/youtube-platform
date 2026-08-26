@@ -33,6 +33,13 @@ SWEEP_ROUNDS = 3
 SWEEP_MAX_MINUTES = 180
 
 
+class ProxyQuotaExhausted(RuntimeError):
+    """Proxy báo hết quỹ pre-consume (403 + 'pre-consume quota failed').
+
+    Retry vô ích cho đến khi nạp tiền → dừng NGAY cả batch, không đốt sweep.
+    """
+
+
 def log(message: str) -> None:
     print("[%s] %s" % (datetime.now(timezone.utc).isoformat(), message), flush=True)
 
@@ -229,6 +236,11 @@ def _retry_policy(exc: Exception) -> tuple[int, float]:
     # APITimeoutError (retry nhanh, 5 lần) thay vì fail fast.
     if isinstance(exc, (openai.APITimeoutError, openai.APIConnectionError, TimeoutError)):
         return TIMEOUT_MAX_ATTEMPTS, TIMEOUT_RETRY_WAIT_SEC
+    # 5xx từ proxy (502/524/530 Cloudflare, 503 litellm): transient — retry được
+    # với backoff vừa phải. 524 Cloudflare có trần ~100s/request nên request
+    # sinh ảnh lâu vẫn có thể fail lại — sweep loop sẽ gom phần còn thiếu.
+    if isinstance(exc, openai.InternalServerError):
+        return 3, 15
     if isinstance(exc, openai.RateLimitError):
         retry_after: float | None = None
         try:
@@ -285,6 +297,16 @@ def _generate_one(client, image_id: str, prompt: str, output: Path,
             last_traceback = traceback.format_exc()
             _log_request_response(call_log, image_id, attempt, model, size, quality, prompt, request_start, error=last_error, traceback_text=last_traceback)
         except Exception as exc:
+            # 403 "pre-consume quota failed" = proxy hết tiền — retry/sweep đều
+            # vô ích cho đến khi nạp tiền → raise NGAY để dừng cả batch với
+            # message rõ thay vì 48 ảnh fail nối tiếp.
+            import openai as _openai
+
+            if isinstance(exc, _openai.PermissionDeniedError) and "pre-consume quota" in str(exc):
+                raise ProxyQuotaExhausted(
+                    "PROXY HẾT QUỸ — nạp tiền cloudai.center rồi bấm Gen ảnh thiếu "
+                    "(skip-existing sẽ gen tiếp phần chưa có). Chi tiết: %s" % str(exc)[:250]
+                ) from exc
             last_error = exc
             last_traceback = traceback.format_exc()
             _log_request_response(call_log, image_id, attempt, model, size, quality, prompt, request_start, error=exc, traceback_text=last_traceback)

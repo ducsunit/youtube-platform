@@ -46,3 +46,32 @@ class TopicHistoryTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class UsedTopicHistoryTests(unittest.TestCase):
+    """Guard trùng chủ đề phải chặn cả run hoàn tất CHƯA đăng (drafted)."""
+
+    def test_drafted_rows_block_duplicates(self):
+        from youtube_pipeline.resource_pack.pipeline import _used_topic_history
+
+        history = [
+            {"run_id": "video-09", "topic": "旧友", "status": "published"},
+            {"run_id": "video-10", "topic": "大丈夫", "status": "drafted"},
+            {"run_id": "video-11", "topic": "始められない", "status": None},
+            {"run_id": "video-12", "topic": "断れる", "status": "archived"},
+        ]
+        used = _used_topic_history(history)
+        run_ids = {row["run_id"] for row in used}
+        # published + drafted + legacy (None) đều chặn
+        self.assertIn("video-09", run_ids)
+        self.assertIn("video-10", run_ids)
+        self.assertIn("video-11", run_ids)
+        # archived là chủ ý rút khỏi xuất bản → cho phép tái sử dụng
+        self.assertNotIn("video-12", run_ids)
+
+    def test_duplicate_reason_matches_drafted_topic(self):
+        from youtube_pipeline.topic_history import duplicate_reason
+
+        history = [{"run_id": "video-10", "topic": "「大丈夫」と言ってしまう心理", "status": "drafted"}]
+        candidate = {"topic": "「大丈夫」と言ってしまう心理――シャドウの話", "source_concept": "シャドウ"}
+        self.assertIsNotNone(duplicate_reason(candidate, history))

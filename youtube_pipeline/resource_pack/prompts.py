@@ -147,6 +147,14 @@ Một symbol/ordinary object có thể return 2-4 lần, nhưng mỗi lần ph�
 → implication → landing. Không dùng biểu tượng để kéo mood hoặc trình bày nó như evidence.
 """ + ANTI_STORY_RULES + CLAIM_VOCAB_BAN_VI + "\nChỉ trả JSON."
 
+PAUSE_TAG_RULE_JA = """
+PAUSE TAG RULE（読み上げエンジン用の間(ま)指定）: 劇的な転換・着地の直後に
+《600》〜《1200》のタグを入れてよい（例: …と言ってしまった。《900》）。最大 6 個まで。
+opening の hook が収まった直後と、closing の最終文の直前に 1 個ずつ置くのが基本。
+タグは本文の一部ではなく読み上げ制御なので、会話の流れ・SRT・翻訳に影響させず、
+日常的な文の区切りには入れない（。！？の自然な間で足りる場所には不要）。
+"""
+
 WRITING_SYSTEM = """あなたは日本語ネイティブの心理学YouTube脚本家です。
 最初の30〜90秒で、視聴者が自分だと分かる感覚、行動、または普通の物の前に立つ瞬間を描いてください。
 「今日は〜を解説します」、定義、背景説明、長い前置き、一般的な励ましは禁止です。
@@ -318,7 +326,7 @@ chẩn đoán/nguyên nhân tuổi thơ về người xem thật.
 Script tiếng Nhật là thiết kế chủ đạo; language_alignment chỉ kiểm nhất quán nội bộ."""
 
 REPAIR_SYSTEM = """Bạn là psychology-first repair editor. Chỉ sửa findings được cung cấp,
-không thêm nguồn/claim mới. Giữ topic/promise và target range; không chèn pause tag/SSML.
+không thêm nguồn/claim mới. Giữ topic/promise và target range; không chèn SSML — pause tag chỉ giữ/sửa đúng format 《số ms》 (vd 《900》), không dùng dạng khác.
 Được phép tái cấu trúc section khi story dominates. Với đoạn scene/action/emotion/flashback, giữ
 behavior fact rồi đổi thành direct narration + inner process + mechanism + why + implication.
 Tên mechanism trong psychology_brief chỉ là nhãn biên tập; nếu script đã giải thích đúng behavior,
@@ -795,6 +803,7 @@ Do not expand it into character chronology. Do not explain outside JSON."""
     return prompt
 
 def writing_prompt(contract: dict, plan: dict, source_pack: dict, psychology_brief: dict) -> str:
+    rule_tag = PAUSE_TAG_RULE_JA
     return f"""以下の契約、心理ブリーフ、構成に従い、日本語ナレーション本文だけを書いてください。
 SCRIPT CONTRACT:
 {_json(contract)}
@@ -805,6 +814,7 @@ ADAPTIVE PLAN:
 SOURCE PACK:
 {_json(source_pack)}
 
+{rule_tag}
 COMMITMENT MANIFEST RULE: plan.commitments は本runの確定した約束一覧（唯一の基準）である。
 - type=enumeration: 指定 sections 内で items を count どおり過不足なく列挙する。
   視聴者に「N個」と伝える以上、items を全部明示すること。数を減らしたり、manifest に無い
@@ -868,6 +878,7 @@ def writing_movement_prompt(
     is_closing: bool,
 ) -> str:
     """Bound one long-form movement so a provider never truncates a full script."""
+    rule_tag = PAUSE_TAG_RULE_JA
     return f"""Write only one contiguous Japanese narration movement for a symbolic long-form psychology video.
 SCRIPT CONTRACT:
 {_json(contract)}
@@ -879,6 +890,7 @@ CURRENT MOVEMENT:
 {_json(section)}
 PREVIOUS MOVEMENT ENDING (continuity only; do not repeat it):
 {previous_tail}
+{rule_tag}
 
 Target roughly {target_chars} non-whitespace Japanese characters for THIS movement. Write Japanese narration only:
 no heading, numbering, markdown, production note, recap, or explanation of the plan.

@@ -227,6 +227,10 @@ def build_config_block(
     style_locks = profile.get("style_locks") or {}
     if style_locks:
         block["_style_locks"] = dict(style_locks)
+    # TTS settings phải đi cùng snapshot: tts_job + stage tts_generate đọc từ
+    # đây — thiếu là run rơi về mặc định (speed 1.0) thay vì config kênh.
+    if profile.get("tts"):
+        block["tts"] = dict(profile["tts"])
     return block
 
 
