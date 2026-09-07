@@ -11,6 +11,8 @@ from typing import Optional, Sequence
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+from .auth import ApiAuthMiddleware, AuthSettings
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException
 
@@ -20,7 +22,7 @@ from .routes import router
 from .veo_routes import router as veo_router
 from .image_routes import router as image_router
 from .srt_routes import router as srt_router
-
+from .research_routes import router as research_router
 
 class _SpaStaticFiles(StaticFiles):
     """StaticFiles + SPA fallback: đường dẫn không phải file → index.html.
@@ -37,13 +39,21 @@ class _SpaStaticFiles(StaticFiles):
             raise
 
 
-def create_app() -> FastAPI:
+def create_app(*, auth_settings: AuthSettings | None = None) -> FastAPI:
     app = FastAPI(title="YouTube Platform API", version="0.1.0")
+    settings = auth_settings or AuthSettings.from_env()
+    if settings.required and not settings.tokens and not settings.trusted_header:
+        raise RuntimeError(
+            "YT_API_REQUIRE_AUTH is enabled but no YT_API_AUTH_TOKEN + "
+            "YT_API_AUTH_USER, YT_API_TOKENS, or YT_API_TRUSTED_USER_HEADER is configured"
+        )
+    app.add_middleware(ApiAuthMiddleware, settings=settings)
+    origins = [o.strip() for o in os.getenv("YT_API_CORS_ORIGINS", "http://localhost:5173").split(",") if o.strip()]
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_origins=origins or ["http://localhost:5173"],
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type", "X-Authenticated-User"],
     )
     app.include_router(router)
     app.include_router(data_router)
@@ -51,6 +61,7 @@ def create_app() -> FastAPI:
     app.include_router(veo_router)
     app.include_router(image_router)
     app.include_router(srt_router)
+    app.include_router(research_router)
     dist = os.environ.get("YT_SERVE_FRONTEND")
     if dist:
         app.mount("/", _SpaStaticFiles(directory=dist, html=True), name="frontend")
@@ -61,6 +72,13 @@ app = create_app()
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
+    try:
+        from dotenv import load_dotenv
+    except ImportError:
+        pass
+    else:
+        load_dotenv()
+
     parser = argparse.ArgumentParser(
         prog="youtube-pipeline-ui",
         description="Web API cho resource pack pipeline.",

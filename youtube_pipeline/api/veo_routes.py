@@ -1,12 +1,4 @@
-"""API Gen video Veo (image-to-video) — liệt kê ảnh ứng viên + job gọi Veo API.
-
-Nguồn ảnh + prompt lấy trực tiếp từ run: `visuals/prompts/prompts-video.txt`
-(danh sách pipeline đề xuất) và ảnh đã gen ở `video-build/images/`. Clip ghi ra
-`video-build/clips/IMG-xx.mp4` — đúng nơi build engine ưu tiên đọc clip.
-
-Job chạy `python -m youtube_pipeline.veo_gen` làm subprocess (VeoRunner) —
-độc lập với pipeline run, data job và build job.
-"""
+"""API Gen video Veo (image-to-video) for legacy or channel-scoped runs."""
 from __future__ import annotations
 
 import os
@@ -16,7 +8,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, Query
 
 from . import paths
-from .routes import _check_run_id, _require_state
+from .routes import _check_job_id, _check_run_id, _require_scoped_channel, _require_state, _run_path
 from .veo_runner import VeoBusyError, veo_gen_command, veo_runner
 
 router = APIRouter(prefix="/api/veo")
@@ -35,16 +27,31 @@ AVAILABLE_MODELS = [
 ]
 
 _IMAGE_EXTS = ("png", "jpg", "jpeg", "webp")
-
 _KEY_NAMES = ("GEMINI_API_KEY", "GOOGLE_API_KEY")
 
 
-def _has_api_key() -> bool:
-    """Key có sẵn cho subprocess không — env của server HOẶC .env ở backend root.
+def _scope_kwargs(user_id: str | None, channel_id: str | None) -> tuple[str | None, str | None]:
+    if bool(user_id) != bool(channel_id):
+        raise HTTPException(status_code=400, detail="user_id và channel_id phải được truyền cùng nhau")
+    return user_id, channel_id
 
-    API server không tự `load_dotenv()` (chỉ CLI con làm), nên phải đọc .env để
-    biết job spawn ra sẽ có key. Không ghi vào os.environ, không log giá trị.
-    """
+
+def _run_dir(run_id: str, user_id: str | None = None, channel_id: str | None = None) -> Path:
+    if user_id and channel_id:
+        return paths.channel_run_dir(user_id, channel_id, run_id)
+    return _run_path(run_id, _require_state(run_id, user_id, channel_id))
+
+
+def _require_run(run_id: str, user_id: str | None, channel_id: str | None) -> Path:
+    _check_run_id(run_id)
+    user_id, channel_id = _scope_kwargs(user_id, channel_id)
+    _require_scoped_channel(user_id, channel_id)
+    _require_state(run_id, user_id, channel_id)
+    return _run_dir(run_id, user_id, channel_id)
+
+
+def _has_api_key() -> bool:
+    """Key có sẵn cho subprocess không — env server hoặc .env backend root."""
     if any(os.environ.get(k) for k in _KEY_NAMES):
         return True
     env_file = paths.backend_root() / ".env"
@@ -104,8 +111,10 @@ def _parse_prompts_video(prompts_file: Path) -> list[dict]:
 
 
 @router.get("/status")
-def veo_status() -> dict:
-    """Trạng thái chung: API key có chưa, job nào đang chạy, model khả dụng."""
+def veo_status(user_id: str | None = Query(None), channel_id: str | None = Query(None)) -> dict:
+    """Trạng thái Veo trong namespace được yêu cầu."""
+    _require_scoped_channel(user_id, channel_id)
+    _scope_kwargs(user_id, channel_id)
     has_key = _has_api_key()
     try:
         import google.genai  # noqa: F401
@@ -119,17 +128,19 @@ def veo_status() -> dict:
         "sdk_ready": sdk_ready,
         "default_model": DEFAULT_MODEL,
         "models": AVAILABLE_MODELS,
-        "active_job": veo_runner.active_job(),
-        "busy": veo_runner.busy(),
+        "active_job": veo_runner.active_job(user_id=user_id, channel_id=channel_id),
+        "busy": veo_runner.busy(user_id=user_id, channel_id=channel_id),
     }
 
 
 @router.get("/runs/{run_id}/candidates")
-def veo_candidates(run_id: str) -> dict:
+def veo_candidates(
+    run_id: str,
+    user_id: str | None = Query(None),
+    channel_id: str | None = Query(None),
+) -> dict:
     """Ảnh ứng viên image-to-video của run: prompt, ảnh nguồn, clip đã có."""
-    _check_run_id(run_id)
-    _require_state(run_id)
-    run_dir = paths.run_dir(run_id)
+    run_dir = _require_run(run_id, user_id, channel_id)
     images_dir = run_dir / "video-build" / "images"
     clips_dir = run_dir / "video-build" / "clips"
     prompts_file = run_dir / "visuals" / "prompts" / "prompts-video.txt"
@@ -165,8 +176,8 @@ def veo_candidates(run_id: str) -> dict:
         "total": len(candidates),
         "images_ready": len(ready),
         "clips_done": len([c for c in candidates if c["clip_exists"]]),
-        "active_job": veo_runner.active_job(),
-        "busy": veo_runner.busy(),
+        "active_job": veo_runner.active_job(user_id=user_id, channel_id=channel_id),
+        "busy": veo_runner.busy(user_id=user_id, channel_id=channel_id),
     }
 
 
@@ -174,53 +185,37 @@ def veo_candidates(run_id: str) -> dict:
 
 
 @router.post("/runs/{run_id}/generate", status_code=202)
-def veo_generate(run_id: str, body: dict) -> dict:
-    """Bắt đầu job gen clip cho các ảnh được chọn.
-
-    Body: {images: ["01","03"], model?: str, skip_existing?: bool}
-    """
-    _check_run_id(run_id)
-    _require_state(run_id)
-    run_dir = paths.run_dir(run_id)
+def veo_generate(
+    run_id: str,
+    body: dict,
+    user_id: str | None = Query(None),
+    channel_id: str | None = Query(None),
+) -> dict:
+    """Bắt đầu job gen clip cho các ảnh được chọn."""
+    run_dir = _require_run(run_id, user_id, channel_id)
+    body = body or {}
 
     raw = body.get("images") or []
     if not isinstance(raw, list) or not raw:
-        raise HTTPException(
-            status_code=400,
-            detail={"message": "Cần chọn ít nhất một ảnh.", "key": "veo.noImages"},
-        )
+        raise HTTPException(status_code=400, detail={"message": "Cần chọn ít nhất một ảnh.", "key": "veo.noImages"})
     indices: list[str] = []
     for item in raw:
         s = str(item).strip()
         if s.startswith("IMG-"):
             s = s[4:]
         if not _IDX_RE.match(s):
-            raise HTTPException(
-                status_code=400,
-                detail={"message": "Chỉ số ảnh không hợp lệ: %s" % item, "key": "veo.badIndex"},
-            )
+            raise HTTPException(status_code=400, detail={"message": "Chỉ số ảnh không hợp lệ: %s" % item, "key": "veo.badIndex"})
         if s not in indices:
             indices.append(s)
 
     if len(indices) > 20:
-        raise HTTPException(
-            status_code=400,
-            detail={"message": "Tối đa 20 ảnh mỗi job (Veo tốn thời gian/quota).", "key": "veo.tooMany"},
-        )
+        raise HTTPException(status_code=400, detail={"message": "Tối đa 20 ảnh mỗi job (Veo tốn thời gian/quota).", "key": "veo.tooMany"})
 
-    # Check rẻ trước (model, key), rồi mới sờ đĩa tìm ảnh.
     model = str(body.get("model") or DEFAULT_MODEL)
     if model not in AVAILABLE_MODELS:
-        raise HTTPException(
-            status_code=400,
-            detail={"message": "Model không hỗ trợ: %s" % model, "key": "veo.badModel"},
-        )
-
+        raise HTTPException(status_code=400, detail={"message": "Model không hỗ trợ: %s" % model, "key": "veo.badModel"})
     if not _has_api_key():
-        raise HTTPException(
-            status_code=400,
-            detail={"message": "Thiếu GEMINI_API_KEY / GOOGLE_API_KEY trong .env.", "key": "veo.noKey"},
-        )
+        raise HTTPException(status_code=400, detail={"message": "Thiếu GEMINI_API_KEY / GOOGLE_API_KEY trong .env.", "key": "veo.noKey"})
 
     images_dir = run_dir / "video-build" / "images"
     missing = [i for i in indices if _find_image(images_dir, i) is None]
@@ -228,8 +223,7 @@ def veo_generate(run_id: str, body: dict) -> dict:
         raise HTTPException(
             status_code=400,
             detail={
-                "message": "Thiếu ảnh nguồn trong video-build/images/: %s"
-                % ", ".join("IMG-%s" % i for i in missing),
+                "message": "Thiếu ảnh nguồn trong video-build/images/: %s" % ", ".join("IMG-%s" % i for i in missing),
                 "key": "veo.missingImages",
                 "missing": missing,
             },
@@ -238,9 +232,8 @@ def veo_generate(run_id: str, body: dict) -> dict:
     argv = veo_gen_command(run_dir, indices, model)
     if body.get("skip_existing"):
         argv.append("--skip-existing")
-
     try:
-        job = veo_runner.start(run_id, argv, paths.backend_root())
+        job = veo_runner.start(run_id, argv, paths.backend_root(), user_id=user_id, channel_id=channel_id)
     except VeoBusyError as exc:
         raise _busy_409(exc) from exc
 
@@ -255,8 +248,11 @@ def veo_generate(run_id: str, body: dict) -> dict:
 
 
 @router.get("/jobs/{job_id}")
-def veo_job(job_id: str) -> dict:
-    status = veo_runner.job_status(job_id)
+def veo_job(job_id: str, user_id: str | None = Query(None), channel_id: str | None = Query(None)) -> dict:
+    _check_job_id(job_id)
+    _require_scoped_channel(user_id, channel_id)
+    _scope_kwargs(user_id, channel_id)
+    status = veo_runner.job_status(job_id, user_id=user_id, channel_id=channel_id)
     if status is None:
         raise HTTPException(status_code=404, detail={"message": "Không tìm thấy job.", "key": "notFound"})
     return status
@@ -267,11 +263,19 @@ def veo_job_log(
     job_id: str,
     offset: int = Query(0, ge=0),
     limit: int = Query(200, ge=1, le=2000),
+    user_id: str | None = Query(None),
+    channel_id: str | None = Query(None),
 ) -> dict:
-    return veo_runner.get_log(job_id, offset, limit)
+    _check_job_id(job_id)
+    _require_scoped_channel(user_id, channel_id)
+    _scope_kwargs(user_id, channel_id)
+    return veo_runner.get_log(job_id, offset, limit, user_id=user_id, channel_id=channel_id)
 
 
 @router.post("/jobs/{job_id}/cancel")
-def veo_job_cancel(job_id: str) -> dict:
-    cancelled = veo_runner.cancel(job_id)
+def veo_job_cancel(job_id: str, user_id: str | None = Query(None), channel_id: str | None = Query(None)) -> dict:
+    _check_job_id(job_id)
+    _require_scoped_channel(user_id, channel_id)
+    _scope_kwargs(user_id, channel_id)
+    cancelled = veo_runner.cancel(job_id, user_id=user_id, channel_id=channel_id)
     return {"cancelled": cancelled, "job_id": job_id}

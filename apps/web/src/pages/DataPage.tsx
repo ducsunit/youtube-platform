@@ -15,8 +15,20 @@ import { LogViewer } from '../components/LogViewer';
 import { StatusBadge } from '../components/StatusBadge';
 import { usePolling } from '../hooks/usePolling';
 import { useT } from '../i18n';
+import { useChannelContext } from '../contexts/ChannelContext';
 import type { DataJob } from '../types';
 import { formatDate } from '../utils';
+
+const DEFAULT_OUT_FILE = 'data/channels/youtube_data.json';
+
+const channelScope = (channel: ReturnType<typeof useChannelContext>['currentChannel']) =>
+  channel
+    ? {
+        user_id: channel.user_id,
+        channel_id: channel.channel_id,
+        youtube_channel_id: channel.youtube_channel_id,
+      }
+    : null;
 
 const JOB_INTERVAL_MS = 1500;
 
@@ -28,26 +40,52 @@ const JOB_INTERVAL_MS = 1500;
 export function DataPage() {
   const { t, lang } = useT();
   const navigate = useNavigate();
+  const { currentChannel, loading: channelLoading } = useChannelContext();
+  const scope = channelScope(currentChannel);
+  const scopeKey = scope ? `${scope.user_id}:${scope.channel_id}` : null;
 
   const [busy, setBusy] = useState(false);
-  const statusPoll = usePolling(getDataStatus, {
-    enabled: true,
-    intervalMs: busy ? 2500 : 10000,
-  });
-  useEffect(() => {
-    setBusy(Boolean(statusPoll.data?.busy));
-  }, [statusPoll.data]);
-  const status = statusPoll.data;
-
-  // Job đang theo dõi (từ chính trang này submit) — kèm log live.
   const [jobId, setJobId] = useState<string | null>(null);
   const [job, setJob] = useState<DataJob | null>(null);
   const [jobError, setJobError] = useState<unknown>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [statusScopeKey, setStatusScopeKey] = useState<string | null>(null);
+  const statusPoll = usePolling(
+    () => (scope ? getDataStatus(scope) : Promise.resolve(null)),
+    {
+      enabled: scope !== null,
+      intervalMs: busy ? 2500 : 10000,
+    },
+  );
+  useEffect(() => {
+    setBusy(Boolean(statusPoll.data?.busy));
+  }, [statusPoll.data]);
+  const status = statusScopeKey === scopeKey ? statusPoll.data : null;
+
+  useEffect(() => {
+    let cancelled = false;
+    setStatusScopeKey(null);
+    setBusy(false);
+    setJobId(null);
+    setJob(null);
+    setJobError(null);
+    setActionError(null);
+    if (scopeKey) {
+      void statusPoll.refresh().then(() => {
+        if (!cancelled) setStatusScopeKey(scopeKey);
+      });
+    }
+    return () => { cancelled = true; };
+  }, [scopeKey, statusPoll.refresh]);
+
   const jobDone = job !== null && job.status !== 'running';
-  const jobPoll = usePolling(() => getDataJob(jobId ?? ''), {
-    enabled: jobId !== null && !jobDone,
-    intervalMs: JOB_INTERVAL_MS,
-  });
+  const jobPoll = usePolling(
+    () => (scope && jobId ? getDataJob(jobId, scope) : Promise.resolve(null)),
+    {
+      enabled: scope !== null && jobId !== null && !jobDone,
+      intervalMs: JOB_INTERVAL_MS,
+    },
+  );
   useEffect(() => {
     if (jobPoll.data) setJob(jobPoll.data);
     if (jobPoll.error) setJobError(jobPoll.error);
@@ -61,8 +99,7 @@ export function DataPage() {
   const [maxComments, setMaxComments] = useState('');
   const [maxReplies, setMaxReplies] = useState('');
   const [noReplies, setNoReplies] = useState(false);
-  const [outFile, setOutFile] = useState('data/channels/youtube_data.json');
-  const [actionError, setActionError] = useState<string | null>(null);
+  const [outFile, setOutFile] = useState(DEFAULT_OUT_FILE);
 
   const trackJob = (id: string) => {
     setJobId(id);
@@ -75,7 +112,8 @@ export function DataPage() {
   const doConnect = async () => {
     setActionError(null);
     try {
-      const r = await connectData();
+      if (!scope) return;
+      const r = await connectData(scope);
       trackJob(r.job_id);
     } catch (e) {
       setActionError(String(e));
@@ -85,7 +123,9 @@ export function DataPage() {
   const doPull = async () => {
     setActionError(null);
     try {
+      if (!scope) return;
       const r = await pullData({
+        ...scope,
         mode,
         ...(mode === 'video_ids'
           ? { video_ids: videoIds.split(',').map((s) => s.trim()).filter(Boolean) }
@@ -94,7 +134,7 @@ export function DataPage() {
         ...(maxComments.trim() ? { max_comments: Number(maxComments) } : {}),
         ...(maxReplies.trim() ? { max_replies: Number(maxReplies) } : {}),
         no_replies: noReplies,
-        out_file: outFile.trim() || 'data/channels/youtube_data.json',
+        out_file: outFile.trim() || DEFAULT_OUT_FILE,
       });
       trackJob(r.job_id);
     } catch (e) {
@@ -105,9 +145,11 @@ export function DataPage() {
   const doReporting = async (action: 'setup' | 'sync') => {
     setActionError(null);
     try {
+      if (!scope) return;
       const r = await reportingData({
+        ...scope,
         action,
-        ...(action === 'sync' ? { out_file: outFile.trim() || 'data/channels/youtube_data.json' } : {}),
+        ...(action === 'sync' ? { out_file: outFile.trim() || DEFAULT_OUT_FILE } : {}),
       });
       trackJob(r.job_id);
     } catch (e) {
@@ -120,13 +162,24 @@ export function DataPage() {
     if (!window.confirm(t('data.job.cancelConfirm'))) return;
     setActionError(null);
     try {
-      await cancelDataJob(jobId);
+      if (!scope) return;
+      await cancelDataJob(jobId, scope);
       void statusPoll.refresh();
       void jobPoll.refresh();
     } catch (e) {
       setActionError(String(e));
     }
   };
+
+  if (channelLoading || !currentChannel) {
+    return (
+      <div className="page">
+        <div className="empty-state">
+          {channelLoading ? 'Đang tải channel...' : 'Chưa có channel được đăng ký.'}
+        </div>
+      </div>
+    );
+  }
 
   if (!status) {
     return <div className="page"><div className="empty-state">Đang tải dữ liệu trang...</div></div>;
@@ -430,8 +483,8 @@ export function DataPage() {
             <div className="error-text" style={{ margin: 12 }}>{String(jobError)}</div>
           )}
           <LogViewer
-            logFetcher={(offset, limit) => getDataJobLog(jobId, offset, limit)}
-            downloadUrl={dataJobLogDownloadUrl(jobId)}
+            logFetcher={(offset, limit) => getDataJobLog(jobId, offset, limit, scope ?? undefined)}
+            downloadUrl={dataJobLogDownloadUrl(jobId, scope ?? undefined)}
             running={jobRunning}
             intervalMs={JOB_INTERVAL_MS}
           />

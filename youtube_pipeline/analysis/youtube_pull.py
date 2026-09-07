@@ -1192,6 +1192,10 @@ def main():
 
     print("Lấy channel id...")
     channel_id, uploads_playlist = _channel_info(data_api)
+    expected_channel_id = os.getenv("EXPECTED_YOUTUBE_CHANNEL_ID")
+    if expected_channel_id and channel_id != expected_channel_id:
+        sys.exit("OAuth tài khoản không khớp YouTube channel đã đăng ký.")
+    print(f"Đã xác minh YouTube channel: {channel_id}")
 
     # Xác định danh sách video: ưu tiên chỉ định thủ công, nếu không thì
     # tự tìm mọi video đăng trong khoảng [start_date, end_date].

@@ -6,34 +6,64 @@ import { NewRunDialog } from '../components/NewRunDialog';
 import { RunsTable } from '../components/RunsTable';
 import { usePolling } from '../hooks/usePolling';
 import { useT } from '../i18n';
+import { useChannelContext } from '../contexts/ChannelContext';
 import type { RunSummary } from '../types';
+import type { RunScope } from '../services/runsService';
+
+const scopeForChannel = (channel: ReturnType<typeof useChannelContext>['currentChannel']): RunScope | null =>
+  channel ? { user_id: channel.user_id, channel_id: channel.channel_id } : null;
+
 
 /** Trang chủ: danh sách run + tạo run mới. Tự làm mới nhanh khi có run đang chạy. */
 export function RunsPage() {
   const { t } = useT();
   const navigate = useNavigate();
+  const { currentChannel, loading: channelLoading } = useChannelContext();
+  const scope = scopeForChannel(currentChannel);
+  const scopeKey = scope ? `${scope.user_id}:${scope.channel_id}` : null;
   const [searchParams] = useSearchParams();
   const inputParam = searchParams.get('input');
   const [dialogOpen, setDialogOpen] = useState(inputParam !== null && inputParam !== '');
   const initialInput = inputParam ?? undefined;
   const [executing, setExecuting] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [configScopeKey, setConfigScopeKey] = useState<string | null>(null);
+  const [runsScopeKey, setRunsScopeKey] = useState<string | null>(null);
 
-  const configPoll = usePolling(() => getConfig(), {
-    enabled: true,
+  const configPoll = usePolling(() => (scope ? getConfig(scope) : Promise.resolve(null)), {
+    enabled: scope !== null,
     intervalMs: 30000,
   });
-  const runsPoll = usePolling(() => listRuns(), {
-    enabled: true,
+
+  // Both config and run data are fetched in the selected channel namespace.
+  const runsPoll = usePolling(() => (scope ? listRuns(scope) : Promise.resolve(null)), {
+    enabled: scope !== null,
     intervalMs: executing ? 2500 : 10000,
   });
+
+  useEffect(() => {
+    let cancelled = false;
+    setExecuting(false);
+    setConfigScopeKey(null);
+    setRunsScopeKey(null);
+    if (!scopeKey) return () => { cancelled = true; };
+    void configPoll.refresh().then(() => {
+      if (!cancelled) setConfigScopeKey(scopeKey);
+    });
+    void runsPoll.refresh().then(() => {
+      if (!cancelled) setRunsScopeKey(scopeKey);
+    });
+    return () => { cancelled = true; };
+  }, [scopeKey, configPoll.refresh, runsPoll.refresh]);
+
+  const config = configScopeKey === scopeKey ? configPoll.data ?? null : null;
 
   useEffect(() => {
     const anyExec = (runsPoll.data?.runs ?? []).some((r: RunSummary) => r.executing);
     setExecuting(anyExec);
   }, [runsPoll.data]);
 
-  const runs = runsPoll.data?.runs ?? null;
+  const runs = runsScopeKey === scopeKey ? runsPoll.data?.runs ?? null : null;
   const filteredRuns = runs
     ? runs.filter(
         (r) =>
@@ -47,6 +77,16 @@ export function RunsPage() {
   const completedCount = runs ? runs.filter((r) => r.status === 'complete' || r.status === 'passed').length : 0;
   const failedCount = runs ? runs.filter((r) => r.status === 'failed').length : 0;
   const successRate = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
+
+  if (channelLoading || !currentChannel) {
+    return (
+      <div className="page">
+        <div className="empty-state">
+          {channelLoading ? 'Đang tải channel...' : 'Chưa có channel được đăng ký.'}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="page">
@@ -113,7 +153,7 @@ export function RunsPage() {
           type="button"
           className="btn btn-primary"
           onClick={() => setDialogOpen(true)}
-          disabled={Boolean(configPoll.data?.busy)}
+          disabled={Boolean(config?.busy)}
         >
           <Plus size={15} />
           {t('runs.new')}
@@ -134,13 +174,13 @@ export function RunsPage() {
         </div>
       ) : (
         <div className="panel">
-          <RunsTable runs={filteredRuns} onDelete={() => void runsPoll.refresh()} />
+          <RunsTable runs={filteredRuns} scope={scope ?? undefined} onDelete={() => void runsPoll.refresh()} />
         </div>
       )}
 
       <NewRunDialog
         open={dialogOpen}
-        config={configPoll.data}
+        config={config}
         initialInputFile={initialInput}
         onClose={() => setDialogOpen(false)}
         onStarted={(runId) => navigate(`/runs/${runId}`)}

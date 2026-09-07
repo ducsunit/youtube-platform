@@ -22,6 +22,32 @@ class TopicHistoryTests(unittest.TestCase):
             self.assertEqual(history[0]["run_id"], "video-01")
             self.assertTrue((project / "data/topic-history.json").is_file())
 
+    def test_channel_histories_are_isolated(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            channel_a = root / "users" / "u1" / "channels" / "a"
+            channel_b = root / "users" / "u1" / "channels" / "b"
+            record_completed(channel_a / "runs" / "run-a", "run-a", {"selected_topic": "A"})
+            record_completed(channel_b / "runs" / "run-b", "run-b", {"selected_topic": "B"})
+            self.assertEqual([row["selected_topic"] for row in load_history(channel_a)], ["A"])
+            self.assertEqual([row["selected_topic"] for row in load_history(channel_b)], ["B"])
+            self.assertTrue((channel_a / "data/topic-history.json").is_file())
+            self.assertTrue((channel_b / "data/topic-history.json").is_file())
+
+    def test_explicit_scope_filters_shared_catalog(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            path = project / "data/topic-history.json"
+            path.parent.mkdir(parents=True)
+            path.write_text(json.dumps({"topics": [
+                {"run_id": "run-a", "user_id": "u1", "channel_id": "a", "topic": "A"},
+                {"run_id": "run-b", "user_id": "u1", "channel_id": "b", "topic": "B"},
+            ]}), encoding="utf-8")
+            self.assertEqual(
+                [row["run_id"] for row in load_history(project, user_id="u1", channel_id="a")],
+                ["run-a"],
+            )
+
     def test_exact_and_near_duplicate_are_detected(self):
         history = [{
             "status": "completed",

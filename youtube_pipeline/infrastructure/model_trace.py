@@ -14,6 +14,7 @@ logger = logging.getLogger(MODEL_CALL_LOGGER_NAME)
 _run_id: ContextVar[str] = ContextVar("model_call_run_id", default="unknown")
 _database_path: ContextVar[Path | None] = ContextVar("model_call_database_path", default=None)
 _active_calls: ContextVar[dict[str, tuple[int, float]]] = ContextVar("model_call_active_calls", default={})
+_scope: ContextVar[tuple[str | None, str | None]] = ContextVar("model_call_scope", default=(None, None))
 
 
 def _now() -> str:
@@ -54,6 +55,7 @@ def _serialize(value: Any) -> str:
 def start_run(run_id: str, metadata: Mapping[str, Any]) -> None:
     _run_id.set(run_id)
     _active_calls.set({})
+    _scope.set((metadata.get("user_id"), metadata.get("channel_id")))
     output_dir = metadata.get("output_dir")
     if output_dir:
         from ..platform_db import PlatformDatabase
@@ -82,6 +84,7 @@ def trace_request(
             call_id = database.record_model_call_started(
                 run_id=_run_id.get(), label=str(step), provider=provider, model=model,
                 temperature=temperature, started_at=_now(),
+                user_id=_scope.get()[0], channel_id=_scope.get()[1],
             )
             calls = dict(_active_calls.get())
             calls[str(step)] = (call_id, time.perf_counter())

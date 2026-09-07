@@ -80,6 +80,12 @@ class RunState:
     run_id: str
     profile: str
     topic: str
+    # Channel scope is optional for schema-v2 legacy runs and required for new
+    # channel-aware runs. Keeping defaults preserves old fixtures and resumes.
+    user_id: str | None = None
+    channel_id: str | None = None
+    youtube_channel_id: str | None = None
+    flow_profile: str = "resource_pack"
     schema_version: int = 2
     status: str = "pending"
     created_at: str = field(default_factory=utc_now)
@@ -110,6 +116,10 @@ class RunState:
             "run_id": self.run_id,
             "profile": self.profile,
             "topic": self.topic,
+            "user_id": self.user_id,
+            "channel_id": self.channel_id,
+            "youtube_channel_id": self.youtube_channel_id,
+            "flow_profile": self.flow_profile,
             "status": self.status,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
@@ -141,6 +151,10 @@ class RunState:
             run_id=str(data["run_id"]),
             profile=str(data["profile"]),
             topic=str(data["topic"]),
+            user_id=(str(data["user_id"]) if data.get("user_id") is not None else None),
+            channel_id=(str(data["channel_id"]) if data.get("channel_id") is not None else None),
+            youtube_channel_id=(str(data["youtube_channel_id"]) if data.get("youtube_channel_id") is not None else None),
+            flow_profile=str(data.get("flow_profile", data.get("profile", "resource_pack"))),
             status=str(data.get("status", "pending")),
             created_at=str(data.get("created_at", utc_now())),
             updated_at=str(data.get("updated_at", utc_now())),

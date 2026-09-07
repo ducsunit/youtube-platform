@@ -9,13 +9,48 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Response
+from fastapi import APIRouter, HTTPException, Query, Response
 
 from .. import build_service
 from . import paths
 from .build_runner import BuildBusyError, build_job_command, build_runner
 from .datapull import read_log_page
-from .routes import _check_run_id, _require_state
+from .routes import _check_job_id, _check_run_id, _require_scoped_channel, _require_state, _run_path
+
+
+def _run_dir(run_id: str, user_id: str | None = None, channel_id: str | None = None) -> Path:
+    if user_id and channel_id:
+        return paths.channel_run_dir(user_id, channel_id, run_id)
+    return _run_path(run_id, _require_state(run_id, user_id, channel_id))
+
+
+def _scope_kwargs(user_id: str | None, channel_id: str | None) -> tuple[str | None, str | None]:
+    if bool(user_id) != bool(channel_id):
+        raise HTTPException(status_code=400, detail="user_id và channel_id phải được truyền cùng nhau")
+    return user_id, channel_id
+
+
+def _require_run(run_id: str, user_id: str | None, channel_id: str | None) -> Path:
+    _check_run_id(run_id)
+    user_id, channel_id = _scope_kwargs(user_id, channel_id)
+    _require_scoped_channel(user_id, channel_id)
+    _require_state(run_id, user_id, channel_id)
+    return _run_dir(run_id, user_id, channel_id)
+
+
+def _safe_source_dir(source_dir: str, user_id: str | None, channel_id: str | None) -> str:
+    """Keep scoped image imports inside the selected channel root."""
+    source = Path(source_dir).expanduser().resolve()
+    if user_id and channel_id:
+        root = paths.channel_root(user_id, channel_id).resolve()
+        if not source.is_relative_to(root):
+            raise HTTPException(status_code=400, detail="source_dir phải nằm trong channel root hiện tại")
+    return str(source)
+
+
+# All build operations resolve the persisted run location, including channel-scoped runs.
+
+
 
 router = APIRouter(prefix="/api/build")
 
@@ -35,16 +70,15 @@ def _busy_409(exc: BuildBusyError) -> HTTPException:
 
 
 @router.get("/runs/{run_id}/status")
-def build_status(run_id: str) -> dict:
+def build_status(run_id: str, user_id: str | None = Query(None), channel_id: str | None = Query(None)) -> dict:
     """Còn thiếu gì để dựng video — không spawn gì cả."""
-    _check_run_id(run_id)
-    _require_state(run_id)
-    assets = build_service.check_assets(paths.run_dir(run_id))
+    run_dir = _require_run(run_id, user_id, channel_id)
+    assets = build_service.check_assets(run_dir)
     report = assets.get("report") or {}
     return {
         "run_id": run_id,
-        "active_job": build_runner.active_job(),
-        "busy": build_runner.busy(),
+        "active_job": build_runner.active_job(user_id=user_id, channel_id=channel_id),
+        "busy": build_runner.busy(user_id=user_id, channel_id=channel_id),
         "pipeline_ready": assets["pipeline_ready"],
         "missing_artifacts": assets["missing_artifacts"],
         "timeline_status": assets["timeline_status"],
@@ -76,12 +110,11 @@ def build_status(run_id: str) -> dict:
 
 
 @router.post("/runs/{run_id}/merge-tts-chunks")
-def merge_tts_chunks(run_id: str) -> dict:
+def merge_tts_chunks(run_id: str, user_id: str | None = Query(None), channel_id: str | None = Query(None)) -> dict:
     """Merge TTS audio created from script/audio-chunks into normal narration audio."""
-    _check_run_id(run_id)
-    _require_state(run_id)
+    run_dir = _require_run(run_id, user_id, channel_id)
     try:
-        result = build_service.merge_tts_audio_chunks(paths.run_dir(run_id))
+        result = build_service.merge_tts_audio_chunks(run_dir)
     except build_service.BuildError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"run_id": run_id, **result}
@@ -91,20 +124,19 @@ def merge_tts_chunks(run_id: str) -> dict:
 
 
 @router.get("/runs/{run_id}/sub-style")
-def get_sub_style(run_id: str) -> dict:
+def get_sub_style(run_id: str, user_id: str | None = Query(None), channel_id: str | None = Query(None)) -> dict:
     """Style phụ đề hiện tại (defaults nếu chưa có video-build/sub-style.json)."""
-    _check_run_id(run_id)
-    _require_state(run_id)
-    return {"run_id": run_id, "style": build_service.read_sub_style(paths.run_dir(run_id))}
+    run_dir = _require_run(run_id, user_id, channel_id)
+    return {"run_id": run_id, "style": build_service.read_sub_style(run_dir)}
 
 
 @router.put("/runs/{run_id}/sub-style")
-def save_sub_style(run_id: str, body: dict) -> dict:
+def save_sub_style(run_id: str, body: dict, user_id: str | None = Query(None), channel_id: str | None = Query(None)) -> dict:
     """Validate + ghi video-build/sub-style.json — build-video.py --subtitles tự đọc."""
-    _check_run_id(run_id)
-    _require_state(run_id)
+    run_dir = _require_run(run_id, user_id, channel_id)
     try:
-        style = build_service.write_sub_style(paths.run_dir(run_id), body or {})
+        style = build_service.write_sub_style(run_dir, body or {})
+
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     return {"run_id": run_id, "saved": True, "style": style}
@@ -114,7 +146,7 @@ def save_sub_style(run_id: str, body: dict) -> dict:
 
 
 @router.post("/runs/{run_id}/import-images")
-def import_pack_images(run_id: str, body: dict) -> dict:
+def import_pack_images(run_id: str, body: dict, user_id: str | None = Query(None), channel_id: str | None = Query(None)) -> dict:
     """Import ảnh đã gen (thư mục server-side) -> video-build/images/.
 
     Body params:
@@ -128,14 +160,13 @@ def import_pack_images(run_id: str, body: dict) -> dict:
     đối chiếu, sửa rồi gọi lại apply=true. Response có `source` ("manifest"|"auto")
     và `manifest_written` khi vừa ghi file.
     """
-    _check_run_id(run_id)
-    _require_state(run_id)
+    run_dir = _require_run(run_id, user_id, channel_id)
     body = body or {}
     source_dir = body.get("source_dir")
     if not isinstance(source_dir, str) or not source_dir.strip():
         raise HTTPException(status_code=400, detail="source_dir (thư mục ảnh đã gen) là bắt buộc")
-    if build_runner.busy():
-        active = build_runner.active_job()
+    if build_runner.busy(user_id=user_id, channel_id=channel_id):
+        active = build_runner.active_job(user_id=user_id, channel_id=channel_id)
         raise _busy_409(BuildBusyError(str(active["id"]) if active else "unknown"))
     insert = body.get("insert")
     if insert is not None and (not isinstance(insert, str) or ":" not in insert):
@@ -144,8 +175,8 @@ def import_pack_images(run_id: str, body: dict) -> dict:
     if apply is not None and not isinstance(apply, bool):
         raise HTTPException(status_code=400, detail="apply phải là boolean")
     result = build_service.import_pack_images(
-        paths.run_dir(run_id),
-        source_dir.strip(),
+        run_dir,
+        _safe_source_dir(source_dir.strip(), user_id, channel_id),
         insert=insert,
         apply=bool(apply),
     )
@@ -208,24 +239,24 @@ def _validated_options(body: dict) -> dict:
 
 
 @router.post("/runs/{run_id}/build")
-def start_build(run_id: str, body: dict) -> dict:
-    _check_run_id(run_id)
-    _require_state(run_id)
+def start_build(run_id: str, body: dict, user_id: str | None = Query(None), channel_id: str | None = Query(None)) -> dict:
+    run_dir = _require_run(run_id, user_id, channel_id)
     try:
         options = _validated_options(body or {})
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
-    if build_runner.busy():
-        active = build_runner.active_job()
+    if build_runner.busy(user_id=user_id, channel_id=channel_id):
+        active = build_runner.active_job(user_id=user_id, channel_id=channel_id)
         raise _busy_409(BuildBusyError(str(active["id"]) if active else "unknown"))
 
-    run_dir = paths.run_dir(run_id)
     if not (run_dir / "video-build").is_dir():
         (run_dir / "video-build").mkdir(parents=True, exist_ok=True)
     argv = build_job_command(run_dir, options)
     try:
-        job = build_runner.start(run_id, argv, cwd=paths.backend_root())
+        job = build_runner.start(
+            run_id, argv, cwd=paths.backend_root(), user_id=user_id, channel_id=channel_id
+        )
     except BuildBusyError as exc:
         raise _busy_409(exc)
     return {"job_id": job["id"], "run_id": run_id, "started_at": job["started_at"]}
@@ -235,15 +266,21 @@ def start_build(run_id: str, body: dict) -> dict:
 
 
 @router.post("/jobs/{job_id}/cancel")
-def cancel_build_job(job_id: str) -> dict:
-    if not build_runner.cancel(job_id):
+def cancel_build_job(job_id: str, user_id: str | None = Query(None), channel_id: str | None = Query(None)) -> dict:
+    _check_job_id(job_id)
+    _require_scoped_channel(user_id, channel_id)
+    _scope_kwargs(user_id, channel_id)
+    if not build_runner.cancel(job_id, user_id=user_id, channel_id=channel_id):
         raise HTTPException(status_code=404, detail="Job không đang chạy — không thể hủy")
     return {"cancelled": True, "job_id": job_id}
 
 
 @router.get("/jobs/{job_id}")
-def build_job_status(job_id: str) -> dict:
-    job = build_runner.job_status(job_id)
+def build_job_status(job_id: str, user_id: str | None = Query(None), channel_id: str | None = Query(None)) -> dict:
+    _check_job_id(job_id)
+    _require_scoped_channel(user_id, channel_id)
+    _scope_kwargs(user_id, channel_id)
+    job = build_runner.job_status(job_id, user_id=user_id, channel_id=channel_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Không tìm thấy job: %s" % job_id)
     return job
@@ -251,10 +288,14 @@ def build_job_status(job_id: str) -> dict:
 
 @router.get("/jobs/{job_id}/log")
 def build_job_log(
-    job_id: str, offset: int = 0, limit: int = 200, download: int = 0
+    job_id: str, offset: int = 0, limit: int = 200, download: int = 0,
+    user_id: str | None = Query(None), channel_id: str | None = Query(None),
 ) -> Response:
+    _check_job_id(job_id)
+    _require_scoped_channel(user_id, channel_id)
+    _scope_kwargs(user_id, channel_id)
     limit = max(1, min(limit, 1000))
-    log_file = paths.build_jobs_dir() / ("%s.log" % job_id)
+    log_file = build_runner.log_path(job_id, user_id=user_id, channel_id=channel_id)
     if download:
         if not log_file.is_file():
             raise HTTPException(status_code=404, detail="Log không tồn tại")

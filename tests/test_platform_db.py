@@ -63,3 +63,64 @@ def test_run_diagnostics_returns_only_safe_model_metadata(tmp_path):
     assert report["model_calls"]["calls"][0]["label"] == "RP_SAFE"
     assert "prompt" not in str(report).lower()
     assert "response" not in str(report).lower()
+
+
+def test_channel_registry_isolated_and_rejects_duplicate_youtube_channel(tmp_path):
+    from youtube_pipeline.platform_db import PlatformDatabase
+
+    database = PlatformDatabase(tmp_path / "runtime" / "platform.sqlite3")
+    first = database.register_channel(
+        user_id="user-a", channel_id="main", youtube_channel_id="UC123", title="Main"
+    )
+    database.register_channel(
+        user_id="user-b", channel_id="main", youtube_channel_id="UC123", title="Other user"
+    )
+    assert [item["channel_id"] for item in database.list_channels(user_id="user-a")] == ["main"]
+    assert [item["user_id"] for item in database.list_channels(user_id="user-b")] == ["user-b"]
+    assert first["active"] is True
+
+    try:
+        database.register_channel(
+            user_id="user-a", channel_id="secondary", youtube_channel_id="UC123"
+        )
+    except ValueError as exc:
+        assert "đã được đăng ký" in str(exc)
+    else:
+        raise AssertionError("duplicate YouTube channel was accepted")
+
+
+def test_channel_registry_update_and_deactivate(tmp_path):
+    from youtube_pipeline.platform_db import PlatformDatabase
+
+    database = PlatformDatabase(tmp_path / "runtime" / "platform.sqlite3")
+    database.register_channel(
+        user_id="user-a", channel_id="main", youtube_channel_id="UC123"
+    )
+    updated = database.update_channel(
+        user_id="user-a", channel_id="main", title="Updated", flow_profile="custom"
+    )
+    assert updated is not None
+    assert updated["title"] == "Updated"
+    assert updated["flow_profile"] == "custom"
+
+    inactive = database.deactivate_channel(user_id="user-a", channel_id="main")
+    assert inactive is not None and inactive["active"] is False
+    assert database.list_channels(user_id="user-a") == []
+    assert database.list_channels(user_id="user-a", include_inactive=True)[0]["active"] is False
+
+
+def test_channel_registry_validates_required_scope(tmp_path):
+    from youtube_pipeline.platform_db import PlatformDatabase
+
+    database = PlatformDatabase(tmp_path / "runtime" / "platform.sqlite3")
+    for kwargs in (
+        {"user_id": "", "channel_id": "main", "youtube_channel_id": "UC123"},
+        {"user_id": "user-a", "channel_id": "", "youtube_channel_id": "UC123"},
+        {"user_id": "user-a", "channel_id": "main", "youtube_channel_id": ""},
+    ):
+        try:
+            database.register_channel(**kwargs)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("empty registry scope was accepted")

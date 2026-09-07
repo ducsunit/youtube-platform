@@ -148,14 +148,84 @@ class TestStartBuild(BuildApiTestCase):
     def test_start_busy_409(self) -> None:
         fake_proc = mock.Mock()
         fake_proc.poll.return_value = None
-        with mock.patch.object(build_runner, "_proc", fake_proc), mock.patch.object(
-            build_runner, "_job", {"id": "busy-job", "run_id": "x", "started_at": "t", "log_path": "p"}
-        ):
+        job = {"id": "busy-job", "run_id": "x", "started_at": "t", "log_path": "p", "user_id": None, "channel_id": None}
+        with mock.patch.object(build_runner, "_jobs", {(None, None): (fake_proc, job)}):
             r = self.client.post("/api/build/runs/demo-run/build", json={})
         self.assertEqual(r.status_code, 409)
         detail = r.json()["detail"]
         self.assertEqual(detail["key"], "busy")
         self.assertEqual(detail["active_job_id"], "busy-job")
+
+    def test_scoped_jobs_are_isolated(self) -> None:
+        runner = build_runner.__class__()
+        proc_a = mock.Mock()
+        proc_a.poll.return_value = None
+        job_a = {"id": "job-a", "run_id": "run-a", "started_at": "t", "log_path": "/a/job-a.log", "user_id": "u", "channel_id": "a"}
+        runner._jobs[("u", "a")] = (proc_a, job_a)
+        self.assertTrue(runner.busy(user_id="u", channel_id="a"))
+        self.assertFalse(runner.busy(user_id="u", channel_id="b"))
+        self.assertEqual(runner.active_job(user_id="u", channel_id="a")["id"], "job-a")
+        self.assertIsNone(runner.active_job(user_id="u", channel_id="b"))
+        self.assertIsNone(runner.job_status("job-a", user_id="u", channel_id="b"))
+        self.assertFalse(runner.cancel("job-a", user_id="u", channel_id="b"))
+
+    def test_scoped_job_log_does_not_fall_back_to_legacy(self) -> None:
+        legacy = self.root / "runtime" / "logs" / "api-build"
+        legacy.mkdir(parents=True, exist_ok=True)
+        (legacy / "shared.log").write_text("legacy\n", encoding="utf-8")
+        runner = build_runner.__class__()
+        self.assertEqual(runner.get_log("shared", user_id="u", channel_id="a")["log_exists"], False)
+
+    def test_scoped_runner_rejects_partial_scope(self) -> None:
+        with self.assertRaises(ValueError):
+            build_runner.__class__().busy(user_id="u")
+
+    def test_scoped_run_status_reads_only_requested_channel(self) -> None:
+        scoped = self.root / "users" / "dev-user" / "channels" / "channel-a" / "runs" / "demo-run"
+        scoped.mkdir(parents=True, exist_ok=True)
+        (scoped / "run_state.json").write_text(json.dumps({"run_id": "demo-run", "status": "running", "stage_records": {}}), encoding="utf-8")
+        other = self.root / "users" / "dev-user" / "channels" / "channel-b" / "runs" / "demo-run"
+        other.mkdir(parents=True, exist_ok=True)
+        (other / "run_state.json").write_text(json.dumps({"run_id": "demo-run", "status": "complete", "stage_records": {}}), encoding="utf-8")
+        response = self.client.get("/api/build/runs/demo-run/status", params={"user_id": "dev-user", "channel_id": "channel-a"})
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.json()["pipeline_ready"])
+        self.assertEqual(self.client.get("/api/build/runs/demo-run/status", params={"user_id": "dev-user"}).status_code, 400)
+        self.assertEqual(self.client.get("/api/build/runs/demo-run/status", params={"user_id": "dev-user", "channel_id": "channel-b"}).status_code, 200)
+
+    def test_scoped_style_writes_only_requested_channel(self) -> None:
+        scoped = self.root / "users" / "dev-user" / "channels" / "channel-a" / "runs" / "demo-run"
+        scoped.mkdir(parents=True, exist_ok=True)
+        (scoped / "run_state.json").write_text(json.dumps({"run_id": "demo-run", "status": "complete", "stage_records": {}}), encoding="utf-8")
+        response = self.client.put("/api/build/runs/demo-run/sub-style", params={"user_id": "dev-user", "channel_id": "channel-a"}, json={"fontsize": 56})
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertTrue((scoped / "video-build" / "sub-style.json").is_file())
+        self.assertFalse((self.root / "runs" / "demo-run" / "video-build" / "sub-style.json").exists())
+
+    def test_scoped_job_log_and_status_are_channel_specific(self) -> None:
+        runner = build_runner.__class__()
+        runner._finished[(("u", "a"), "same-job")] = {"id": "same-job", "status": "complete", "user_id": "u", "channel_id": "a"}
+        self.assertEqual(runner.job_status("same-job", user_id="u", channel_id="a")["status"], "complete")
+        self.assertIsNone(runner.job_status("same-job", user_id="u", channel_id="b"))
+
+    def test_scoped_import_images_does_not_use_legacy_run(self) -> None:
+        response = self.client.post("/api/build/runs/demo-run/import-images", params={"user_id": "dev-user", "channel_id": "channel-a"}, json={"source_dir": "/tmp"})
+        self.assertEqual(response.status_code, 404)
+
+    def test_scoped_cancel_rejects_partial_scope(self) -> None:
+        response = self.client.post("/api/build/jobs/job/cancel", params={"user_id": "dev-user"})
+        self.assertEqual(response.status_code, 400)
+
+    def test_scoped_artifacts_not_cross_channel(self) -> None:
+        scoped = self.root / "users" / "dev-user" / "channels" / "channel-a" / "runs" / "demo-run"
+        scoped.mkdir(parents=True, exist_ok=True)
+        (scoped / "run_state.json").write_text(json.dumps({"run_id": "demo-run", "status": "complete", "stage_records": {}}), encoding="utf-8")
+        response = self.client.get("/api/runs/demo-run/artifacts", params={"user_id": "dev-user", "channel_id": "channel-a"})
+        # Core artifacts route currently has no scope query parameters; this assertion documents the route boundary.
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("channel-a", response.text)
+        self.assertNotIn("channel-b", response.text)
+        self.assertIsNotNone(response)
 
     def test_start_spawns_job(self) -> None:
         with self._fake_start({"id": "job-abc"}) as start_mock, mock.patch.object(

@@ -25,7 +25,14 @@ def _text(value: Any) -> str:
     return re.sub(r"[^0-9a-zA-Zぁ-んァ-ン一-龯]+", "", str(value or "")).lower()
 
 
-def load_history(project_root: Path) -> list[dict[str, Any]]:
+def load_history(
+    project_root: Path,
+    *,
+    user_id: str | None = None,
+    channel_id: str | None = None,
+) -> list[dict[str, Any]]:
+    if bool(user_id) != bool(channel_id):
+        raise ValueError("user_id và channel_id phải được truyền cùng nhau")
     path = history_path(project_root)
     root = path.parent.parent
     payload = {}
@@ -39,12 +46,17 @@ def load_history(project_root: Path) -> list[dict[str, Any]]:
         for row in (payload.get("topics", []) if isinstance(payload, dict) else [])
         if isinstance(row, dict)
     ]
+    if user_id and channel_id:
+        rows = [
+            row for row in rows
+            if row.get("user_id") == user_id and row.get("channel_id") == channel_id
+        ]
     # SQLite is the platform index; the JSON catalog remains portable fallback.
     # Merge both so an existing JSON history stays effective until reindexed.
     database_path = _database_path(root)
     if database_path.is_file():
         from .platform_db import PlatformDatabase
-        indexed = PlatformDatabase(database_path).completed_topics()
+        indexed = PlatformDatabase(database_path).completed_topics(user_id=user_id, channel_id=channel_id)
         indexed = [
             {**row, "status": "published" if row.get("status") == "completed" else row.get("status", "drafted")}
             for row in indexed
@@ -52,6 +64,10 @@ def load_history(project_root: Path) -> list[dict[str, Any]]:
         by_run_id = {str(row.get("run_id")): row for row in rows}
         by_run_id.update({str(row.get("run_id")): row for row in indexed})
         rows = list(by_run_id.values())
+        if user_id and channel_id:
+            rows = [row for row in rows if row.get("user_id", user_id) == user_id and row.get("channel_id", channel_id) == channel_id]
+        else:
+            rows = list(rows)
     known = {str(row.get("run_id")) for row in rows}
     # One-time-compatible migration: old completed runs predate the shared
     # catalog, so discover their selected-topic artifacts lazily.
@@ -68,6 +84,10 @@ def load_history(project_root: Path) -> list[dict[str, Any]]:
             except (OSError, ValueError):
                 continue
             if state.get("status") != "complete" or not isinstance(selected, dict):
+                continue
+            if user_id and channel_id and (
+                state.get("user_id") != user_id or state.get("channel_id") != channel_id
+            ):
                 continue
             contract_path = run_dir / "script/contract.json"
             contract = {}
@@ -130,10 +150,23 @@ def annotate_candidates(payload: dict[str, Any], history: list[dict[str, Any]]) 
     return result
 
 
-def record_drafted(project_root: Path, run_id: str, selected: dict[str, Any], brief: dict[str, Any] | None = None) -> None:
-    rows = load_history(project_root)
+def record_drafted(
+    project_root: Path,
+    run_id: str,
+    selected: dict[str, Any],
+    brief: dict[str, Any] | None = None,
+    *,
+    user_id: str | None = None,
+    channel_id: str | None = None,
+) -> None:
+    rows = load_history(project_root, user_id=user_id, channel_id=channel_id)
+    if user_id and channel_id:
+        selected = {**selected, "user_id": user_id, "channel_id": channel_id}
+    path = history_path(project_root)
     entry = {
         "run_id": run_id,
+        "user_id": user_id,
+        "channel_id": channel_id,
         "status": "drafted",
         "topic": selected.get("selected_topic", ""),
         "selected_topic": selected.get("selected_topic", ""),
@@ -154,8 +187,8 @@ def record_drafted(project_root: Path, run_id: str, selected: dict[str, Any], br
     # Preserve the JSON catalog; the reindex endpoint later restores its DB row.
     if database_path.is_file():
         database = PlatformDatabase(database_path)
-        if database.has_run(run_id):
-            database.record_completed_topic(run_id, entry)
+        if database.has_run(run_id, user_id=user_id, channel_id=channel_id):
+            database.record_completed_topic(run_id, entry, user_id=user_id, channel_id=channel_id)
     path = history_path(project_root)
     path.parent.mkdir(parents=True, exist_ok=True)
     content = (json.dumps({"schema_version": 1, "topics": rows}, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
@@ -165,16 +198,40 @@ def record_drafted(project_root: Path, run_id: str, selected: dict[str, Any], br
     temporary.replace(path)
 
 
-def record_completed(project_root: Path, run_id: str, selected: dict[str, Any], brief: dict[str, Any] | None = None) -> None:
+def record_completed(
+    project_root: Path,
+    run_id: str,
+    selected: dict[str, Any],
+    brief: dict[str, Any] | None = None,
+    *,
+    user_id: str | None = None,
+    channel_id: str | None = None,
+) -> None:
     """Backward-compatible name; a generated resource pack is a draft, not published."""
-    record_drafted(project_root, run_id, selected, brief)
+    record_drafted(
+        project_root,
+        run_id,
+        selected,
+        brief,
+        user_id=user_id,
+        channel_id=channel_id,
+    )
 
 
-def set_topic_status(project_root: Path, run_id: str, status: str) -> None:
+def set_topic_status(
+    project_root: Path,
+    run_id: str,
+    status: str,
+    *,
+    user_id: str | None = None,
+    channel_id: str | None = None,
+) -> None:
+    if bool(user_id) != bool(channel_id):
+        raise ValueError("user_id và channel_id phải được truyền cùng nhau")
     if status not in {"drafted", "published", "archived"}:
         raise ValueError("Topic status không hợp lệ.")
     path = history_path(project_root)
-    rows = load_history(project_root)
+    rows = load_history(project_root, user_id=user_id, channel_id=channel_id)
     found = False
     for row in rows:
         if str(row.get("run_id")) == run_id:
@@ -187,7 +244,9 @@ def set_topic_status(project_root: Path, run_id: str, status: str) -> None:
     database_path = _database_path(path.parent.parent)
     if database_path.is_file():
         from .platform_db import PlatformDatabase
-        PlatformDatabase(database_path).set_topic_status(run_id, status)
+        PlatformDatabase(database_path).set_topic_status(
+            run_id, status, user_id=user_id, channel_id=channel_id
+        )
 
 
 def _database_path(project_root: Path) -> Path:

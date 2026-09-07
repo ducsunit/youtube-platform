@@ -14,7 +14,27 @@ from typing import Any, Iterator
 from .core.state import RunState
 
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
+
+_SCOPE_COLUMNS = {
+    "runs": ("user_id", "channel_id", "youtube_channel_id", "flow_profile"),
+    "run_stages": ("user_id", "channel_id"),
+    "artifacts": ("user_id", "channel_id"),
+    "model_calls": ("user_id", "channel_id"),
+    "topic_history": ("user_id", "channel_id"),
+}
+
+
+def _add_scope_columns(connection: sqlite3.Connection) -> None:
+    """Upgrade v2 databases without rewriting or invalidating existing runs."""
+    for table, columns in _SCOPE_COLUMNS.items():
+        existing = {row[1] for row in connection.execute(f"PRAGMA table_info({table})")}
+        for column in columns:
+            if column not in existing:
+                connection.execute(f"ALTER TABLE {table} ADD COLUMN {column} TEXT")
+    connection.execute("CREATE INDEX IF NOT EXISTS idx_runs_scope ON runs(user_id, channel_id, updated_at DESC)")
+    connection.execute("CREATE INDEX IF NOT EXISTS idx_topics_scope ON topic_history(user_id, channel_id, recorded_at DESC)")
+    connection.execute("CREATE INDEX IF NOT EXISTS idx_calls_scope ON model_calls(user_id, channel_id, id)")
 
 
 def _json(value: Any) -> str:
@@ -65,6 +85,20 @@ class PlatformDatabase:
                     version INTEGER PRIMARY KEY,
                     applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
                 );
+                CREATE TABLE IF NOT EXISTS channels (
+                    user_id TEXT NOT NULL,
+                    channel_id TEXT NOT NULL,
+                    youtube_channel_id TEXT NOT NULL,
+                    title TEXT,
+                    flow_profile TEXT NOT NULL DEFAULT 'resource_pack',
+                    active INTEGER NOT NULL DEFAULT 1,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (user_id, channel_id)
+                );
+                CREATE INDEX IF NOT EXISTS idx_channels_youtube ON channels(youtube_channel_id);
+                CREATE INDEX IF NOT EXISTS idx_channels_user_youtube
+                    ON channels(user_id, youtube_channel_id);
                 CREATE TABLE IF NOT EXISTS runs (
                     run_id TEXT PRIMARY KEY,
                     profile TEXT NOT NULL,
@@ -144,13 +178,165 @@ class PlatformDatabase:
                 CREATE INDEX IF NOT EXISTS idx_topic_history_status ON topic_history(status, recorded_at DESC);
                 """
             )
+            _add_scope_columns(connection)
             connection.execute("INSERT OR IGNORE INTO schema_migrations(version) VALUES (?)", (SCHEMA_VERSION,))
+
+    @staticmethod
+    def _validate_registry_scope(user_id: str, channel_id: str, youtube_channel_id: str) -> tuple[str, str, str]:
+        values = (user_id, channel_id, youtube_channel_id)
+        names = ("user_id", "channel_id", "youtube_channel_id")
+        for value, name in zip(values, names):
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"{name} không được để trống")
+            if len(value) > 200:
+                raise ValueError(f"{name} quá dài")
+        # Scope IDs become filesystem path components. Keep display names in
+        # ``title``; never allow Unicode labels such as "Kênh nhật" here.
+        from .channel_context import validate_scope_id
+        validate_scope_id(user_id, "user_id")
+        validate_scope_id(channel_id, "channel_id")
+        return tuple(value.strip() for value in values)  # type: ignore[return-value]
+
+    def register_channel(
+        self,
+        *,
+        user_id: str,
+        channel_id: str,
+        youtube_channel_id: str,
+        title: str | None = None,
+        flow_profile: str = "resource_pack",
+    ) -> dict[str, Any]:
+        user_id, channel_id, youtube_channel_id = self._validate_registry_scope(
+            user_id, channel_id, youtube_channel_id
+        )
+        flow_profile = str(flow_profile or "resource_pack").strip()
+        if not flow_profile:
+            raise ValueError("flow_profile không được để trống")
+        title = title.strip() if isinstance(title, str) else None
+        with self._connect() as connection:
+            existing = connection.execute(
+                "SELECT user_id, channel_id FROM channels WHERE user_id=? AND youtube_channel_id=?",
+                (user_id, youtube_channel_id),
+            ).fetchone()
+            if existing and existing[1] != channel_id:
+                raise ValueError("YouTube channel đã được đăng ký với channel_id khác")
+            connection.execute(
+                """INSERT INTO channels(user_id, channel_id, youtube_channel_id, title, flow_profile, active)
+                   VALUES (?, ?, ?, ?, ?, 1)
+                   ON CONFLICT(user_id, channel_id) DO UPDATE SET
+                     youtube_channel_id=excluded.youtube_channel_id,
+                     title=excluded.title,
+                     flow_profile=excluded.flow_profile,
+                     active=1,
+                     updated_at=CURRENT_TIMESTAMP""",
+                (user_id, channel_id, youtube_channel_id, title, flow_profile),
+            )
+            row = connection.execute(
+                """SELECT user_id, channel_id, youtube_channel_id, title, flow_profile,
+                          active, created_at, updated_at
+                   FROM channels WHERE user_id=? AND channel_id=?""",
+                (user_id, channel_id),
+            ).fetchone()
+        return self._channel_row(row)
+
+    @staticmethod
+    def _channel_row(row: tuple[Any, ...] | None) -> dict[str, Any]:
+        if row is None:
+            raise RuntimeError("Không thể đọc channel vừa đăng ký")
+        return {
+            "user_id": row[0], "channel_id": row[1], "youtube_channel_id": row[2],
+            "title": row[3], "flow_profile": row[4], "active": bool(row[5]),
+            "created_at": row[6], "updated_at": row[7],
+        }
+
+    def list_channels(self, *, user_id: str, include_inactive: bool = False) -> list[dict[str, Any]]:
+        if not isinstance(user_id, str) or not user_id.strip():
+            raise ValueError("user_id không được để trống")
+        query = """SELECT user_id, channel_id, youtube_channel_id, title, flow_profile,
+                          active, created_at, updated_at FROM channels WHERE user_id=?"""
+        params: list[Any] = [user_id.strip()]
+        if not include_inactive:
+            query += " AND active=1"
+        query += " ORDER BY updated_at DESC, channel_id"
+        with self._connect() as connection:
+            rows = connection.execute(query, params).fetchall()
+        return [self._channel_row(row) for row in rows]
+
+    def get_channel(self, *, user_id: str, channel_id: str, include_inactive: bool = True) -> dict[str, Any] | None:
+        if not isinstance(user_id, str) or not user_id.strip() or not isinstance(channel_id, str) or not channel_id.strip():
+            raise ValueError("user_id và channel_id không được để trống")
+        query = """SELECT user_id, channel_id, youtube_channel_id, title, flow_profile,
+                          active, created_at, updated_at FROM channels
+                   WHERE user_id=? AND channel_id=?"""
+        params: list[Any] = [user_id.strip(), channel_id.strip()]
+        if not include_inactive:
+            query += " AND active=1"
+        with self._connect() as connection:
+            row = connection.execute(query, params).fetchone()
+        return self._channel_row(row) if row else None
+
+    def update_channel(self, *, user_id: str, channel_id: str, title: str | None = None, flow_profile: str | None = None, active: bool | None = None) -> dict[str, Any] | None:
+        from .channel_context import validate_scope_id
+        try:
+            validate_scope_id(user_id, "user_id")
+            validate_scope_id(channel_id, "channel_id")
+        except ValueError:
+            # Legacy rows may contain a display label as channel_id. They are
+            # intentionally not addressable through filesystem-scoped APIs.
+            raise
+        current = self.get_channel(user_id=user_id, channel_id=channel_id)
+        if current is None:
+            return None
+        next_title = title.strip() if isinstance(title, str) else current["title"]
+        next_profile = str(flow_profile).strip() if flow_profile is not None else current["flow_profile"]
+        if not next_profile:
+            raise ValueError("flow_profile không được để trống")
+        next_active = int(active) if active is not None else int(current["active"])
+        with self._connect() as connection:
+            connection.execute(
+                """UPDATE channels SET title=?, flow_profile=?, active=?, updated_at=CURRENT_TIMESTAMP
+                   WHERE user_id=? AND channel_id=?""",
+                (next_title, next_profile, next_active, user_id.strip(), channel_id.strip()),
+            )
+        return self.get_channel(user_id=user_id, channel_id=channel_id)
+
+    def deactivate_channel(self, *, user_id: str, channel_id: str) -> dict[str, Any] | None:
+        return self.update_channel(user_id=user_id, channel_id=channel_id, active=False)
+
+    def _assert_run_scope(
+        self, connection: sqlite3.Connection, run_id: str,
+        user_id: str | None, channel_id: str | None,
+    ) -> None:
+        """Reject a run-id collision across channel namespaces.
+
+        The v1/v2 schema keeps run_id as the physical primary key for legacy
+        compatibility. Until a full composite-key migration is performed, a
+        collision must fail closed rather than allowing one channel to
+        overwrite another channel's index rows.
+        """
+        row = connection.execute(
+            "SELECT user_id, channel_id FROM runs WHERE run_id=?", (run_id,)
+        ).fetchone()
+        if row is None:
+            return
+        existing = (row[0], row[1])
+        requested = (user_id, channel_id)
+        if existing != requested:
+            raise ValueError(
+                "run_id đã tồn tại trong namespace channel khác; hãy chọn run_id khác"
+            )
 
     def sync_state(self, state: RunState, run_root: Path) -> None:
         payload = state.to_dict()
         with self._connect() as connection:
+            self._assert_run_scope(connection, state.run_id, state.user_id, state.channel_id)
             connection.execute(
-                """INSERT INTO runs VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """INSERT INTO runs(
+                    run_id, profile, topic, status, created_at, updated_at,
+                    execution_started_at, execution_finished_at, execution_elapsed_seconds,
+                    total_started_at, total_finished_at, total_elapsed_seconds, run_dir,
+                    config_snapshot_json, warnings_json, errors_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(run_id) DO UPDATE SET
                     profile=excluded.profile, topic=excluded.topic, status=excluded.status,
                     updated_at=excluded.updated_at, execution_started_at=excluded.execution_started_at,
@@ -165,9 +351,13 @@ class PlatformDatabase:
                  state.total_started_at, state.total_finished_at, state.total_elapsed_seconds, str(run_root),
                  _json(payload["config_snapshot"]), _json(state.warnings), _json(state.errors)),
             )
+            connection.execute(
+                "UPDATE runs SET user_id=?, channel_id=?, youtube_channel_id=?, flow_profile=? WHERE run_id=?",
+                (state.user_id, state.channel_id, state.youtube_channel_id, state.flow_profile, state.run_id),
+            )
             for record in state.stage_records.values():
                 connection.execute(
-                    """INSERT INTO run_stages VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """INSERT INTO run_stages(run_id,stage_name,stage_version,status,attempts,input_fingerprint,started_at,finished_at,metrics_json,warnings_json,error,user_id,channel_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(run_id, stage_name) DO UPDATE SET
                         stage_version=excluded.stage_version, status=excluded.status, attempts=excluded.attempts,
                         input_fingerprint=excluded.input_fingerprint, started_at=excluded.started_at,
@@ -175,26 +365,27 @@ class PlatformDatabase:
                         warnings_json=excluded.warnings_json, error=excluded.error""",
                     (state.run_id, record.stage_name, record.stage_version, record.status, record.attempts,
                      record.input_fingerprint, record.started_at, record.finished_at, _json(record.metrics),
-                     _json(record.warnings), record.error),
+                     _json(record.warnings), record.error, state.user_id, state.channel_id),
                 )
             for ref in state.artifact_index.values():
                 connection.execute(
-                    """INSERT INTO artifacts VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """INSERT INTO artifacts(run_id,artifact_type,artifact_id,path,sha256,producer_stage,content_type,size_bytes,qa_status,metadata_json,user_id,channel_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(run_id, artifact_type) DO UPDATE SET
                         artifact_id=excluded.artifact_id, path=excluded.path, sha256=excluded.sha256,
                         producer_stage=excluded.producer_stage, content_type=excluded.content_type,
                         size_bytes=excluded.size_bytes, qa_status=excluded.qa_status,
                         metadata_json=excluded.metadata_json""",
                     (state.run_id, ref.artifact_type, ref.artifact_id, ref.path, ref.sha256,
-                     ref.producer_stage, ref.content_type, ref.size_bytes, ref.qa_status, _json(ref.metadata)),
+                     ref.producer_stage, ref.content_type, ref.size_bytes, ref.qa_status, _json(ref.metadata), state.user_id, state.channel_id),
                 )
 
-    def record_model_call_started(self, *, run_id: str, label: str, provider: str, model: str, temperature: float, started_at: str) -> int:
+    def record_model_call_started(self, *, run_id: str, label: str, provider: str, model: str, temperature: float, started_at: str, user_id: str | None = None, channel_id: str | None = None) -> int:
         with self._connect() as connection:
             cursor = connection.execute(
-                "INSERT INTO model_calls(run_id,label,provider,model,temperature,started_at,status) VALUES (?, ?, ?, ?, ?, ?, 'running')",
-                (run_id, label, provider, model, temperature, started_at),
+                "INSERT INTO model_calls(run_id,label,provider,model,temperature,started_at,status,user_id,channel_id) VALUES (?, ?, ?, ?, ?, ?, 'running', ?, ?)",
+                (run_id, label, provider, model, temperature, started_at, user_id, channel_id),
             )
+
             return int(cursor.lastrowid)
 
     def record_model_call_finished(self, call_id: int, *, finished_at: str, duration_ms: float, status: str, error: BaseException | None = None) -> None:
@@ -204,13 +395,16 @@ class PlatformDatabase:
                 (finished_at, duration_ms, status, type(error).__name__ if error else None, str(error) if error else None, call_id),
             )
 
-    def record_completed_topic(self, run_id: str, entry: dict[str, Any]) -> None:
+    def record_completed_topic(self, run_id: str, entry: dict[str, Any], *, user_id: str | None = None, channel_id: str | None = None) -> None:
+        clause, params = self._scope_clause(user_id, channel_id)
         with self._connect() as connection:
+            if clause and not connection.execute("SELECT 1 FROM runs WHERE run_id=?" + clause, (run_id, *params)).fetchone():
+                raise ValueError("run không thuộc namespace channel hiện tại")
             connection.execute(
                 """INSERT INTO topic_history(
                        run_id,status,topic,title,source_concept,source_work,audience_moment,
-                       promise,angle,mechanisms_json
-                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                       promise,angle,mechanisms_json,user_id,channel_id
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                    ON CONFLICT(run_id) DO UPDATE SET
                      status=excluded.status, topic=excluded.topic, title=excluded.title,
                      source_concept=excluded.source_concept, source_work=excluded.source_work,
@@ -222,27 +416,47 @@ class PlatformDatabase:
                     str(entry.get("title", "")), str(entry.get("source_concept", "")),
                     str(entry.get("source_work", "")), str(entry.get("audience_moment", "")),
                     str(entry.get("promise", "")), str(entry.get("angle", "")),
-                    _json(entry.get("mechanisms", [])),
+                    _json(entry.get("mechanisms", [])), user_id, channel_id,
                 ),
             )
 
-    def set_topic_status(self, run_id: str, status: str) -> None:
+    def set_topic_status(
+        self,
+        run_id: str,
+        status: str,
+        *,
+        user_id: str | None = None,
+        channel_id: str | None = None,
+    ) -> None:
+        clause, params = self._scope_clause(user_id, channel_id)
         with self._connect() as connection:
             connection.execute(
-                "UPDATE topic_history SET status=?, recorded_at=CURRENT_TIMESTAMP WHERE run_id=?",
-                (status, run_id),
+                "UPDATE topic_history SET status=?, recorded_at=CURRENT_TIMESTAMP WHERE run_id=?" + clause,
+                (status, run_id, *params),
             )
 
-    def has_run(self, run_id: str) -> bool:
-        with self._connect() as connection:
-            return connection.execute("SELECT 1 FROM runs WHERE run_id=?", (run_id,)).fetchone() is not None
+    @staticmethod
+    def _scope_clause(user_id: str | None, channel_id: str | None, prefix: str = "") -> tuple[str, tuple[str, ...]]:
+        if user_id is None and channel_id is None:
+            return "", ()
+        if not user_id or not channel_id:
+            raise ValueError("user_id và channel_id phải được truyền cùng nhau")
+        p = f"{prefix}." if prefix else ""
+        return f" AND {p}user_id=? AND {p}channel_id=?", (user_id, channel_id)
 
-    def completed_topics(self) -> list[dict[str, Any]]:
+    def has_run(self, run_id: str, *, user_id: str | None = None, channel_id: str | None = None) -> bool:
+        clause, params = self._scope_clause(user_id, channel_id)
+        with self._connect() as connection:
+            return connection.execute("SELECT 1 FROM runs WHERE run_id=?" + clause, (run_id, *params)).fetchone() is not None
+
+    def completed_topics(self, *, user_id: str | None = None, channel_id: str | None = None) -> list[dict[str, Any]]:
+        clause, params = self._scope_clause(user_id, channel_id, "topic_history")
         with self._connect() as connection:
             rows = connection.execute(
                 """SELECT run_id,status,topic,title,source_concept,source_work,audience_moment,
                           promise,angle,mechanisms_json
-                   FROM topic_history ORDER BY recorded_at"""
+                   FROM topic_history WHERE 1=1""" + clause + " ORDER BY recorded_at",
+                params,
             ).fetchall()
         return [
             {
@@ -254,24 +468,29 @@ class PlatformDatabase:
             for row in rows
         ]
 
-    def run_diagnostics(self, run_id: str, model_call_limit: int = 100) -> dict[str, Any] | None:
+    def run_diagnostics(self, run_id: str, model_call_limit: int = 100, *, user_id: str | None = None, channel_id: str | None = None) -> dict[str, Any] | None:
         """Read safe operational metadata for the UI. Never return prompts or secrets."""
+        clause, params = self._scope_clause(user_id, channel_id)
         with self._connect() as connection:
             run = connection.execute(
-                "SELECT status, updated_at, config_snapshot_json FROM runs WHERE run_id=?", (run_id,)
+                "SELECT status, updated_at, config_snapshot_json FROM runs WHERE run_id=?" + clause, (run_id, *params)
             ).fetchone()
+            if run is None:
+                return None
+            stage_clause, stage_params = self._scope_clause(user_id, channel_id, "run_stages")
+            call_clause, call_params = self._scope_clause(user_id, channel_id, "model_calls")
             if run is None:
                 return None
             stages = connection.execute(
                 """SELECT stage_name, status, attempts, started_at, finished_at, metrics_json,
-                          warnings_json, error FROM run_stages WHERE run_id=? ORDER BY rowid""",
-                (run_id,),
+                          warnings_json, error FROM run_stages WHERE run_id=?""" + stage_clause + " ORDER BY rowid",
+                (run_id, *stage_params),
             ).fetchall()
             calls = connection.execute(
                 """SELECT label, provider, model, temperature, started_at, finished_at,
                           duration_ms, status, error_type
-                   FROM model_calls WHERE run_id=? ORDER BY id DESC LIMIT ?""",
-                (run_id, max(1, min(model_call_limit, 200))),
+                   FROM model_calls WHERE run_id=?""" + call_clause + " ORDER BY id DESC LIMIT ?",
+                (run_id, *call_params, max(1, min(model_call_limit, 200))),
             ).fetchall()
         config = json.loads(run[2])
         stage_rows = [

@@ -62,6 +62,19 @@ class SrtRoutesTest(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 400)
 
+    def test_scoped_runner_isolates_active_jobs(self) -> None:
+        from youtube_pipeline.api.srt_runner import SrtRunner
+
+        runner = SrtRunner()
+        proc = mock.Mock()
+        proc.poll.return_value = None
+        runner._jobs[("dev-user", "channel-a")] = (
+            proc,
+            {"id": "job-a", "run_id": "run-a", "user_id": "dev-user", "channel_id": "channel-a"},
+        )
+        self.assertTrue(runner.busy(user_id="dev-user", channel_id="channel-a"))
+        self.assertFalse(runner.busy(user_id="dev-user", channel_id="channel-b"))
+
     def test_generate_starts_runner_without_running_whisper(self) -> None:
         script_dir = self.run_dir / "script"
         audio_dir = self.run_dir / "audio"

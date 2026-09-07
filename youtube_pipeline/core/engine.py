@@ -187,6 +187,8 @@ class RunContext:
     raw_data: str
     topic: str
     config: dict[str, Any]
+    # Optional during migration; new workers should pass the channel context.
+    channel: Any = None
     progress: Callable[[str], None] = print
 
 

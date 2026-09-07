@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Callable
 
 from ..core import ArtifactStore, FunctionStage, PipelineEngine, RunContext, RunState, StageResult
+from ..channel_context import ChannelContext
 from .sections import PAUSE_BEFORE_OUTRO, PAUSE_BETWEEN_SECTIONS, PAUSE_PARAGRAPH_BREAK, build_tts_ready, insert_pause_tags, normalize_text, split_script_sections, split_tts_chunks, strip_minimax_tags
 from .metrics import build_pause_map, non_whitespace_chars, scrub_source_citation_tokens, validate_japanese_script
 from .analysis import build_channel_snapshot, build_performance_review
@@ -146,6 +147,11 @@ def _ingest(context: RunContext) -> StageResult:
     return StageResult([ref], {"video_count": snapshot["video_count"]}, snapshot.get("data_quality", []))
 
 
+def _approved_research_brief(context: RunContext) -> dict | None:
+    value = context.config.get("approved_research_brief")
+    return value if isinstance(value, dict) and isinstance(value.get("opportunity"), dict) else None
+
+
 def _manual_topic(context: RunContext) -> str:
     provenance = context.config.get("input_provenance")
     if not isinstance(provenance, dict) or provenance.get("mode") != "manual_topic_no_channel_data":
@@ -161,6 +167,23 @@ def _performance(context: RunContext) -> StageResult:
 
 
 def _topic_research(context: RunContext) -> StageResult:
+    approved = _approved_research_brief(context)
+    if approved:
+        opportunity = approved["opportunity"]
+        value = {
+            "channel_positioning": "Approved market research brief for the selected channel.",
+            "audience_pains": [
+                str(opportunity.get("audience_moment") or ""),
+                str(opportunity.get("unserved_question") or ""),
+            ],
+            "content_gaps": [str(opportunity.get("gap_statement") or "")],
+            "trend_hypotheses": [{"hypothesis": str(opportunity.get("promise") or ""), "evidence": opportunity.get("evidence_sources", []), "confidence": "research_locked"}],
+            "source_directions": [{"person": "Research evidence", "work": str(opportunity.get("keyword") or ""), "concept": str(opportunity.get("editorial_angle") or "")}],
+            "research_notes": ["Topic and angle were locked from an approved market research opportunity."],
+        }
+        validate_topic_research(value)
+        ref = context.store.put_json("topic_research", "research/topic-research.json", value, "topic_research")
+        return StageResult([ref], {"research_locked": True, "channel_data_used": False})
     topic = _manual_topic(context)
     if topic:
         value = {
@@ -194,6 +217,22 @@ def _topic_research(context: RunContext) -> StageResult:
 
 
 def _topic_candidates(context: RunContext) -> StageResult:
+    approved = _approved_research_brief(context)
+    if approved:
+        opportunity = approved["opportunity"]
+        topic = str(opportunity.get("keyword") or opportunity.get("gap_statement") or "")
+        value = {"research_locked": True, "candidates": [{
+            "id": "R01", "topic": topic,
+            "audience_moment": str(opportunity.get("audience_moment") or ""),
+            "core_pain": str(opportunity.get("unserved_question") or ""),
+            "angle": str(opportunity.get("editorial_angle") or ""),
+            "promise": str(opportunity.get("promise") or ""),
+            "source_person": "Approved market research", "source_work": str(opportunity.get("keyword") or ""),
+            "source_concept": str(opportunity.get("gap_statement") or ""), "novelty": "research-locked",
+        }]}
+        validate_topic_candidates(value)
+        ref = context.store.put_json("topic_candidates", "research/topic-candidates.json", value, "topic_candidates")
+        return StageResult([ref], {"candidate_count": 1, "research_locked": True})
     topic = _manual_topic(context)
     if topic:
         value = {
@@ -222,7 +261,11 @@ def _topic_candidates(context: RunContext) -> StageResult:
         _json(context, "performance_review"),
         competitor_inject_text(),
     )
-    history = load_history(context.store.root)
+    history = load_history(
+        context.store.root,
+        user_id=context.channel.user_id if context.channel else None,
+        channel_id=context.channel.channel_id if context.channel else None,
+    )
     value = annotate_candidates(value, history)
     validate_topic_candidates(value)
     ref = context.store.put_json("topic_candidates", "research/topic-candidates.json", value, "topic_candidates")
@@ -231,6 +274,22 @@ def _topic_candidates(context: RunContext) -> StageResult:
 
 def _topic_selection(context: RunContext) -> StageResult:
     candidates = _json(context, "topic_candidates")
+    approved = _approved_research_brief(context)
+    if approved:
+        candidate = candidates["candidates"][0]
+        value = {
+            "selected_topic": candidate["topic"], "selected_candidate_id": candidate["id"],
+            "selection_reason": "Approved market research opportunity.",
+            "scores": {"channel_fit": 10, "audience_pain": 10, "packaging_potential": 10, "retention_fit": 10, "source_strength": 10, "novelty": 10, "total": 60},
+            "rejected_topics": [], "source_person": candidate["source_person"], "source_work": candidate["source_work"],
+            "source_concept": candidate["source_concept"], "audience_moment": candidate["audience_moment"], "promise": candidate["promise"],
+            "angle": candidate["angle"],
+        }
+        validate_topic_selection(value, candidates)
+        context.state.topic = value["selected_topic"]
+        context.topic = value["selected_topic"]
+        ref = context.store.put_json("selected_topic", "research/topic-selection.json", value, "topic_selection")
+        return StageResult([ref], {"selected_topic": value["selected_topic"], "research_locked": True})
     topic = _manual_topic(context)
     if topic:
         value = {
@@ -250,12 +309,17 @@ def _topic_selection(context: RunContext) -> StageResult:
         context.topic = topic
         ref = context.store.put_json("selected_topic", "research/topic-selection.json", value, "topic_selection")
         return StageResult([ref], {"selected_topic": topic, "manual_topic": True})
+
     value = context.provider.select_topic(
         candidates,
         _json(context, "topic_research"),
         _json(context, "performance_review"),
     )
-    history = load_history(context.store.root)
+    history = load_history(
+        context.store.root,
+        user_id=context.channel.user_id if context.channel else None,
+        channel_id=context.channel.channel_id if context.channel else None,
+    )
     published_history = [row for row in history if row.get("status") == "published"]
     if duplicate_reason(value, published_history):
         available = [row for row in candidates.get("candidates", []) if not duplicate_reason(row, published_history)]
@@ -268,13 +332,7 @@ def _topic_selection(context: RunContext) -> StageResult:
     context.state.topic = value["selected_topic"]
     context.topic = value["selected_topic"]
     ref = context.store.put_json("selected_topic", "research/topic-selection.json", value, "topic_selection")
-    return StageResult(
-        [ref],
-        {
-            "selected_topic": value["selected_topic"],
-            "score": value["scores"]["total"],
-        },
-    )
+    return StageResult([ref], {"selected_topic": value["selected_topic"], "score": value["scores"]["total"]})
 
 
 def _source_lock(context: RunContext) -> StageResult:
@@ -1930,9 +1988,11 @@ class ResourcePackPipeline:
         max_retries: int = 3,
         retry_delay: float = 1.0,
         progress: Callable[[str], None] = print,
+        channel: ChannelContext | None = None,
     ) -> None:
         self.provider = provider
         self.output_dir = output_dir
+        self.channel = channel
         self.store = ArtifactStore(output_dir)
         self.engine = PipelineEngine(resource_pack_stages(self.output_dir), max_retries=max_retries, retry_delay=retry_delay)
         self.progress = progress
@@ -1952,10 +2012,16 @@ class ResourcePackPipeline:
         }
         if routing_snapshot is not None:
             config_snapshot["model_routing"] = routing_snapshot
+        if self.channel is not None:
+            config_snapshot["channel_context"] = self.channel.to_dict()
         state = RunState(
             run_id=run_id or uuid.uuid4().hex,
             profile="resource_pack",
             topic="",
+            user_id=self.channel.user_id if self.channel else None,
+            channel_id=self.channel.channel_id if self.channel else None,
+            youtube_channel_id=self.channel.youtube_channel_id if self.channel else None,
+            flow_profile=self.channel.flow_profile if self.channel else "resource_pack",
             config_snapshot=config_snapshot,
         )
         ref = self.store.put_text("channel_input", "input/youtube_data.json", raw_data, "input")
@@ -1976,11 +2042,19 @@ class ResourcePackPipeline:
             raw_data=source,
             topic=state.topic,
             config=state.config_snapshot,
+            channel=self.channel,
             progress=self.progress,
         )
         result = self.engine.run(context)
         selected = self.store.read_json("selected_topic", result)
         brief = self.store.read_json("psychology_brief", result)
         contract = self.store.read_json("script_contract", result)
-        record_drafted(self.output_dir, result.run_id, {**selected, "chosen_title": contract.get("chosen_title", "")}, brief)
+        record_drafted(
+            self.output_dir,
+            result.run_id,
+            {**selected, "chosen_title": contract.get("chosen_title", "")},
+            brief,
+            user_id=self.channel.user_id if self.channel else None,
+            channel_id=self.channel.channel_id if self.channel else None,
+        )
         return result

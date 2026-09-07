@@ -3,7 +3,8 @@ import { CheckSquare, Image, Loader2, Save, Square } from '../components/Icons';
 import { ApiError, cancelImageJob, getImageConfig, getImageJob, getImageJobLog, getImagePrompts, getImageStatus, listRuns, startImageGenerate, updateImageConfig } from '../api';
 import { LogViewer } from '../components/LogViewer';
 import { usePolling } from '../hooks/usePolling';
-import type { ImageConfig, ImageJob } from '../types';
+import { useChannelContext } from '../contexts/ChannelContext';
+import type { ChannelScope, ImageConfig, ImageJob } from '../types';
 
 const POLL_MS = 3000;
 
@@ -40,6 +41,9 @@ function aspectForSize(size: string): string {
   return 'square';
 }
 
+const scopeForChannel = (channel: ReturnType<typeof useChannelContext>['currentChannel']): ChannelScope | null =>
+  channel ? { user_id: channel.user_id, channel_id: channel.channel_id } : null;
+
 function errorText(error: unknown): string {
   if (error instanceof ApiError) {
     const detail = error.detail as { message?: string } | string;
@@ -50,10 +54,15 @@ function errorText(error: unknown): string {
 }
 
 export function ImageGenPage() {
-  const statusPoll = usePolling(() => getImageStatus(), { enabled: true, intervalMs: 8000 });
-  const configPoll = usePolling(() => getImageConfig(), { enabled: true, intervalMs: 12000 });
-  const runsPoll = usePolling(() => listRuns(), { enabled: true, intervalMs: 8000 });
-  const runs = runsPoll.data?.runs ?? [];
+  const { currentChannel, loading: channelLoading } = useChannelContext();
+  const scope = scopeForChannel(currentChannel);
+  const channelScope = scope ?? undefined;
+  const scopeKey = scope ? `${scope.user_id}:${scope.channel_id}` : null;
+  const statusPoll = usePolling(() => getImageStatus(channelScope), { enabled: scope !== null, intervalMs: 8000 });
+  const configPoll = usePolling(() => getImageConfig(channelScope), { enabled: scope !== null, intervalMs: 12000 });
+  const runsPoll = usePolling(() => (scope ? listRuns(scope) : Promise.resolve(null)), { enabled: scope !== null, intervalMs: 8000 });
+  const [runsScopeKey, setRunsScopeKey] = useState<string | null>(null);
+  const runs = runsScopeKey === scopeKey ? runsPoll.data?.runs ?? [] : [];
   const [runId, setRunId] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [model, setModel] = useState('gpt-image-2');
@@ -66,19 +75,36 @@ export function ImageGenPage() {
   const [jobId, setJobId] = useState<string | null>(null);
   const [job, setJob] = useState<ImageJob | null>(null);
   const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    setJobId(null);
+    setJob(null);
+    setSelected(new Set());
+    setSelectedRunId('');
+    setError(null);
+  }, [scopeKey]);
   const [imageConfig, setImageConfig] = useState<ImageConfig | null>(null);
   const [configDraft, setConfigDraft] = useState({ model: 'gpt-image-2', base_url: 'https://api.openai.com/v1', api_key_env: 'OPENAI_API_KEY', api_key: '', default_size: '1024x576', default_quality: 'medium' });
   const [configSaved, setConfigSaved] = useState(false);
   const [configSaving, setConfigSaving] = useState(false);
 
   useEffect(() => {
+    let cancelled = false;
+    setRunId('');
+    setRunsScopeKey(null);
+    if (!scopeKey) return () => { cancelled = true; };
+    void runsPoll.refresh().then(() => {
+      if (!cancelled) setRunsScopeKey(scopeKey);
+    });
+    return () => { cancelled = true; };
+  }, [scopeKey, runsPoll.refresh]);
+  useEffect(() => {
     if (!runId && runs.length) setRunId((runs.find((run) => run.has_manifest) ?? runs[0]).run_id);
   }, [runId, runs]);
 
-  const promptsPoll = usePolling(() => getImagePrompts(runId), { enabled: Boolean(runId), intervalMs: 8000 });
+  const promptsPoll = usePolling(() => getImagePrompts(runId, channelScope), { enabled: Boolean(runId) && scope !== null, intervalMs: 8000 });
   const prompts = promptsPoll.data;
   const running = job?.status === 'running' || (jobId !== null && job === null);
-  const jobPoll = usePolling(() => getImageJob(jobId ?? ''), { enabled: Boolean(jobId) && running, intervalMs: POLL_MS });
+  const jobPoll = usePolling(() => getImageJob(jobId ?? '', channelScope), { enabled: Boolean(jobId) && running && scope !== null, intervalMs: POLL_MS });
   useEffect(() => { if (jobPoll.data) setJob(jobPoll.data); }, [jobPoll.data]);
   useEffect(() => {
     const config = configPoll.data;
@@ -109,7 +135,7 @@ export function ImageGenPage() {
     if (!runId || !selectedList.length) return;
     setError(null);
     try {
-      const result = await startImageGenerate(runId, { images: selectedList, model, size, quality, skip_existing: skipExisting });
+      const result = await startImageGenerate(runId, { images: selectedList, model, size, quality, skip_existing: skipExisting }, channelScope);
       if (result.job_id) { setJobId(result.job_id); setJob(null); }
       else await promptsPoll.refresh();
     } catch (e) { setError(errorText(e)); }
@@ -117,14 +143,14 @@ export function ImageGenPage() {
 
   async function cancel() {
     if (!jobId) return;
-    try { await cancelImageJob(jobId); } catch (e) { setError(errorText(e)); }
+    try { await cancelImageJob(jobId, channelScope); } catch (e) { setError(errorText(e)); }
   }
 
   async function saveImageConfig() {
     setConfigSaving(true);
     setError(null);
     try {
-      const saved = await updateImageConfig(configDraft);
+      const saved = await updateImageConfig(configDraft, channelScope);
       setImageConfig(saved);
       setConfigDraft((old) => ({ ...old, api_key: '' }));
       setConfigSaved(true);
@@ -133,6 +159,9 @@ export function ImageGenPage() {
   }
 
   const imageStatus = statusPoll.data;
+  if (channelLoading || !currentChannel) {
+    return <div className="page"><div className="empty-state">{channelLoading ? 'Đang tải channel...' : 'Chưa có channel được đăng ký.'}</div></div>;
+  }
   return (
     <div className="page">
       <div className="page-head">
@@ -210,7 +239,7 @@ export function ImageGenPage() {
       </div>}
 
       {error && <p className="error-text">{error}</p>}
-      {jobId && <div className="panel"><div className="panel-title"><span>{job?.status === 'complete' ? 'Gen ảnh hoàn tất' : job?.status === 'failed' ? 'Gen ảnh thất bại' : 'Đang gen ảnh'}</span><span className="spacer" />{running && <button type="button" className="btn btn-danger" onClick={() => void cancel()}><Square size={13} /> Hủy</button>}</div><div className="panel-body"><LogViewer logFetcher={(offset, limit) => getImageJobLog(jobId, offset, limit)} running={running} intervalMs={POLL_MS} /></div></div>}
+      {jobId && <div className="panel"><div className="panel-title"><span>{job?.status === 'complete' ? 'Gen ảnh hoàn tất' : job?.status === 'failed' ? 'Gen ảnh thất bại' : 'Đang gen ảnh'}</span><span className="spacer" />{running && <button type="button" className="btn btn-danger" onClick={() => void cancel()}><Square size={13} /> Hủy</button>}</div><div className="panel-body"><LogViewer logFetcher={(offset, limit) => getImageJobLog(jobId, offset, limit, channelScope)} running={running} intervalMs={POLL_MS} /></div></div>}
       {!prompts && runId && <div className="empty-state"><Loader2 size={16} className="spin" /> Đang đọc prompt pack…</div>}
     </div>
   );

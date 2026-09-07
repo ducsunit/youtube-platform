@@ -37,10 +37,10 @@ def _load_prompts(run_dir: Path) -> list[dict[str, str]]:
     return result
 
 
-def _key_from_env() -> str:
+def _key_from_env(user_id: str | None = None, channel_id: str | None = None) -> str:
     from .image_config import resolve_api_key
 
-    value = resolve_api_key(Path.cwd())
+    value = resolve_api_key(Path.cwd(), user_id, channel_id)
     if not value:
         raise RuntimeError("Thiếu OPENAI_API_KEY trên API server.")
     return value
@@ -61,15 +61,15 @@ def _write_image(response, output: Path) -> None:
     raise RuntimeError("OpenAI image response không có b64_json hoặc url.")
 
 
-def generate_batch(run_dir: Path, indices: list[str], model: str, size: str, quality: str) -> None:
+def generate_batch(run_dir: Path, indices: list[str], model: str, size: str, quality: str, user_id: str | None = None, channel_id: str | None = None) -> None:
     from openai import OpenAI
     from .image_config import load
 
     prompts = {row["image_id"]: row["prompt"] for row in _load_prompts(run_dir)}
     output_dir = run_dir / "video-build" / "images"
     output_dir.mkdir(parents=True, exist_ok=True)
-    config = load(Path.cwd())
-    api_key = _key_from_env()
+    config = load(Path.cwd(), user_id, channel_id)
+    api_key = _key_from_env(user_id, channel_id)
     base_url = config.get("base_url") or None
     log("CONFIG model=%s base_url=%s api_key_configured=%s size=%s quality=%s" % (config.get("model"), base_url, bool(api_key), size, quality))
     log("PROVIDER client_init provider=openai_image model=%s base_url=%s" % (model, base_url))
@@ -101,13 +101,17 @@ def generate_batch(run_dir: Path, indices: list[str], model: str, size: str, qua
 
 def main() -> int:
     parser = argparse.ArgumentParser()
+    parser.add_argument("--user-id")
+    parser.add_argument("--channel-id")
     parser.add_argument("run_dir", type=Path)
     parser.add_argument("model")
     parser.add_argument("size")
     parser.add_argument("quality")
     parser.add_argument("images", nargs="+")
     args = parser.parse_args()
-    generate_batch(args.run_dir, args.images, args.model, args.size, args.quality)
+    if bool(args.user_id) != bool(args.channel_id):
+        parser.error("--user-id và --channel-id phải được truyền cùng nhau")
+    generate_batch(args.run_dir, args.images, args.model, args.size, args.quality, args.user_id, args.channel_id)
     return 0
 
 

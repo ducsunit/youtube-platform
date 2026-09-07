@@ -2,66 +2,6 @@
   "schema_version": 1,
   "topics": [
     {
-      "selected_topic": "家に帰ると、やるべきことより先に同じ行動を繰り返してしまう心理",
-      "selected_candidate_id": "T03",
-      "selection_reason": "帰宅後にスマホを見るという具体的な生活場面があり、チャンネルの主要な視聴者痛点と最も直接的に一致する。『怠け』ではなく文脈依存の習慣として説明でき、9〜11分の構成でも、状況提示、行動連鎖の分解、環境を変える小さな観察実験まで無理なく展開できる。Wendy WoodとDennis Rungerの研究もテーマに適合しており、ただし既存の玄関関連動画が弱かったため、タイトルと冒頭の具体性を改善して検証する前提で選定した。",
-      "scores": {
-        "channel_fit": 24,
-        "audience_pain": 19,
-        "packaging_potential": 19,
-        "retention_8_10m": 14,
-        "source_strength": 10,
-        "novelty": 9,
-        "total": 95
-      },
-      "rejected_topics": [
-        {
-          "candidate_id": "T01",
-          "reason": "総合89点。帰宅後に動けない痛みとの適合度は高いが、learned helplessnessを日常の先延ばしに適用する際の説明上の注意が多く、タイトルの具体性と誤解回避でT03に劣る。"
-        },
-        {
-          "candidate_id": "T02",
-          "reason": "総合79点。休めない心理は有望だが、現時点の視聴者痛点との直接的な一致がやや弱く、努力のパラドックスも日常場面への翻訳に工夫が必要。"
-        },
-        {
-          "candidate_id": "T04",
-          "reason": "総合86点。開始できない悩みには合うが、temptation bundlingが介入方法中心になりやすく、チャンネルの自己観察・心理理解という軸よりハウツー寄りになる。"
-        },
-        {
-          "candidate_id": "T05",
-          "reason": "総合82点。具体的で包装力はあるが、返信回避の心理的コストを努力研究だけで支えるにはやや限定的で、チャンネルの主要痛点との一致もT03より弱い。"
-        },
-        {
-          "candidate_id": "T06",
-          "reason": "総合87点。視聴者の『空気を読みすぎて疲れる』痛みと合うが、既存動画との重複が大きく、Hidden talents in harsh environmentsの適用には過度な一般化を避ける説明が必要。"
-        },
-        {
-          "candidate_id": "T07",
-          "reason": "総合86点。既存動画で最も強いシグナルがあるテーマに近い一方、既存コンテンツとの差別化が難しく、今回の新規検証としては習慣テーマの方が不足領域を埋めやすい。"
-        },
-        {
-          "candidate_id": "T08",
-          "reason": "総合80点。失敗後の慎重さは重要だが、視聴者が日常的に想起しやすい瞬間の切り出しがT03より難しく、レジリエンス研究の説明も広がりやすい。"
-        },
-        {
-          "candidate_id": "T09",
-          "reason": "総合85点。助けを求められない悩みはチャンネルに合うが、環境・支援の話が中心となり、帰宅後の具体的な行動場面ほど短時間で内容を掴ませにくい。"
-        },
-        {
-          "candidate_id": "T10",
-          "reason": "総合72点。タイトル化しやすいものの、現在の視聴者痛点との接続が弱く、報酬予測研究を使う際に神経科学へ単純化しない慎重な構成が必要。"
-        }
-      ],
-      "source_person": "Wendy Wood・Dennis Runger",
-      "source_work": "Psychology of Habit",
-      "source_concept": "習慣は反復と場所・時間などの文脈手がかりによって形成され、意志力だけでなく環境の一部を変えることで行動を支えられるという考え方",
-      "audience_moment": "玄関を開けた瞬間に着替えず、いつもの場所でスマホを見るなど、毎日同じ流れに入ってしまう。",
-      "promise": "『なぜ帰宅すると同じ行動になるのか』を理解し、意志力を消耗させずに環境の一部を変える観察ポイントを得られる。",
-      "run_id": "video-08-v5",
-      "status": "published",
-      "chosen_title": "「帰宅すると同じ行動を繰り返す心理」"
-    },
-    {
       "run_id": "video-09-v4",
       "status": "published",
       "topic": "予定がない日でも休めない人の心理。何もしないのに落ち着かないのは、怠けではなく「警戒が切れない」状態かもしれない",
@@ -74,22 +14,6 @@
       "angle": "",
       "mechanisms": [
         "習慣と状況の手がかり"
-      ]
-    },
-    {
-      "run_id": "video-11",
-      "status": "published",
-      "topic": "自分で決められるのに、誰かに決めてもらうまで動けない心理",
-      "selected_topic": "自分で決められるのに、誰かに決めてもらうまで動けない心理",
-      "title": "自分で決められるのに誰かの許可を待つ心理",
-      "source_concept": "過去に自分の行動が結果を変えられるという制御可能性を十分に経験できなかったり、予測不能な反応を学習したりすると、その後も行動と結果のつながりを感じにくくなることがある。決断の先送りを能力不足や人格の弱さと同一視せず、経験によって形成されたコントロール感の反応として捉える。",
-      "source_work": "Learned helplessness at fifty: Insights from neuroscience (2016)",
-      "audience_moment": "選択肢も自分の希望も分かっているのに、誰かの確認や許可を求め続け、決断を先送りしてしまう。",
-      "promise": "決断できない状態を能力不足と決めつけず、どの経験や反応がコントロール感を弱め、誰かに決めてもらうまで動けない状態を作っているのかを見直せる。",
-      "angle": "",
-      "mechanisms": [
-        "学習されたコントロールと無力感",
-        "課題の分離"
       ]
     },
     {
@@ -153,10 +77,25 @@
       "chosen_title": "「帰宅すると同じ行動を繰り返す心理」"
     },
     {
+      "run_id": "video-08-v5",
+      "status": "drafted",
+      "topic": "家に帰ると、やるべきことより先に同じ行動を繰り返してしまう心理",
+      "selected_topic": "家に帰ると、やるべきことより先に同じ行動を繰り返してしまう心理",
+      "title": "「帰宅すると同じ行動を繰り返す心理」",
+      "source_concept": "習慣は反復と場所・時間などの文脈手がかりによって形成され、意志力だけでなく環境の一部を変えることで行動を支えられるという考え方",
+      "source_work": "Psychology of Habit",
+      "audience_moment": "玄関を開けた瞬間に着替えず、いつもの場所でスマホを見るなど、毎日同じ流れに入ってしまう。",
+      "promise": "『なぜ帰宅すると同じ行動になるのか』を理解し、意志力を消耗させずに環境の一部を変える観察ポイントを得られる。",
+      "angle": "",
+      "mechanisms": [
+        "状況手がかりによる習慣反応"
+      ]
+    },
+    {
       "run_id": "video-09",
       "status": "drafted",
-      "topic": "【ユング心理学】なぜ他人の成功が苦しく見えるのか——「窓辺」の嫉妬、シャドウ、魂の目覚め",
-      "selected_topic": "【ユング心理学】なぜ他人の成功が苦しく見えるのか——「窓辺」の嫉妬、シャドウ、魂の目覚め",
+      "topic": "なぜ友人の成功が苦しいのか——窓辺の嫉妬と認めにくい願望【ユング心理学】",
+      "selected_topic": "なぜ友人の成功が苦しいのか——窓辺の嫉妬と認めにくい願望【ユング心理学】",
       "title": "なぜ友人の成功が苦しいのか——窓辺の嫉妬と認めにくい願望【ユング心理学】",
       "source_concept": "投影・シャドウ・個性化を解釈的に使用し、他人の成功への嫉妬を未承認の願望や可能性の投影として仮説的に観察する。努力のコストと価値に関する研究は嫉妬の原因説明には用いず、達成や努力の意味が文脈によって変わる補助的な観察として扱う。",
       "source_work": "Aion／The Archetypes and the Collective Unconscious／The Effort Paradox: Effort Is Both Costly and Valued",
@@ -182,6 +121,104 @@
       "mechanisms": [
         "シャドウ",
         "個性化"
+      ]
+    },
+    {
+      "run_id": "video-11",
+      "status": "drafted",
+      "topic": "【ユング心理学】なぜ、過去の自分を恥じるほど前に進めないのか――古い写真と個性化・シャドウ",
+      "selected_topic": "【ユング心理学】なぜ、過去の自分を恥じるほど前に進めないのか――古い写真と個性化・シャドウ",
+      "title": "過去の自分を恥じて消すほど、なぜ前に進めなくなるのか――個性化とシャドウ",
+      "source_concept": "シャドウ・ペルソナ・個性化・自己統合。過去の自分への羞恥や他者の視線を、確定的な原因や診断ではなく、現在の自己像が拒絶した部分を読み直すための象徴的な仮説として扱う。課題の分離は、他者評価と自分の人生の選択を区別する補助線として使用する。",
+      "source_work": "The Archetypes and the Collective Unconscious; Aion; 嫌われる勇気",
+      "audience_moment": "昔の写真や過去の投稿を見て、以前の自分を消したくなる夜。",
+      "promise": "過去の自分を恥じるほど前に進めなくなる構造を、1.現在の純粋さを守るための過去の切断、2.他者の視線を内面化した羞恥のペルソナ、3.過去を美化することによる別の分離、4.消去した自己像として現れるシャドウ、5.古い写真の中の自分を現在の物語へ位置づけ直す個性化、という5つの角度から読み替える。",
+      "angle": "",
+      "mechanisms": [
+        "シャドウ",
+        "個性化"
+      ]
+    },
+    {
+      "run_id": "video-12",
+      "status": "drafted",
+      "topic": "【ユング心理学】なぜ「いい人」をやめられないのか？シャドウ・個性化・無意識から見る7つの静かなサイン",
+      "selected_topic": "【ユング心理学】なぜ「いい人」をやめられないのか？シャドウ・個性化・無意識から見る7つの静かなサイン",
+      "title": "なぜ「いい人」をやめられないのか？拒否と怒りを消す無意識の仕組み――ユング心理学",
+      "source_concept": "シャドウ・個性化・自己と他者の課題の分離・環境への適応とそのコスト",
+      "source_work": "The Collected Works of C. G. Jung, Vol. 9 Part 2: Aion／嫌われる勇気／Hidden talents in harsh environments",
+      "audience_moment": "断りたい誘いにも笑顔で応じ、相手の期待を先回りしてしまう日常",
+      "promise": "親切と自己消失の境界、抑え込んだ拒絶感情の意味、他者の評価に預けた自己、関係の中で現れる小さな怒り、個性化に向かう問いを5段階で見つめる",
+      "angle": "",
+      "mechanisms": [
+        "シャドウと自己統合",
+        "習慣としての自動化"
+      ]
+    },
+    {
+      "run_id": "video-13",
+      "status": "drafted",
+      "topic": "【ユング心理学】「怒れない人」の中に眠るシャドウとは何か｜境界線・無意識・個性化",
+      "selected_topic": "【ユング心理学】「怒れない人」の中に眠るシャドウとは何か｜境界線・無意識・個性化",
+      "title": "怒れない人ほど、あとで苦しくなる理由｜シャドウと境界線の心理学｜その心の奥で起きていること",
+      "source_concept": "シャドウ・ペルソナ・個性化",
+      "source_work": "The Collected Works of C. G. Jung, Vol. 9 Part 1 / Vol. 7",
+      "audience_moment": "傷ついても笑って済ませ、後から急に疲れや苛立ちがあふれる時。",
+      "promise": "怒りをそのまま行動に移さず、怒りが知らせている「ここから先は自分ではない」という境界を読み取る。",
+      "angle": "",
+      "mechanisms": [
+        "シャドウ",
+        "自己統合・個性化"
+      ]
+    },
+    {
+      "run_id": "video-14",
+      "status": "drafted",
+      "topic": "5つの秘密――なぜ昔は役に立った反応が、今の自分を苦しめるのか？ シャドウと個性化を「古い鍵」から読む",
+      "selected_topic": "5つの秘密――なぜ昔は役に立った反応が、今の自分を苦しめるのか？ シャドウと個性化を「古い鍵」から読む",
+      "title": "昔は自分を守った反応が、なぜ今の自分を苦しめるのか――ユングのシャドウ",
+      "source_concept": "環境に応じて形成された適応的な反応には、現在の文脈で役立つ面と負担になる面の両方があり得るという観点。これを、Jungのペルソナ・シャドウ・個性化による象徴的な自己観察として解釈する。過去の環境やトラウマを視聴者に断定しない。",
+      "source_work": "Hidden talents in harsh environments／The Archetypes and the Collective Unconscious; Aion",
+      "audience_moment": "以前は慎重さや空気を読む力で問題を避けられたのに、現在は考えすぎて疲れ、決断できなくなっている時。",
+      "promise": "自分を苦しめる反応を『間違った性格』とせず、かつての適応が現在の文脈で別の意味を持ち始めた可能性を考えられる。",
+      "angle": "",
+      "mechanisms": [
+        "反復と状況の手がかりによる習慣",
+        "環境への適応技能"
+      ]
+    },
+    {
+      "run_id": "video-15",
+      "status": "drafted",
+      "topic": "【ユング心理学】なぜ「始めたいのに始められない」のか？ シャドウ・無意識・個性化で読む、玄関の前に立ち尽くす心",
+      "selected_topic": "【ユング心理学】なぜ「始めたいのに始められない」のか？ シャドウ・無意識・個性化で読む、玄関の前に立ち尽くす心",
+      "title": "なぜ始めたいほど動けないのか――立ち尽くす心と、認めにくい自己【シャドウと個性化】",
+      "source_concept": "シャドウ・無意識・個性化・Selfを、行動不能の原因を断定する理論ではなく、玄関という境界に立つ自分を観察するための象徴的な枠組みとして用いる。習慣や文脈の研究は、意志力だけでなく環境も行動開始に関わるという補助的な観察として扱う。",
+      "source_work": "The Collected Works of C. G. Jung, Vol. 9 Part 1・Part 2",
+      "audience_moment": "やるべきことは分かっているのに、画面を開くことも靴を履くこともできず、また自分を責めてしまう瞬間。",
+      "promise": "あなたが立ち止まる玄関は、怠けの証拠ではなく、まだ言葉になっていない自己との境界かもしれない。",
+      "angle": "",
+      "mechanisms": [
+        "シャドウと個性化の象徴的解釈",
+        "習慣の反復と状況手がかり"
+      ]
+    },
+    {
+      "run_id": "video-test",
+      "user_id": null,
+      "channel_id": null,
+      "status": "drafted",
+      "topic": "「なぜ、昔の自分に戻ってしまうのか」— 無意識と“同じ部屋”に隠れた7つの反応",
+      "selected_topic": "「なぜ、昔の自分に戻ってしまうのか」— 無意識と“同じ部屋”に隠れた7つの反応",
+      "title": "なぜ新しい環境でも、昔の反応を繰り返すのか――「同じ部屋」と無意識の習慣",
+      "source_concept": "Dùng Shadow và vô thức của Jung như khung diễn giải biểu tượng, không phải cơ chế thực nghiệm hay chẩn đoán. Đối chiếu với thói quen được hình thành qua lặp lại và tín hiệu bối cảnh, ảnh hưởng của kinh nghiệm kiểm soát đối với phản ứng sau này, cùng vai trò của quan hệ hỗ trợ và điều kiện môi trường trong khả năng thích nghi.",
+      "source_work": "Aion; The Archetypes and the Collective Unconscious; Learned helplessness at fifty: Insights from neuroscience; Psychology of Habit; Risk, resilience, and recovery: Perspectives from the Kauai Longitudinal Study",
+      "audience_moment": "Bạn đã thay đổi môi trường nhưng vẫn phản ứng như trước: im lặng, xin lỗi quá mức hoặc bỏ cuộc khi gặp một âm thanh, vị trí, quan hệ hay tín hiệu quen thuộc.",
+      "promise": "Qua 7 lần “căn phòng” đổi nghĩa, người xem có thể phân biệt phản ứng được học từ tín hiệu bối cảnh, ảnh hưởng của kinh nghiệm thiếu kiểm soát và cách Shadow có thể được dùng như một lăng kính phản tỉnh—mà không quy mọi khó khăn về learned helplessness hay khuyết điểm tính cách.",
+      "angle": "",
+      "mechanisms": [
+        "Thói quen và tín hiệu bối cảnh",
+        "Kinh nghiệm về khả năng kiểm soát"
       ]
     }
   ]

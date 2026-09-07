@@ -1,0 +1,98 @@
+{
+  "research_run_id": "research-baf71605350a",
+  "user_id": "dev-user",
+  "channel_id": "kenh-nhat",
+  "youtube_channel_id": "UCL3xuEku7ezoFg2C9pwcTXg",
+  "keyword": "断れない 人",
+  "country": "JP",
+  "language": "ja",
+  "created_at": "2026-09-06T05:49:04.221415+00:00",
+  "evidence": {
+    "serpapi": {
+      "source": "serpapi",
+      "status": "unavailable",
+      "query": "断れない 人",
+      "records": [],
+      "retrieved_at": "2026-09-06T05:49:04.221355+00:00",
+      "error": "SERPAPI_KEY chưa được cấu hình"
+    },
+    "google_trends": {
+      "source": "google_trends",
+      "status": "unavailable",
+      "query": "断れない 人",
+      "records": [],
+      "retrieved_at": "2026-09-06T05:49:04.221374+00:00",
+      "error": "Cần SERPAPI_KEY hoặc GOOGLE_TRENDS_JSON"
+    },
+    "vidiq": {
+      "source": "vidiq",
+      "status": "unavailable",
+      "query": "断れない 人",
+      "records": [],
+      "retrieved_at": "2026-09-06T05:49:04.221383+00:00",
+      "error": "VIDIQ_RESEARCH_JSON chưa được cấu hình"
+    }
+  },
+  "normalized": {
+    "keyword": "断れない 人",
+    "country": "JP",
+    "language": "ja",
+    "demand_signals": {
+      "serpapi": 0,
+      "google_trends": 0,
+      "vidiq": 0
+    },
+    "source_status": {
+      "serpapi": "unavailable",
+      "google_trends": "unavailable",
+      "vidiq": "unavailable"
+    }
+  },
+  "opportunities": [
+    {
+      "opportunity_id": "opp-7b86e6ff05",
+      "keyword": "断れない 人",
+      "country": "JP",
+      "language": "ja",
+      "gap_statement": "Đối thủ đang bao phủ '断れない 人' ở mức chủ đề; chưa có bằng chứng đủ mạnh rằng họ giải quyết khoảnh khắc/câu hỏi cụ thể '断れない 人' theo cấu trúc cơ chế tâm lý trước giải pháp.",
+      "audience_moment": "Người xem tại JP đang tìm câu trả lời cho: 断れない 人",
+      "unserved_question": "断れない 人",
+      "editorial_angle": "recognition → mechanism → self-understanding → practical shift",
+      "promise": "Hiểu chính xác điều đang xảy ra phía sau '断れない 人' mà không biến nó thành lời khuyên sáo rỗng.",
+      "competitor_coverage": "unknown",
+      "specific_moment_coverage": "needs_validation",
+      "evidence_sources": [],
+      "evidence_count": 0,
+      "evidence_summary": {
+        "competitors": {
+          "observed_items": 0,
+          "keyword_aligned_items": 0,
+          "sample_titles": [],
+          "coverage_ratio": null
+        },
+        "trends": {
+          "rising_queries": [],
+          "timeline_points": 0
+        },
+        "questions": []
+      },
+      "channel_fit": "high",
+      "opportunity_score": 20,
+      "score_breakdown": {
+        "demand": 0,
+        "evidence_quality": 0,
+        "competitor_coverage": 0,
+        "channel_fit": 20
+      },
+      "risk_flags": [
+        "insufficient_independent_sources",
+        "no_competitor_coverage",
+        "no_specific_demand_signal"
+      ],
+      "coverage_terms": [
+        "断れない 人"
+      ]
+    }
+  ],
+  "selected_opportunity_id": null
+}

@@ -32,7 +32,17 @@ import { StageList } from '../components/StageList';
 import { StatusBadge } from '../components/StatusBadge';
 import { usePolling } from '../hooks/usePolling';
 import { useT } from '../i18n';
+import { useChannelContext } from '../contexts/ChannelContext';
+import type { RunScope } from '../services/runsService';
 import type { RunDetail } from '../types';
+
+const scopeForChannel = (channel: ReturnType<typeof useChannelContext>['currentChannel']): RunScope | null =>
+  channel ? { user_id: channel.user_id, channel_id: channel.channel_id } : null;
+
+/*
+ * Run detail and config requests are bound to the selected channel.
+ */
+
 import { formatDate, strField } from '../utils';
 
 function formatElapsed(seconds: number | null | undefined): string {
@@ -69,6 +79,9 @@ function snapshotProfile(snapshot: Record<string, unknown>) {
 export function RunDetailPage() {
   const { runId = '' } = useParams();
   const { t, lang } = useT();
+  const { currentChannel, loading: channelLoading } = useChannelContext();
+  const scope = scopeForChannel(currentChannel);
+  const scopeKey = scope ? `${scope.user_id}:${scope.channel_id}` : null;
   const [detail, setDetail] = useState<RunDetail | null>(null);
   const [detailError, setDetailError] = useState<unknown>(null);
   const [finished, setFinished] = useState(false);
@@ -78,17 +91,26 @@ export function RunDetailPage() {
   const [selected, setSelected] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  const configPoll = usePolling(() => getConfig(), {
-    enabled: true,
+  const configPoll = usePolling(() => (scope ? getConfig(scope ?? undefined) : Promise.resolve(null)), {
+    enabled: scope !== null,
     intervalMs: 60000,
   });
   const intervalMs = configPoll.data?.poll_interval_ms ?? 1500;
 
   // Detail: retry 404 (run_state.json chưa được ghi ngay sau khi tạo run).
-  const detailPoll = usePolling(() => getRun(runId), {
-    enabled: detail === null && detailError === null,
+  const detailPoll = usePolling(() => (scope ? getRun(runId, scope ?? undefined) : Promise.resolve(null)), {
+    enabled: scope !== null && detail === null && detailError === null,
     intervalMs: 1500,
   });
+
+  useEffect(() => {
+    setDetail(null);
+    setDetailError(null);
+    setFinished(false);
+    setSseConnected(false);
+    setStreamStatus(null);
+    setSelected(null);
+  }, [runId, scopeKey]);
 
   useEffect(() => {
     if (detailPoll.data) {
@@ -104,12 +126,12 @@ export function RunDetailPage() {
     }
   }, [detailPoll.data, detailPoll.error]);
 
-  const statusPoll = usePolling(() => getRunStatus(runId), {
-    enabled: detail !== null && !finished && !sseConnected,
+  const statusPoll = usePolling(() => (scope ? getRunStatus(runId, scope ?? undefined) : Promise.resolve(null)), {
+    enabled: scope !== null && detail !== null && !finished && !sseConnected,
     intervalMs: Math.max(intervalMs, 5000),
   });
-  const diagnosticsPoll = usePolling(() => getRunDiagnostics(runId), {
-    enabled: detail !== null,
+  const diagnosticsPoll = usePolling(() => (scope ? getRunDiagnostics(runId, scope ?? undefined) : Promise.resolve(null)), {
+    enabled: scope !== null && detail !== null,
     intervalMs: finished ? 60000 : 5000,
   });
 
@@ -131,12 +153,13 @@ export function RunDetailPage() {
       },
       () => setSseConnected(true),
       () => setSseConnected(false),
+      scope ?? undefined,
     );
     return () => {
       source.close();
       setSseConnected(false);
     };
-  }, [detail?.run_id, finished, runId]);
+  }, [detail?.run_id, finished, runId, scopeKey]);
 
   useEffect(() => {
     if (finished) return;
@@ -181,7 +204,8 @@ export function RunDetailPage() {
     if (!window.confirm(t('detail.cancelConfirm'))) return;
     setActionError(null);
     try {
-      await cancelRun(runId);
+      if (!scope) return;
+      await cancelRun(runId, scope ?? undefined);
       refreshAll();
     } catch (e) {
       setActionError(String(e));
@@ -192,12 +216,23 @@ export function RunDetailPage() {
     if (!window.confirm('Đánh dấu topic này đã xuất bản? Các run sau sẽ chặn topic trùng mạnh hơn.')) return;
     setActionError(null);
     try {
-      await updateTopicStatus(runId, 'published');
+      if (!scope) return;
+      await updateTopicStatus(runId, 'published', scope ?? undefined);
       refreshAll();
     } catch (e) {
       setActionError(String(e));
     }
   };
+
+  if (channelLoading || !currentChannel) {
+    return (
+      <div className="page">
+        <div className="empty-state">
+          {channelLoading ? 'Đang tải channel...' : 'Chưa có channel được đăng ký.'}
+        </div>
+      </div>
+    );
+  }
 
   if (detailError) {
     return (
@@ -253,6 +288,7 @@ export function RunDetailPage() {
         <div className="spacer" />
         <ResumeButton
           runId={runId}
+          scope={scope ?? undefined}
           disabled={running}
           onResumed={() => {
             setFinished(false);
@@ -343,7 +379,7 @@ export function RunDetailPage() {
                 {detail.manifest && (
                   <a
                     className="btn btn-ghost"
-                    href={artifactUrl(runId, 'resource_manifest.json', true)}
+                    href={artifactUrl(runId, 'resource_manifest.json', true, scope ?? undefined)}
                     download
                     style={{ padding: '6px 12px', fontSize: 12.5 }}
                   >
@@ -440,6 +476,7 @@ export function RunDetailPage() {
 
         <ArtifactBrowser
           runId={runId}
+          scope={scope ?? undefined}
           running={running}
           intervalMs={3000}
           selected={selected}
@@ -450,12 +487,12 @@ export function RunDetailPage() {
       <div className="grid-bottom">
         <LogViewer
           key={runId}
-          logFetcher={(offset, limit) => getLog(runId, offset, limit)}
-          downloadUrl={logDownloadUrl(runId)}
+          logFetcher={(offset, limit) => getLog(runId, offset, limit, scope ?? undefined)}
+          downloadUrl={logDownloadUrl(runId, scope ?? undefined)}
           running={running}
           intervalMs={intervalMs}
         />
-        <ArtifactViewer runId={runId} path={selected} />
+        <ArtifactViewer runId={runId} path={selected} scope={scope ?? undefined} />
       </div>
     </div>
   );

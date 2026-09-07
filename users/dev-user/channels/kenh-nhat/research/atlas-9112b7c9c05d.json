@@ -1,0 +1,369 @@
+{
+  "research_run_id": "atlas-9112b7c9c05d",
+  "user_id": "dev-user",
+  "channel_id": "kenh-nhat",
+  "youtube_channel_id": "UCL3xuEku7ezoFg2C9pwcTXg",
+  "keyword": "tâm linh - tin tức, hình ảnh, video, bình luận",
+  "country": "VN",
+  "language": "vi",
+  "created_at": "2026-09-07T04:32:09.024866+00:00",
+  "evidence": {
+    "serpapi": {
+      "source": "serpapi",
+      "status": "ok",
+      "query": "tâm linh - tin tức, hình ảnh, video, bình luận",
+      "records": [
+        {
+          "title": "văn hóa tâm linh - tin tức, hình ảnh, video, bình luận"
+        },
+        {
+          "title": "văn hóa tâm linh - tin tức, hình ảnh, video, bình luận"
+        },
+        {
+          "title": "tâm linh - tin tức, hình ảnh, video, bình luận"
+        },
+        {
+          "title": "Mê tín dị đoan: tin tức, hình ảnh, video, bình luận mới nhất"
+        },
+        {
+          "title": "không gian tâm linh' - tin tức, hình ảnh, video, bình luận"
+        },
+        {
+          "title": "phim kinh dị tâm linh - tin tức, hình ảnh, video, bình luận"
+        },
+        {
+          "title": "cột mốc tâm linh - tin tức, hình ảnh, video, bình luận"
+        },
+        {
+          "title": "lệch chuẩn tâm linh - tin tức, hình ảnh, video, bình luận"
+        },
+        {
+          "title": "Tin tức, hình ảnh, video clip mới nhất về lừa đảo tâm linh"
+        }
+      ],
+      "retrieved_at": "2026-09-07T04:32:09.024931+00:00",
+      "error": null
+    },
+    "google_trends": {
+      "source": "google_trends",
+      "status": "ok",
+      "query": "tâm linh - tin tức, hình ảnh, video, bình luận",
+      "records": [],
+      "retrieved_at": "2026-09-07T04:32:09.024939+00:00",
+      "error": null
+    }
+  },
+  "normalized": {
+    "atlas_report": {
+      "seed_keyword": "tâm linh - tin tức, hình ảnh, video, bình luận",
+      "country": "VN",
+      "language": "vi",
+      "sub_niches": [
+        {
+          "keyword": "tâm linh - tin tức, hình ảnh, video, bình luận",
+          "source": "organic_title",
+          "demand_score": 58,
+          "competitor_count": 6,
+          "angle": "recognition → mechanism → self-understanding → practical shift",
+          "unserved_question": "Tại sao tâm linh - tin tức, hình ảnh, video, bình luận lại xảy ra theo cơ chế tâm lý nào?",
+          "promise": "Hiểu cơ chế đằng sau tâm linh - tin tức, hình ảnh, video, bình luận để tự kiểm soát thay vì bị cuốn theo."
+        },
+        {
+          "keyword": "văn hóa tâm linh - tin tức, hình ảnh, video, bình luận",
+          "source": "organic_title",
+          "demand_score": 46,
+          "competitor_count": 2,
+          "angle": "recognition → mechanism → self-understanding → practical shift",
+          "unserved_question": "Tại sao văn hóa tâm linh - tin tức, hình ảnh, video, bình luận lại xảy ra theo cơ chế tâm lý nào?",
+          "promise": "Hiểu cơ chế đằng sau văn hóa tâm linh - tin tức, hình ảnh, video, bình luận để tự kiểm soát thay vì bị cuốn theo."
+        },
+        {
+          "keyword": "Mê tín dị đoan: tin tức, hình ảnh, video, bình luận mới nhất",
+          "source": "organic_title",
+          "demand_score": 43,
+          "competitor_count": 1,
+          "angle": "recognition → mechanism → self-understanding → practical shift",
+          "unserved_question": "Tại sao Mê tín dị đoan: tin tức, hình ảnh, video, bình luận mới nhất lại xảy ra theo cơ chế tâm lý nào?",
+          "promise": "Hiểu cơ chế đằng sau Mê tín dị đoan: tin tức, hình ảnh, video, bình luận mới nhất để tự kiểm soát thay vì bị cuốn theo."
+        },
+        {
+          "keyword": "không gian tâm linh' - tin tức, hình ảnh, video, bình luận",
+          "source": "organic_title",
+          "demand_score": 43,
+          "competitor_count": 1,
+          "angle": "recognition → mechanism → self-understanding → practical shift",
+          "unserved_question": "Tại sao không gian tâm linh' - tin tức, hình ảnh, video, bình luận lại xảy ra theo cơ chế tâm lý nào?",
+          "promise": "Hiểu cơ chế đằng sau không gian tâm linh' - tin tức, hình ảnh, video, bình luận để tự kiểm soát thay vì bị cuốn theo."
+        },
+        {
+          "keyword": "phim kinh dị tâm linh - tin tức, hình ảnh, video, bình luận",
+          "source": "organic_title",
+          "demand_score": 43,
+          "competitor_count": 1,
+          "angle": "recognition → mechanism → self-understanding → practical shift",
+          "unserved_question": "Tại sao phim kinh dị tâm linh - tin tức, hình ảnh, video, bình luận lại xảy ra theo cơ chế tâm lý nào?",
+          "promise": "Hiểu cơ chế đằng sau phim kinh dị tâm linh - tin tức, hình ảnh, video, bình luận để tự kiểm soát thay vì bị cuốn theo."
+        },
+        {
+          "keyword": "cột mốc tâm linh - tin tức, hình ảnh, video, bình luận",
+          "source": "organic_title",
+          "demand_score": 43,
+          "competitor_count": 1,
+          "angle": "recognition → mechanism → self-understanding → practical shift",
+          "unserved_question": "Tại sao cột mốc tâm linh - tin tức, hình ảnh, video, bình luận lại xảy ra theo cơ chế tâm lý nào?",
+          "promise": "Hiểu cơ chế đằng sau cột mốc tâm linh - tin tức, hình ảnh, video, bình luận để tự kiểm soát thay vì bị cuốn theo."
+        },
+        {
+          "keyword": "lệch chuẩn tâm linh - tin tức, hình ảnh, video, bình luận",
+          "source": "organic_title",
+          "demand_score": 43,
+          "competitor_count": 1,
+          "angle": "recognition → mechanism → self-understanding → practical shift",
+          "unserved_question": "Tại sao lệch chuẩn tâm linh - tin tức, hình ảnh, video, bình luận lại xảy ra theo cơ chế tâm lý nào?",
+          "promise": "Hiểu cơ chế đằng sau lệch chuẩn tâm linh - tin tức, hình ảnh, video, bình luận để tự kiểm soát thay vì bị cuốn theo."
+        },
+        {
+          "keyword": "Tin tức, hình ảnh, video clip mới nhất về lừa đảo tâm linh",
+          "source": "organic_title",
+          "demand_score": 43,
+          "competitor_count": 1,
+          "angle": "recognition → mechanism → self-understanding → practical shift",
+          "unserved_question": "Tại sao Tin tức, hình ảnh, video clip mới nhất về lừa đảo tâm linh lại xảy ra theo cơ chế tâm lý nào?",
+          "promise": "Hiểu cơ chế đằng sau Tin tức, hình ảnh, video clip mới nhất về lừa đảo tâm linh để tự kiểm soát thay vì bị cuốn theo."
+        }
+      ],
+      "competitor_titles": [
+        "văn hóa tâm linh - tin tức, hình ảnh, video, bình luận",
+        "văn hóa tâm linh - tin tức, hình ảnh, video, bình luận",
+        "tâm linh - tin tức, hình ảnh, video, bình luận",
+        "Mê tín dị đoan: tin tức, hình ảnh, video, bình luận mới nhất",
+        "không gian tâm linh' - tin tức, hình ảnh, video, bình luận",
+        "phim kinh dị tâm linh - tin tức, hình ảnh, video, bình luận",
+        "cột mốc tâm linh - tin tức, hình ảnh, video, bình luận",
+        "lệch chuẩn tâm linh - tin tức, hình ảnh, video, bình luận",
+        "Tin tức, hình ảnh, video clip mới nhất về lừa đảo tâm linh"
+      ],
+      "rising_queries": [],
+      "related_questions": [],
+      "created_at": "2026-09-07T04:32:09.024866+00:00"
+    }
+  },
+  "opportunities": [
+    {
+      "opportunity_id": "opp-32c6994112",
+      "keyword": "tâm linh - tin tức, hình ảnh, video, bình luận",
+      "country": "VN",
+      "language": "vi",
+      "gap_statement": "Đối thủ bao phủ 'tâm linh - tin tức, hình ảnh, video, bình luận' ở mức tổng quát; sub-niche 'tâm linh - tin tức, hình ảnh, video, bình luận' có nhu cầu cụ thể nhưng chưa được giải quyết sâu theo cơ chế tâm lý.",
+      "audience_moment": "Người xem tại VN đang tìm: Tại sao tâm linh - tin tức, hình ảnh, video, bình luận lại xảy ra theo cơ chế tâm lý nào?",
+      "unserved_question": "Tại sao tâm linh - tin tức, hình ảnh, video, bình luận lại xảy ra theo cơ chế tâm lý nào?",
+      "editorial_angle": "recognition → mechanism → self-understanding → practical shift",
+      "promise": "Hiểu cơ chế đằng sau tâm linh - tin tức, hình ảnh, video, bình luận để tự kiểm soát thay vì bị cuốn theo.",
+      "competitor_coverage": "observed",
+      "specific_moment_coverage": "evidence_backed",
+      "evidence_sources": [
+        "serpapi",
+        "google_trends"
+      ],
+      "evidence_count": 9,
+      "evidence_summary": {
+        "competitors": {
+          "observed_items": 6,
+          "keyword_aligned_items": 6
+        },
+        "trends": {
+          "rising_queries": [],
+          "timeline_points": 52
+        },
+        "questions": []
+      },
+      "channel_fit": "high",
+      "opportunity_score": 58,
+      "score_breakdown": {
+        "demand": 58,
+        "evidence_quality": 25,
+        "competitor_coverage": 15,
+        "channel_fit": 20
+      },
+      "risk_flags": [
+        "needs_validation"
+      ],
+      "coverage_terms": [
+        "tâm linh - tin tức, hình ảnh, video, bình luận"
+      ]
+    },
+    {
+      "opportunity_id": "opp-6d551aa588",
+      "keyword": "văn hóa tâm linh - tin tức, hình ảnh, video, bình luận",
+      "country": "VN",
+      "language": "vi",
+      "gap_statement": "Đối thủ bao phủ 'tâm linh - tin tức, hình ảnh, video, bình luận' ở mức tổng quát; sub-niche 'văn hóa tâm linh - tin tức, hình ảnh, video, bình luận' có nhu cầu cụ thể nhưng chưa được giải quyết sâu theo cơ chế tâm lý.",
+      "audience_moment": "Người xem tại VN đang tìm: Tại sao văn hóa tâm linh - tin tức, hình ảnh, video, bình luận lại xảy ra theo cơ chế tâm lý nào?",
+      "unserved_question": "Tại sao văn hóa tâm linh - tin tức, hình ảnh, video, bình luận lại xảy ra theo cơ chế tâm lý nào?",
+      "editorial_angle": "recognition → mechanism → self-understanding → practical shift",
+      "promise": "Hiểu cơ chế đằng sau văn hóa tâm linh - tin tức, hình ảnh, video, bình luận để tự kiểm soát thay vì bị cuốn theo.",
+      "competitor_coverage": "observed",
+      "specific_moment_coverage": "evidence_backed",
+      "evidence_sources": [
+        "serpapi",
+        "google_trends"
+      ],
+      "evidence_count": 9,
+      "evidence_summary": {
+        "competitors": {
+          "observed_items": 2,
+          "keyword_aligned_items": 2
+        },
+        "trends": {
+          "rising_queries": [],
+          "timeline_points": 52
+        },
+        "questions": []
+      },
+      "channel_fit": "high",
+      "opportunity_score": 46,
+      "score_breakdown": {
+        "demand": 46,
+        "evidence_quality": 25,
+        "competitor_coverage": 15,
+        "channel_fit": 20
+      },
+      "risk_flags": [
+        "needs_validation"
+      ],
+      "coverage_terms": [
+        "văn hóa tâm linh - tin tức, hình ảnh, video, bình luận"
+      ]
+    },
+    {
+      "opportunity_id": "opp-242d78e364",
+      "keyword": "Mê tín dị đoan: tin tức, hình ảnh, video, bình luận mới nhất",
+      "country": "VN",
+      "language": "vi",
+      "gap_statement": "Đối thủ bao phủ 'tâm linh - tin tức, hình ảnh, video, bình luận' ở mức tổng quát; sub-niche 'Mê tín dị đoan: tin tức, hình ảnh, video, bình luận mới nhất' có nhu cầu cụ thể nhưng chưa được giải quyết sâu theo cơ chế tâm lý.",
+      "audience_moment": "Người xem tại VN đang tìm: Tại sao Mê tín dị đoan: tin tức, hình ảnh, video, bình luận mới nhất lại xảy ra theo cơ chế tâm lý nào?",
+      "unserved_question": "Tại sao Mê tín dị đoan: tin tức, hình ảnh, video, bình luận mới nhất lại xảy ra theo cơ chế tâm lý nào?",
+      "editorial_angle": "recognition → mechanism → self-understanding → practical shift",
+      "promise": "Hiểu cơ chế đằng sau Mê tín dị đoan: tin tức, hình ảnh, video, bình luận mới nhất để tự kiểm soát thay vì bị cuốn theo.",
+      "competitor_coverage": "observed",
+      "specific_moment_coverage": "evidence_backed",
+      "evidence_sources": [
+        "serpapi",
+        "google_trends"
+      ],
+      "evidence_count": 9,
+      "evidence_summary": {
+        "competitors": {
+          "observed_items": 1,
+          "keyword_aligned_items": 1
+        },
+        "trends": {
+          "rising_queries": [],
+          "timeline_points": 52
+        },
+        "questions": []
+      },
+      "channel_fit": "high",
+      "opportunity_score": 43,
+      "score_breakdown": {
+        "demand": 43,
+        "evidence_quality": 25,
+        "competitor_coverage": 15,
+        "channel_fit": 20
+      },
+      "risk_flags": [
+        "needs_validation"
+      ],
+      "coverage_terms": [
+        "Mê tín dị đoan: tin tức, hình ảnh, video, bình luận mới nhất"
+      ]
+    },
+    {
+      "opportunity_id": "opp-89b976afe5",
+      "keyword": "không gian tâm linh' - tin tức, hình ảnh, video, bình luận",
+      "country": "VN",
+      "language": "vi",
+      "gap_statement": "Đối thủ bao phủ 'tâm linh - tin tức, hình ảnh, video, bình luận' ở mức tổng quát; sub-niche 'không gian tâm linh' - tin tức, hình ảnh, video, bình luận' có nhu cầu cụ thể nhưng chưa được giải quyết sâu theo cơ chế tâm lý.",
+      "audience_moment": "Người xem tại VN đang tìm: Tại sao không gian tâm linh' - tin tức, hình ảnh, video, bình luận lại xảy ra theo cơ chế tâm lý nào?",
+      "unserved_question": "Tại sao không gian tâm linh' - tin tức, hình ảnh, video, bình luận lại xảy ra theo cơ chế tâm lý nào?",
+      "editorial_angle": "recognition → mechanism → self-understanding → practical shift",
+      "promise": "Hiểu cơ chế đằng sau không gian tâm linh' - tin tức, hình ảnh, video, bình luận để tự kiểm soát thay vì bị cuốn theo.",
+      "competitor_coverage": "observed",
+      "specific_moment_coverage": "evidence_backed",
+      "evidence_sources": [
+        "serpapi",
+        "google_trends"
+      ],
+      "evidence_count": 9,
+      "evidence_summary": {
+        "competitors": {
+          "observed_items": 1,
+          "keyword_aligned_items": 1
+        },
+        "trends": {
+          "rising_queries": [],
+          "timeline_points": 52
+        },
+        "questions": []
+      },
+      "channel_fit": "high",
+      "opportunity_score": 43,
+      "score_breakdown": {
+        "demand": 43,
+        "evidence_quality": 25,
+        "competitor_coverage": 15,
+        "channel_fit": 20
+      },
+      "risk_flags": [
+        "needs_validation"
+      ],
+      "coverage_terms": [
+        "không gian tâm linh' - tin tức, hình ảnh, video, bình luận"
+      ]
+    },
+    {
+      "opportunity_id": "opp-b93c625d23",
+      "keyword": "phim kinh dị tâm linh - tin tức, hình ảnh, video, bình luận",
+      "country": "VN",
+      "language": "vi",
+      "gap_statement": "Đối thủ bao phủ 'tâm linh - tin tức, hình ảnh, video, bình luận' ở mức tổng quát; sub-niche 'phim kinh dị tâm linh - tin tức, hình ảnh, video, bình luận' có nhu cầu cụ thể nhưng chưa được giải quyết sâu theo cơ chế tâm lý.",
+      "audience_moment": "Người xem tại VN đang tìm: Tại sao phim kinh dị tâm linh - tin tức, hình ảnh, video, bình luận lại xảy ra theo cơ chế tâm lý nào?",
+      "unserved_question": "Tại sao phim kinh dị tâm linh - tin tức, hình ảnh, video, bình luận lại xảy ra theo cơ chế tâm lý nào?",
+      "editorial_angle": "recognition → mechanism → self-understanding → practical shift",
+      "promise": "Hiểu cơ chế đằng sau phim kinh dị tâm linh - tin tức, hình ảnh, video, bình luận để tự kiểm soát thay vì bị cuốn theo.",
+      "competitor_coverage": "observed",
+      "specific_moment_coverage": "evidence_backed",
+      "evidence_sources": [
+        "serpapi",
+        "google_trends"
+      ],
+      "evidence_count": 9,
+      "evidence_summary": {
+        "competitors": {
+          "observed_items": 1,
+          "keyword_aligned_items": 1
+        },
+        "trends": {
+          "rising_queries": [],
+          "timeline_points": 52
+        },
+        "questions": []
+      },
+      "channel_fit": "high",
+      "opportunity_score": 43,
+      "score_breakdown": {
+        "demand": 43,
+        "evidence_quality": 25,
+        "competitor_coverage": 15,
+        "channel_fit": 20
+      },
+      "risk_flags": [
+        "needs_validation"
+      ],
+      "coverage_terms": [
+        "phim kinh dị tâm linh - tin tức, hình ảnh, video, bình luận"
+      ]
+    }
+  ],
+  "selected_opportunity_id": null
+}

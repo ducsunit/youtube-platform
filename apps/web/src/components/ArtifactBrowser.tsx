@@ -12,13 +12,14 @@ interface Props {
   intervalMs: number;
   selected: string | null;
   onSelect: (path: string) => void;
+  scope?: { user_id: string; channel_id: string };
 }
 
 /** Cây thư mục artifact — thư mục mới tự mở rộng, thư mục đã thu gọn giữ nguyên. */
-export function ArtifactBrowser({ runId, running, intervalMs, selected, onSelect }: Props) {
+export function ArtifactBrowser({ runId, running, intervalMs, selected, onSelect, scope }: Props) {
   const { t } = useT();
   const { data, refresh } = usePolling(
-    () => getArtifactTree(runId),
+    () => getArtifactTree(runId, scope),
     { enabled: running, intervalMs },
   );
   const [expanded, setExpanded] = useState<Set<string>>(new Set());

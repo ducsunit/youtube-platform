@@ -1,0 +1,115 @@
+{
+  "research_run_id": "research-fe0d5542f6d6",
+  "user_id": "dev-user",
+  "channel_id": "kenh-nhat",
+  "youtube_channel_id": "UCL3xuEku7ezoFg2C9pwcTXg",
+  "keyword": "tâm linh",
+  "country": "VN",
+  "language": "vi",
+  "created_at": "2026-09-06T09:13:02.769740+00:00",
+  "evidence": {
+    "serpapi": {
+      "source": "serpapi",
+      "status": "unavailable",
+      "query": "tâm linh",
+      "records": [],
+      "retrieved_at": "2026-09-06T09:13:02.768130+00:00",
+      "error": "SERPAPI_KEY chưa được cấu hình"
+    },
+    "google_trends": {
+      "source": "google_trends",
+      "status": "unavailable",
+      "query": "tâm linh",
+      "records": [],
+      "retrieved_at": "2026-09-06T09:13:02.768373+00:00",
+      "error": "Cần SERPAPI_KEY hoặc GOOGLE_TRENDS_JSON"
+    },
+    "vidiq": {
+      "source": "vidiq",
+      "status": "unavailable",
+      "query": "tâm linh",
+      "records": [],
+      "retrieved_at": "2026-09-06T09:13:02.768496+00:00",
+      "error": "VIDIQ_RESEARCH_JSON chưa được cấu hình"
+    }
+  },
+  "normalized": {
+    "keyword": "tâm linh",
+    "country": "VN",
+    "language": "vi",
+    "demand_signals": {
+      "serpapi": 0,
+      "google_trends": 0,
+      "vidiq": 0
+    },
+    "source_status": {
+      "serpapi": "unavailable",
+      "google_trends": "unavailable",
+      "vidiq": "unavailable"
+    },
+    "provider_summary": {
+      "serpapi": {
+        "status": "unavailable",
+        "record_count": 0,
+        "error": "SERPAPI_KEY chưa được cấu hình"
+      },
+      "google_trends": {
+        "status": "unavailable",
+        "record_count": 0,
+        "error": "Cần SERPAPI_KEY hoặc GOOGLE_TRENDS_JSON"
+      },
+      "vidiq": {
+        "status": "unavailable",
+        "record_count": 0,
+        "error": "VIDIQ_RESEARCH_JSON chưa được cấu hình"
+      }
+    }
+  },
+  "opportunities": [
+    {
+      "opportunity_id": "opp-faa1fe2d88",
+      "keyword": "tâm linh",
+      "country": "VN",
+      "language": "vi",
+      "gap_statement": "Đối thủ đang bao phủ 'tâm linh' ở mức chủ đề; chưa có bằng chứng đủ mạnh rằng họ giải quyết khoảnh khắc/câu hỏi cụ thể 'tâm linh' theo cấu trúc cơ chế tâm lý trước giải pháp.",
+      "audience_moment": "Người xem tại VN đang tìm câu trả lời cho: tâm linh",
+      "unserved_question": "tâm linh",
+      "editorial_angle": "recognition → mechanism → self-understanding → practical shift",
+      "promise": "Hiểu chính xác điều đang xảy ra phía sau 'tâm linh' mà không biến nó thành lời khuyên sáo rỗng.",
+      "competitor_coverage": "unknown",
+      "specific_moment_coverage": "needs_validation",
+      "evidence_sources": [],
+      "evidence_count": 0,
+      "evidence_summary": {
+        "competitors": {
+          "observed_items": 0,
+          "keyword_aligned_items": 0,
+          "sample_titles": [],
+          "coverage_ratio": null
+        },
+        "trends": {
+          "rising_queries": [],
+          "timeline_points": 0
+        },
+        "questions": []
+      },
+      "channel_fit": "high",
+      "opportunity_score": 20,
+      "score_breakdown": {
+        "demand": 0,
+        "evidence_quality": 0,
+        "competitor_coverage": 0,
+        "channel_fit": 20
+      },
+      "risk_flags": [
+        "insufficient_independent_sources",
+        "no_competitor_coverage",
+        "no_specific_demand_signal"
+      ],
+      "coverage_terms": [
+        "tâm linh"
+      ]
+    }
+  ],
+  "selected_opportunity_id": null
+}

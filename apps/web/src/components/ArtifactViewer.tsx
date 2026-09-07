@@ -7,6 +7,7 @@ import { useT } from '../i18n';
 interface Props {
   runId: string;
   path: string | null;
+  scope?: { user_id: string; channel_id: string };
 }
 
 type Kind = 'json' | 'text' | 'image' | 'audio' | 'video' | 'binary';
@@ -27,7 +28,7 @@ function kindOf(path: string): Kind {
 }
 
 /** Xem nội dung artifact: JSON/text dạng pre, ảnh/audio/video inline, còn lại tải về. */
-export function ArtifactViewer({ runId, path }: Props) {
+export function ArtifactViewer({ runId, path, scope }: Props) {
   const { t } = useT();
   const [text, setText] = useState<string | null>(null);
   const [error, setError] = useState<ApiError | null>(null);
@@ -44,7 +45,7 @@ export function ArtifactViewer({ runId, path }: Props) {
     let cancelled = false;
     setText(null);
     setError(null);
-    getArtifactText(runId, path)
+    getArtifactText(runId, path, scope)
       .then((value) => {
         if (!cancelled) setText(value);
       })
@@ -56,7 +57,7 @@ export function ArtifactViewer({ runId, path }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [runId, path]);
+  }, [runId, path, scope]);
 
   const copyText = () => {
     if (!text) return;
@@ -82,7 +83,7 @@ export function ArtifactViewer({ runId, path }: Props) {
   }
 
   const kind = kindOf(path);
-  const downloadHref = artifactUrl(runId, path, true);
+  const downloadHref = artifactUrl(runId, path, true, scope);
   // Thumbnail prompts are meant to be copied verbatim into an image model.
   // Do not visually truncate their long style/identity/negative-prompt tail.
   const isFullCopyPrompt = /(^|\/)(thumbnail-prompt(?:-text)?|.*-prompt)\.txt$/i.test(path);
@@ -119,13 +120,13 @@ export function ArtifactViewer({ runId, path }: Props) {
   } else if (kind === 'image') {
     body = (
       <div style={{ textAlign: 'center', padding: 12 }}>
-        <img className="preview-img" src={artifactUrl(runId, path)} alt={path} style={{ maxHeight: 380 }} />
+        <img className="preview-img" src={artifactUrl(runId, path, false, scope)} alt={path} style={{ maxHeight: 380 }} />
       </div>
     );
   } else if (kind === 'audio') {
     body = (
       <div style={{ padding: 20 }}>
-        <audio controls src={artifactUrl(runId, path)} style={{ width: '100%' }}>
+        <audio controls src={artifactUrl(runId, path, false, scope)} style={{ width: '100%' }}>
           <a href={downloadHref} download>
             <Download size={14} />
             {t('art.download')}
@@ -136,7 +137,7 @@ export function ArtifactViewer({ runId, path }: Props) {
   } else if (kind === 'video') {
     body = (
       <div style={{ textAlign: 'center', padding: 12 }}>
-        <video controls src={artifactUrl(runId, path)} style={{ maxWidth: '100%', maxHeight: 380, borderRadius: 10 }}>
+        <video controls src={artifactUrl(runId, path, false, scope)} style={{ maxWidth: '100%', maxHeight: 380, borderRadius: 10 }}>
           <a href={downloadHref} download>
             <Download size={14} />
             {t('art.download')}

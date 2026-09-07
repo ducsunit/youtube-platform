@@ -192,6 +192,38 @@ class TestStatus(DataApiTestCase):
         self.assertEqual(lr["video_count"], 3)
         self.assertEqual(lr["analytics_window"]["end"], "2026-07-31")
 
+    def test_status_datasets_and_token_are_channel_isolated(self) -> None:
+        from youtube_pipeline.platform_db import PlatformDatabase
+
+        db = PlatformDatabase(self.root / "runtime" / "platform.sqlite3")
+        for channel_id in ("channel-a", "channel-b"):
+            db.register_channel(user_id="dev-user", channel_id=channel_id, youtube_channel_id="UC-" + channel_id)
+        for channel_id, marker in (("channel-a", "A"), ("channel-b", "B")):
+            data_dir = self.root / "users" / "dev-user" / "channels" / channel_id / "data" / "snapshots"
+            data_dir.mkdir(parents=True)
+            (data_dir / "youtube_data.json").write_text(json.dumps({
+                "schema_version": 2, "channel_id": marker,
+                "generated_at": "2026-08-09T10:00:00+07:00",
+                "videos": {"v": {"videoId": "v"}},
+            }), encoding="utf-8")
+            token_dir = self.root / "users" / "dev-user" / "channels" / channel_id / "runtime" / "oauth"
+            token_dir.mkdir(parents=True)
+            (token_dir / "token.json").write_text(json.dumps(TOKEN_OK), encoding="utf-8")
+
+        a = self.client.get("/api/data/status", params={"user_id": "dev-user", "channel_id": "channel-a"})
+        b = self.client.get("/api/data/status", params={"user_id": "dev-user", "channel_id": "channel-b"})
+        self.assertEqual(a.status_code, 200)
+        self.assertEqual(b.status_code, 200)
+        self.assertEqual(a.json()["last_result"]["channel_id"], "A")
+        self.assertEqual(b.json()["last_result"]["channel_id"], "B")
+        self.assertTrue(a.json()["connected"])
+        self.assertTrue(b.json()["connected"])
+        self.assertNotEqual(a.json()["datasets"][0]["file"], b.json()["datasets"][0]["file"])
+
+    def test_status_rejects_partial_scope(self) -> None:
+        response = self.client.get("/api/data/status", params={"user_id": "dev-user"})
+        self.assertEqual(response.status_code, 400)
+
 
 # ------------------------------------------------------------------ actions
 

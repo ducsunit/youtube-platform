@@ -7,9 +7,13 @@ chỉ để tương thích import cũ; không thêm feature hoặc gọi nó t�
 
 import logging
 
+from .channel_context import ChannelContext
 from .domain.models import AuditReport, FlowState, Proposal, ReviewResult
 from .pipeline import YouTubePipeline  # LEGACY — xem docstring module
 
+
+# ChannelContext is the Phase 1 boundary for channel-scoped production flows.
+
 logging.getLogger(__name__).addHandler(logging.NullHandler())
 
-__all__ = ["AuditReport", "FlowState", "Proposal", "ReviewResult", "YouTubePipeline"]
+__all__ = ["AuditReport", "ChannelContext", "FlowState", "Proposal", "ReviewResult", "YouTubePipeline"]

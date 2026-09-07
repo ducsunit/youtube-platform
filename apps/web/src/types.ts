@@ -31,8 +31,47 @@ export interface MinimaxProfile {
   calibration_required: boolean;
 }
 
+export interface ChannelContext {
+  user_id: string;
+  channel_id: string;
+  youtube_channel_id: string;
+  flow_profile: string;
+  title?: string | null;
+  active?: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ChannelListResponse {
+  channels: ChannelContext[];
+}
+
+export interface ChannelResponse {
+  channel: ChannelContext;
+}
+
+export interface RegisterChannelBody {
+  user_id: string;
+  channel_id: string;
+  youtube_channel_id: string;
+  title?: string;
+  flow_profile?: string;
+}
+
+export interface UpdateChannelBody {
+  user_id: string;
+  title?: string;
+  flow_profile?: string;
+  active?: boolean;
+}
+
+export type ChannelScope = Pick<ChannelContext, 'user_id' | 'channel_id'>;
+
 export interface ServerConfig {
   backend_root: string;
+  scope?: ChannelScope | null;
+  channel_scoped?: boolean;
+  channel?: ChannelContext | null;
   runs_dir: string;
   python_executable: string;
   input_files: InputFileInfo[];
@@ -124,6 +163,11 @@ export interface RunSummary {
   has_manifest: boolean;
   timeline_status: string | null;
   executing: boolean;
+  run_dir?: string;
+  user_id?: string | null;
+  channel_id?: string | null;
+  youtube_channel_id?: string | null;
+  topic_status?: string | null;
 }
 
 export interface RunState {
@@ -242,6 +286,100 @@ export interface NewRunBody {
   manual_topic?: string;
   run_id?: string;
   output_dir?: string;
+  user_id?: string;
+  channel_id?: string;
+  youtube_channel_id?: string;
+  flow_profile?: string;
+  /** Approved research run; starts a resource-pack run from its editorial brief. */
+  research_run_id?: string;
+}
+
+export interface ResearchEvidence {
+  source: string;
+  status: 'ok' | 'unavailable' | 'error' | string;
+  query: string;
+  records: Record<string, unknown>[];
+  retrieved_at?: string;
+  error?: string | null;
+}
+
+export interface ResearchOpportunity {
+  opportunity_id: string;
+  keyword: string;
+  country: string;
+  language: string;
+  gap_statement: string;
+  audience_moment: string;
+  unserved_question: string;
+  editorial_angle: string;
+  promise: string;
+  competitor_coverage: string;
+  specific_moment_coverage: string;
+  evidence_sources: string[];
+  evidence_count: number;
+  opportunity_score: number;
+  risk_flags: string[];
+  coverage_terms: string[];
+  evidence_summary?: Record<string, unknown>;
+  score_breakdown?: Record<string, number>;
+}
+
+export interface ResearchRun {
+  research_run_id: string;
+  user_id: string;
+  channel_id: string;
+  youtube_channel_id: string;
+  keyword: string;
+  country: string;
+  language: string;
+  created_at: string;
+  evidence: Record<string, ResearchEvidence>;
+  normalized: {
+    source_status?: Record<string, string>;
+    demand_signals?: Record<string, number>;
+    [key: string]: unknown;
+  };
+  opportunities: ResearchOpportunity[];
+  selected_opportunity_id?: string | null;
+}
+
+export interface StartResearchBody {
+  user_id: string;
+  channel_id: string;
+  keyword: string;
+  country: string;
+  language: string;
+  research_run_id?: string;
+}
+
+export interface ResearchLogEvent {
+  timestamp: string;
+  event: string;
+  provider?: string;
+  record_count?: number;
+  error_category?: string | null;
+  error?: string | null;
+  [key: string]: unknown;
+}
+
+export interface ResearchLogResponse {
+  research_run_id: string;
+  path: string;
+  events: ResearchLogEvent[];
+}
+
+export interface StartResearchResponse extends ResearchRun {
+  status: string;
+  path: string;
+  log_path?: string | null;
+}
+
+export interface ApproveResearchResponse {
+  status: 'approved' | string;
+  research_run_id: string;
+  opportunity_id: string;
+  brief_path: string;
+  brief: Record<string, unknown>;
 }
 
 // ---- Kéo data YouTube (youtube_pipeline/api/data_routes.py) ----------------
@@ -294,11 +432,16 @@ export interface DataPullBody {
   max_replies?: number;
   no_replies?: boolean;
   out_file?: string;
+  user_id?: string;
+  channel_id?: string;
+  youtube_channel_id?: string;
 }
 
 export interface DataReportingBody {
   action: 'setup' | 'sync';
   out_file?: string;
+  user_id?: string;
+  channel_id?: string;
 }
 
 export interface DataJobStarted {
@@ -439,6 +582,8 @@ export interface BuildImportResult {
 export interface VeoActiveJob {
   id: string;
   run_id: string | null;
+  user_id?: string | null;
+  channel_id?: string | null;
   started_at: string | null;
   log_path: string;
   orphaned?: boolean;
@@ -497,6 +642,8 @@ export interface VeoJobStarted {
 export interface VeoJob {
   id: string;
   run_id: string | null;
+  user_id?: string | null;
+  channel_id?: string | null;
   status: 'running' | 'complete' | 'failed';
   exit_code: number | null;
   started_at: string | null;
@@ -584,4 +731,59 @@ export interface SrtJob {
   status: 'running' | 'complete' | 'failed';
   exit_code: number | null;
   output_path?: string;
+}
+
+// ---- Tube Atlas Research (youtube_pipeline/api/research_routes.py) ----------
+
+export interface AtlasSubNiche {
+  keyword: string;
+  source: 'related_question' | 'rising_query' | 'organic_title';
+  demand_score: number;
+  competitor_count: number;
+  angle: string;
+  unserved_question: string;
+  promise: string;
+}
+
+export interface AtlasRequest {
+  user_id: string;
+  channel_id: string;
+  keyword: string;
+  country: string;
+  language: string;
+}
+
+export interface AtlasResponse {
+  research_run_id: string;
+  seed_keyword: string;
+  country: string;
+  language: string;
+  sub_niches_count: number;
+  opportunities_count: number;
+  top_sub_niches: AtlasSubNiche[];
+  competitor_titles: string[];
+  rising_queries: string[];
+  related_questions: string[];
+  research_path: string;
+}
+
+export interface SuggestRequest {
+  keyword: string;
+  country?: string;
+  language?: string;
+}
+
+export interface SuggestKeyword {
+  keyword: string;
+  source: 'related_question' | 'rising_query' | 'organic_title';
+  snippet?: string;
+  value?: number;
+}
+
+export interface SuggestResponse {
+  seed_keyword: string;
+  country: string;
+  language: string;
+  suggestions: SuggestKeyword[];
+  total_found: number;
 }

@@ -1,0 +1,378 @@
+{
+  "research_run_id": "atlas-2a3cc0f011e8",
+  "user_id": "dev-user",
+  "channel_id": "kenh-nhat",
+  "youtube_channel_id": "UCL3xuEku7ezoFg2C9pwcTXg",
+  "keyword": "[ Tập 1134 ] CHẾT ĐI SỐNG LẠI - Chuyện Tâm Linh",
+  "country": "VN",
+  "language": "vi",
+  "created_at": "2026-09-07T04:12:12.590456+00:00",
+  "evidence": {
+    "serpapi": {
+      "source": "serpapi",
+      "status": "ok",
+      "query": "[ Tập 1134 ] CHẾT ĐI SỐNG LẠI - Chuyện Tâm Linh",
+      "records": [
+        {
+          "title": "[ Tập 1134 ] CHẾT ĐI SỐNG LẠI - Chuyện Tâm Linh"
+        },
+        {
+          "title": "CHẾT ĐI SỐNG LẠI 4 LẦN - Chuyện tâm linh Thy kể"
+        },
+        {
+          "title": "Bi kịch BÀ KHÙNG CHẾT ĐI RỒI SỐNG LẠI ĐỂ TRẢ NGHIỆP"
+        },
+        {
+          "title": "NGƯỜI CHẾT SỐNG LẠI! – Chuyện Ma Có Thật Tập 98"
+        },
+        {
+          "title": "Bí ấn chuyện người chết 12 tiếng bỗng dưng sống lại"
+        },
+        {
+          "title": "KỂ CHUYỆN TÂM LINH CHẾT ĐI SỐNG LẠI - THIỀN SƯ AN ..."
+        },
+        {
+          "title": "A 93-YEAR-OLD MAN DIED AND CAME BACK TO LIFE ..."
+        },
+        {
+          "title": "Đi đến âm gian, bước ra khỏi quan tài sau 20 giờ, bà lão ..."
+        },
+        {
+          "title": "Ớn Lạnh Ông Lão Chết Đi Sống Lại Kể Chuyện Gặp Diêm ..."
+        }
+      ],
+      "retrieved_at": "2026-09-07T04:12:12.590479+00:00",
+      "error": null
+    },
+    "google_trends": {
+      "source": "google_trends",
+      "status": "ok",
+      "query": "[ Tập 1134 ] CHẾT ĐI SỐNG LẠI - Chuyện Tâm Linh",
+      "records": [],
+      "retrieved_at": "2026-09-07T04:12:12.590485+00:00",
+      "error": null
+    }
+  },
+  "normalized": {
+    "atlas_report": {
+      "seed_keyword": "[ Tập 1134 ] CHẾT ĐI SỐNG LẠI - Chuyện Tâm Linh",
+      "country": "VN",
+      "language": "vi",
+      "sub_niches": [
+        {
+          "keyword": "[ Tập 1134 ] CHẾT ĐI SỐNG LẠI - Chuyện Tâm Linh",
+          "source": "organic_title",
+          "demand_score": 43,
+          "competitor_count": 1,
+          "angle": "recognition → mechanism → self-understanding → practical shift",
+          "unserved_question": "Tại sao [ Tập 1134 ] CHẾT ĐI SỐNG LẠI - Chuyện Tâm Linh lại xảy ra theo cơ chế tâm lý nào?",
+          "promise": "Hiểu cơ chế đằng sau [ Tập 1134 ] CHẾT ĐI SỐNG LẠI - Chuyện Tâm Linh để tự kiểm soát thay vì bị cuốn theo."
+        },
+        {
+          "keyword": "CHẾT ĐI SỐNG LẠI 4 LẦN - Chuyện tâm linh Thy kể",
+          "source": "organic_title",
+          "demand_score": 43,
+          "competitor_count": 1,
+          "angle": "recognition → mechanism → self-understanding → practical shift",
+          "unserved_question": "Tại sao CHẾT ĐI SỐNG LẠI 4 LẦN - Chuyện tâm linh Thy kể lại xảy ra theo cơ chế tâm lý nào?",
+          "promise": "Hiểu cơ chế đằng sau CHẾT ĐI SỐNG LẠI 4 LẦN - Chuyện tâm linh Thy kể để tự kiểm soát thay vì bị cuốn theo."
+        },
+        {
+          "keyword": "Bi kịch BÀ KHÙNG CHẾT ĐI RỒI SỐNG LẠI ĐỂ TRẢ NGHIỆP",
+          "source": "organic_title",
+          "demand_score": 43,
+          "competitor_count": 1,
+          "angle": "recognition → mechanism → self-understanding → practical shift",
+          "unserved_question": "Tại sao Bi kịch BÀ KHÙNG CHẾT ĐI RỒI SỐNG LẠI ĐỂ TRẢ NGHIỆP lại xảy ra theo cơ chế tâm lý nào?",
+          "promise": "Hiểu cơ chế đằng sau Bi kịch BÀ KHÙNG CHẾT ĐI RỒI SỐNG LẠI ĐỂ TRẢ NGHIỆP để tự kiểm soát thay vì bị cuốn theo."
+        },
+        {
+          "keyword": "NGƯỜI CHẾT SỐNG LẠI! – Chuyện Ma Có Thật Tập 98",
+          "source": "organic_title",
+          "demand_score": 43,
+          "competitor_count": 1,
+          "angle": "recognition → mechanism → self-understanding → practical shift",
+          "unserved_question": "Tại sao NGƯỜI CHẾT SỐNG LẠI! – Chuyện Ma Có Thật Tập 98 lại xảy ra theo cơ chế tâm lý nào?",
+          "promise": "Hiểu cơ chế đằng sau NGƯỜI CHẾT SỐNG LẠI! – Chuyện Ma Có Thật Tập 98 để tự kiểm soát thay vì bị cuốn theo."
+        },
+        {
+          "keyword": "Bí ấn chuyện người chết 12 tiếng bỗng dưng sống lại",
+          "source": "organic_title",
+          "demand_score": 43,
+          "competitor_count": 1,
+          "angle": "recognition → mechanism → self-understanding → practical shift",
+          "unserved_question": "Tại sao Bí ấn chuyện người chết 12 tiếng bỗng dưng sống lại lại xảy ra theo cơ chế tâm lý nào?",
+          "promise": "Hiểu cơ chế đằng sau Bí ấn chuyện người chết 12 tiếng bỗng dưng sống lại để tự kiểm soát thay vì bị cuốn theo."
+        },
+        {
+          "keyword": "KỂ CHUYỆN TÂM LINH CHẾT ĐI SỐNG LẠI - THIỀN SƯ AN ...",
+          "source": "organic_title",
+          "demand_score": 43,
+          "competitor_count": 1,
+          "angle": "recognition → mechanism → self-understanding → practical shift",
+          "unserved_question": "Tại sao KỂ CHUYỆN TÂM LINH CHẾT ĐI SỐNG LẠI - THIỀN SƯ AN ... lại xảy ra theo cơ chế tâm lý nào?",
+          "promise": "Hiểu cơ chế đằng sau KỂ CHUYỆN TÂM LINH CHẾT ĐI SỐNG LẠI - THIỀN SƯ AN ... để tự kiểm soát thay vì bị cuốn theo."
+        },
+        {
+          "keyword": "A 93-YEAR-OLD MAN DIED AND CAME BACK TO LIFE ...",
+          "source": "organic_title",
+          "demand_score": 43,
+          "competitor_count": 1,
+          "angle": "recognition → mechanism → self-understanding → practical shift",
+          "unserved_question": "Tại sao A 93-YEAR-OLD MAN DIED AND CAME BACK TO LIFE ... lại xảy ra theo cơ chế tâm lý nào?",
+          "promise": "Hiểu cơ chế đằng sau A 93-YEAR-OLD MAN DIED AND CAME BACK TO LIFE ... để tự kiểm soát thay vì bị cuốn theo."
+        },
+        {
+          "keyword": "Đi đến âm gian, bước ra khỏi quan tài sau 20 giờ, bà lão ...",
+          "source": "organic_title",
+          "demand_score": 43,
+          "competitor_count": 1,
+          "angle": "recognition → mechanism → self-understanding → practical shift",
+          "unserved_question": "Tại sao Đi đến âm gian, bước ra khỏi quan tài sau 20 giờ, bà lão ... lại xảy ra theo cơ chế tâm lý nào?",
+          "promise": "Hiểu cơ chế đằng sau Đi đến âm gian, bước ra khỏi quan tài sau 20 giờ, bà lão ... để tự kiểm soát thay vì bị cuốn theo."
+        },
+        {
+          "keyword": "Ớn Lạnh Ông Lão Chết Đi Sống Lại Kể Chuyện Gặp Diêm ...",
+          "source": "organic_title",
+          "demand_score": 43,
+          "competitor_count": 1,
+          "angle": "recognition → mechanism → self-understanding → practical shift",
+          "unserved_question": "Tại sao Ớn Lạnh Ông Lão Chết Đi Sống Lại Kể Chuyện Gặp Diêm ... lại xảy ra theo cơ chế tâm lý nào?",
+          "promise": "Hiểu cơ chế đằng sau Ớn Lạnh Ông Lão Chết Đi Sống Lại Kể Chuyện Gặp Diêm ... để tự kiểm soát thay vì bị cuốn theo."
+        }
+      ],
+      "competitor_titles": [
+        "[ Tập 1134 ] CHẾT ĐI SỐNG LẠI - Chuyện Tâm Linh",
+        "CHẾT ĐI SỐNG LẠI 4 LẦN - Chuyện tâm linh Thy kể",
+        "Bi kịch BÀ KHÙNG CHẾT ĐI RỒI SỐNG LẠI ĐỂ TRẢ NGHIỆP",
+        "NGƯỜI CHẾT SỐNG LẠI! – Chuyện Ma Có Thật Tập 98",
+        "Bí ấn chuyện người chết 12 tiếng bỗng dưng sống lại",
+        "KỂ CHUYỆN TÂM LINH CHẾT ĐI SỐNG LẠI - THIỀN SƯ AN ...",
+        "A 93-YEAR-OLD MAN DIED AND CAME BACK TO LIFE ...",
+        "Đi đến âm gian, bước ra khỏi quan tài sau 20 giờ, bà lão ...",
+        "Ớn Lạnh Ông Lão Chết Đi Sống Lại Kể Chuyện Gặp Diêm ..."
+      ],
+      "rising_queries": [],
+      "related_questions": [],
+      "created_at": "2026-09-07T04:12:12.590456+00:00"
+    }
+  },
+  "opportunities": [
+    {
+      "opportunity_id": "opp-86bfa669ad",
+      "keyword": "[ Tập 1134 ] CHẾT ĐI SỐNG LẠI - Chuyện Tâm Linh",
+      "country": "VN",
+      "language": "vi",
+      "gap_statement": "Đối thủ bao phủ '[ Tập 1134 ] CHẾT ĐI SỐNG LẠI - Chuyện Tâm Linh' ở mức tổng quát; sub-niche '[ Tập 1134 ] CHẾT ĐI SỐNG LẠI - Chuyện Tâm Linh' có nhu cầu cụ thể nhưng chưa được giải quyết sâu theo cơ chế tâm lý.",
+      "audience_moment": "Người xem tại VN đang tìm: Tại sao [ Tập 1134 ] CHẾT ĐI SỐNG LẠI - Chuyện Tâm Linh lại xảy ra theo cơ chế tâm lý nào?",
+      "unserved_question": "Tại sao [ Tập 1134 ] CHẾT ĐI SỐNG LẠI - Chuyện Tâm Linh lại xảy ra theo cơ chế tâm lý nào?",
+      "editorial_angle": "recognition → mechanism → self-understanding → practical shift",
+      "promise": "Hiểu cơ chế đằng sau [ Tập 1134 ] CHẾT ĐI SỐNG LẠI - Chuyện Tâm Linh để tự kiểm soát thay vì bị cuốn theo.",
+      "competitor_coverage": "observed",
+      "specific_moment_coverage": "evidence_backed",
+      "evidence_sources": [
+        "serpapi",
+        "google_trends"
+      ],
+      "evidence_count": 9,
+      "evidence_summary": {
+        "competitors": {
+          "observed_items": 1,
+          "keyword_aligned_items": 1
+        },
+        "trends": {
+          "rising_queries": [],
+          "timeline_points": 52
+        },
+        "questions": []
+      },
+      "channel_fit": "high",
+      "opportunity_score": 43,
+      "score_breakdown": {
+        "demand": 43,
+        "evidence_quality": 25,
+        "competitor_coverage": 15,
+        "channel_fit": 20
+      },
+      "risk_flags": [
+        "needs_validation"
+      ],
+      "coverage_terms": [
+        "[ Tập 1134 ] CHẾT ĐI SỐNG LẠI - Chuyện Tâm Linh"
+      ]
+    },
+    {
+      "opportunity_id": "opp-ed29830ecd",
+      "keyword": "CHẾT ĐI SỐNG LẠI 4 LẦN - Chuyện tâm linh Thy kể",
+      "country": "VN",
+      "language": "vi",
+      "gap_statement": "Đối thủ bao phủ '[ Tập 1134 ] CHẾT ĐI SỐNG LẠI - Chuyện Tâm Linh' ở mức tổng quát; sub-niche 'CHẾT ĐI SỐNG LẠI 4 LẦN - Chuyện tâm linh Thy kể' có nhu cầu cụ thể nhưng chưa được giải quyết sâu theo cơ chế tâm lý.",
+      "audience_moment": "Người xem tại VN đang tìm: Tại sao CHẾT ĐI SỐNG LẠI 4 LẦN - Chuyện tâm linh Thy kể lại xảy ra theo cơ chế tâm lý nào?",
+      "unserved_question": "Tại sao CHẾT ĐI SỐNG LẠI 4 LẦN - Chuyện tâm linh Thy kể lại xảy ra theo cơ chế tâm lý nào?",
+      "editorial_angle": "recognition → mechanism → self-understanding → practical shift",
+      "promise": "Hiểu cơ chế đằng sau CHẾT ĐI SỐNG LẠI 4 LẦN - Chuyện tâm linh Thy kể để tự kiểm soát thay vì bị cuốn theo.",
+      "competitor_coverage": "observed",
+      "specific_moment_coverage": "evidence_backed",
+      "evidence_sources": [
+        "serpapi",
+        "google_trends"
+      ],
+      "evidence_count": 9,
+      "evidence_summary": {
+        "competitors": {
+          "observed_items": 1,
+          "keyword_aligned_items": 1
+        },
+        "trends": {
+          "rising_queries": [],
+          "timeline_points": 52
+        },
+        "questions": []
+      },
+      "channel_fit": "high",
+      "opportunity_score": 43,
+      "score_breakdown": {
+        "demand": 43,
+        "evidence_quality": 25,
+        "competitor_coverage": 15,
+        "channel_fit": 20
+      },
+      "risk_flags": [
+        "needs_validation"
+      ],
+      "coverage_terms": [
+        "CHẾT ĐI SỐNG LẠI 4 LẦN - Chuyện tâm linh Thy kể"
+      ]
+    },
+    {
+      "opportunity_id": "opp-0df698e0e8",
+      "keyword": "Bi kịch BÀ KHÙNG CHẾT ĐI RỒI SỐNG LẠI ĐỂ TRẢ NGHIỆP",
+      "country": "VN",
+      "language": "vi",
+      "gap_statement": "Đối thủ bao phủ '[ Tập 1134 ] CHẾT ĐI SỐNG LẠI - Chuyện Tâm Linh' ở mức tổng quát; sub-niche 'Bi kịch BÀ KHÙNG CHẾT ĐI RỒI SỐNG LẠI ĐỂ TRẢ NGHIỆP' có nhu cầu cụ thể nhưng chưa được giải quyết sâu theo cơ chế tâm lý.",
+      "audience_moment": "Người xem tại VN đang tìm: Tại sao Bi kịch BÀ KHÙNG CHẾT ĐI RỒI SỐNG LẠI ĐỂ TRẢ NGHIỆP lại xảy ra theo cơ chế tâm lý nào?",
+      "unserved_question": "Tại sao Bi kịch BÀ KHÙNG CHẾT ĐI RỒI SỐNG LẠI ĐỂ TRẢ NGHIỆP lại xảy ra theo cơ chế tâm lý nào?",
+      "editorial_angle": "recognition → mechanism → self-understanding → practical shift",
+      "promise": "Hiểu cơ chế đằng sau Bi kịch BÀ KHÙNG CHẾT ĐI RỒI SỐNG LẠI ĐỂ TRẢ NGHIỆP để tự kiểm soát thay vì bị cuốn theo.",
+      "competitor_coverage": "observed",
+      "specific_moment_coverage": "evidence_backed",
+      "evidence_sources": [
+        "serpapi",
+        "google_trends"
+      ],
+      "evidence_count": 9,
+      "evidence_summary": {
+        "competitors": {
+          "observed_items": 1,
+          "keyword_aligned_items": 1
+        },
+        "trends": {
+          "rising_queries": [],
+          "timeline_points": 52
+        },
+        "questions": []
+      },
+      "channel_fit": "high",
+      "opportunity_score": 43,
+      "score_breakdown": {
+        "demand": 43,
+        "evidence_quality": 25,
+        "competitor_coverage": 15,
+        "channel_fit": 20
+      },
+      "risk_flags": [
+        "needs_validation"
+      ],
+      "coverage_terms": [
+        "Bi kịch BÀ KHÙNG CHẾT ĐI RỒI SỐNG LẠI ĐỂ TRẢ NGHIỆP"
+      ]
+    },
+    {
+      "opportunity_id": "opp-c9ad9d10c7",
+      "keyword": "NGƯỜI CHẾT SỐNG LẠI! – Chuyện Ma Có Thật Tập 98",
+      "country": "VN",
+      "language": "vi",
+      "gap_statement": "Đối thủ bao phủ '[ Tập 1134 ] CHẾT ĐI SỐNG LẠI - Chuyện Tâm Linh' ở mức tổng quát; sub-niche 'NGƯỜI CHẾT SỐNG LẠI! – Chuyện Ma Có Thật Tập 98' có nhu cầu cụ thể nhưng chưa được giải quyết sâu theo cơ chế tâm lý.",
+      "audience_moment": "Người xem tại VN đang tìm: Tại sao NGƯỜI CHẾT SỐNG LẠI! – Chuyện Ma Có Thật Tập 98 lại xảy ra theo cơ chế tâm lý nào?",
+      "unserved_question": "Tại sao NGƯỜI CHẾT SỐNG LẠI! – Chuyện Ma Có Thật Tập 98 lại xảy ra theo cơ chế tâm lý nào?",
+      "editorial_angle": "recognition → mechanism → self-understanding → practical shift",
+      "promise": "Hiểu cơ chế đằng sau NGƯỜI CHẾT SỐNG LẠI! – Chuyện Ma Có Thật Tập 98 để tự kiểm soát thay vì bị cuốn theo.",
+      "competitor_coverage": "observed",
+      "specific_moment_coverage": "evidence_backed",
+      "evidence_sources": [
+        "serpapi",
+        "google_trends"
+      ],
+      "evidence_count": 9,
+      "evidence_summary": {
+        "competitors": {
+          "observed_items": 1,
+          "keyword_aligned_items": 1
+        },
+        "trends": {
+          "rising_queries": [],
+          "timeline_points": 52
+        },
+        "questions": []
+      },
+      "channel_fit": "high",
+      "opportunity_score": 43,
+      "score_breakdown": {
+        "demand": 43,
+        "evidence_quality": 25,
+        "competitor_coverage": 15,
+        "channel_fit": 20
+      },
+      "risk_flags": [
+        "needs_validation"
+      ],
+      "coverage_terms": [
+        "NGƯỜI CHẾT SỐNG LẠI! – Chuyện Ma Có Thật Tập 98"
+      ]
+    },
+    {
+      "opportunity_id": "opp-b8ba4f0fd7",
+      "keyword": "Bí ấn chuyện người chết 12 tiếng bỗng dưng sống lại",
+      "country": "VN",
+      "language": "vi",
+      "gap_statement": "Đối thủ bao phủ '[ Tập 1134 ] CHẾT ĐI SỐNG LẠI - Chuyện Tâm Linh' ở mức tổng quát; sub-niche 'Bí ấn chuyện người chết 12 tiếng bỗng dưng sống lại' có nhu cầu cụ thể nhưng chưa được giải quyết sâu theo cơ chế tâm lý.",
+      "audience_moment": "Người xem tại VN đang tìm: Tại sao Bí ấn chuyện người chết 12 tiếng bỗng dưng sống lại lại xảy ra theo cơ chế tâm lý nào?",
+      "unserved_question": "Tại sao Bí ấn chuyện người chết 12 tiếng bỗng dưng sống lại lại xảy ra theo cơ chế tâm lý nào?",
+      "editorial_angle": "recognition → mechanism → self-understanding → practical shift",
+      "promise": "Hiểu cơ chế đằng sau Bí ấn chuyện người chết 12 tiếng bỗng dưng sống lại để tự kiểm soát thay vì bị cuốn theo.",
+      "competitor_coverage": "observed",
+      "specific_moment_coverage": "evidence_backed",
+      "evidence_sources": [
+        "serpapi",
+        "google_trends"
+      ],
+      "evidence_count": 9,
+      "evidence_summary": {
+        "competitors": {
+          "observed_items": 1,
+          "keyword_aligned_items": 1
+        },
+        "trends": {
+          "rising_queries": [],
+          "timeline_points": 52
+        },
+        "questions": []
+      },
+      "channel_fit": "high",
+      "opportunity_score": 43,
+      "score_breakdown": {
+        "demand": 43,
+        "evidence_quality": 25,
+        "competitor_coverage": 15,
+        "channel_fit": 20
+      },
+      "risk_flags": [
+        "needs_validation"
+      ],
+      "coverage_terms": [
+        "Bí ấn chuyện người chết 12 tiếng bỗng dưng sống lại"
+      ]
+    }
+  ],
+  "selected_opportunity_id": null
+}

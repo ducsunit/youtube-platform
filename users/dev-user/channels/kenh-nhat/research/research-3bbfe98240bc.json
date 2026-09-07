@@ -1,0 +1,1690 @@
+{
+  "research_run_id": "research-3bbfe98240bc",
+  "user_id": "dev-user",
+  "channel_id": "kenh-nhat",
+  "youtube_channel_id": "UCL3xuEku7ezoFg2C9pwcTXg",
+  "keyword": "tâm linh - tin tức, hình ảnh, video, bình luận",
+  "country": "VN",
+  "language": "vi",
+  "created_at": "2026-09-07T04:32:16.766751+00:00",
+  "evidence": {
+    "serpapi": {
+      "source": "serpapi",
+      "status": "ok",
+      "query": "tâm linh - tin tức, hình ảnh, video, bình luận",
+      "records": [
+        {
+          "title": "văn hóa tâm linh - tin tức, hình ảnh, video, bình luận",
+          "link": "https://giacngo.vn/van-hoa-tam-linh-tag27673.html",
+          "snippet": "Tin nhanh, hình ảnh, video clip, bình luận mới về văn hóa tâm linh. Cập nhật nhiều tin tức độc quyền 24h về văn hóa tâm linh nhanh và nóng nhất liên tục ..."
+        },
+        {
+          "title": "văn hóa tâm linh - tin tức, hình ảnh, video, bình luận",
+          "link": "https://www.sggp.org.vn/van-hoa-tam-linh-tag345048.html",
+          "snippet": "Tin nhanh, hình ảnh, video clip, bình luận mới về văn hóa tâm linh. Cập nhật nhiều tin tức độc quyền 24h về văn hóa tâm linh nhanh và nóng nhất liên tục ..."
+        },
+        {
+          "title": "tâm linh - tin tức, hình ảnh, video, bình luận",
+          "link": "https://www.tinnhanhchungkhoan.vn/tam-linh-tag83293.html",
+          "snippet": "Tin nhanh, hình ảnh, video clip, bình luận mới về tâm linh. Cập nhật nhiều tin tức độc quyền 24h về tâm linh nhanh và nóng nhất liên tục trong ngày."
+        },
+        {
+          "title": "Mê tín dị đoan: tin tức, hình ảnh, video, bình luận mới nhất",
+          "link": "https://thanhnien.vn/me-tin-di-doan-tags1183271.html",
+          "snippet": "Công an tỉnh Đắk Lắk đã khởi tố cặp vợ chồng lợi dụng yếu tố tâm linh lừa bán kết quả xổ số cho rất nhiều người chiếm đoạt hàng tỉ đồng. Thủ đoạn của cặp vợ ..."
+        },
+        {
+          "title": "không gian tâm linh' - tin tức, hình ảnh, video, bình luận",
+          "link": "https://giacngo.vn/khong-gian-tam-linh-tag17616.html",
+          "snippet": "Tin nhanh, hình ảnh, video clip, bình luận mới về không gian tâm linh'. Cập nhật nhiều tin tức độc quyền 24h về không gian tâm linh' nhanh và nóng nhất liên ..."
+        },
+        {
+          "title": "phim kinh dị tâm linh - tin tức, hình ảnh, video, bình luận",
+          "link": "https://tuoitre.vn/plo/phim-kinh-di-tam-linh-tag76926.html",
+          "snippet": "Tin nhanh, hình ảnh, video clip, bình luận mới về phim kinh dị tâm linh. Cập nhật nhiều tin tức độc quyền 24h về phim kinh dị tâm linh nhanh và nóng nhất ..."
+        },
+        {
+          "title": "cột mốc tâm linh - tin tức, hình ảnh, video, bình luận",
+          "link": "https://www.sggp.org.vn/cot-moc-tam-linh-tag105292.html",
+          "snippet": "Tin nhanh, hình ảnh, video clip, bình luận mới về cột mốc tâm linh. Cập nhật nhiều tin tức độc quyền 24h về cột mốc tâm linh nhanh và nóng nhất liên tục trong"
+        },
+        {
+          "title": "lệch chuẩn tâm linh - tin tức, hình ảnh, video, bình luận",
+          "link": "https://plo.vn/lech-chuan-tam-linh-tag446083.html",
+          "snippet": "Tin nhanh, hình ảnh, video clip, bình luận mới về lệch chuẩn tâm linh. Cập nhật nhiều tin tức độc quyền 24h về lệch chuẩn tâm linh nhanh và nóng nhất liên tục"
+        },
+        {
+          "title": "Tin tức, hình ảnh, video clip mới nhất về lừa đảo tâm linh",
+          "link": "https://hanoimoi.vn/lua-dao-tam-linh-ptag.html",
+          "snippet": "Tin tức cập nhật liên quan đến lừa đảo tâm linh. Lừa đảo tâm linh hơn 5 tỷ đồng, người phụ nữ lĩnh án 16 năm tù."
+        }
+      ],
+      "retrieved_at": "2026-09-07T04:32:16.598559+00:00",
+      "error": null
+    },
+    "google_trends": {
+      "source": "google_trends",
+      "status": "ok",
+      "query": "tâm linh - tin tức, hình ảnh, video, bình luận",
+      "records": [
+        {
+          "date": "14 – 20 thg 9, 2025",
+          "values": [
+            {
+              "query": "tâm linh - tin tức",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            },
+            {
+              "query": "hình ảnh",
+              "query_index": 1,
+              "value": "50",
+              "extracted_value": 50
+            },
+            {
+              "query": "video",
+              "query_index": 2,
+              "value": "68",
+              "extracted_value": 68
+            },
+            {
+              "query": "bình luận",
+              "query_index": 3,
+              "value": "2",
+              "extracted_value": 2
+            }
+          ]
+        },
+        {
+          "date": "21 – 27 thg 9, 2025",
+          "values": [
+            {
+              "query": "tâm linh - tin tức",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            },
+            {
+              "query": "hình ảnh",
+              "query_index": 1,
+              "value": "59",
+              "extracted_value": 59
+            },
+            {
+              "query": "video",
+              "query_index": 2,
+              "value": "69",
+              "extracted_value": 69
+            },
+            {
+              "query": "bình luận",
+              "query_index": 3,
+              "value": "3",
+              "extracted_value": 3
+            }
+          ]
+        },
+        {
+          "date": "28 thg 9 – 4 thg 10, 2025",
+          "values": [
+            {
+              "query": "tâm linh - tin tức",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            },
+            {
+              "query": "hình ảnh",
+              "query_index": 1,
+              "value": "58",
+              "extracted_value": 58
+            },
+            {
+              "query": "video",
+              "query_index": 2,
+              "value": "72",
+              "extracted_value": 72
+            },
+            {
+              "query": "bình luận",
+              "query_index": 3,
+              "value": "3",
+              "extracted_value": 3
+            }
+          ]
+        },
+        {
+          "date": "5 – 11 thg 10, 2025",
+          "values": [
+            {
+              "query": "tâm linh - tin tức",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            },
+            {
+              "query": "hình ảnh",
+              "query_index": 1,
+              "value": "61",
+              "extracted_value": 61
+            },
+            {
+              "query": "video",
+              "query_index": 2,
+              "value": "73",
+              "extracted_value": 73
+            },
+            {
+              "query": "bình luận",
+              "query_index": 3,
+              "value": "3",
+              "extracted_value": 3
+            }
+          ]
+        },
+        {
+          "date": "12 – 18 thg 10, 2025",
+          "values": [
+            {
+              "query": "tâm linh - tin tức",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            },
+            {
+              "query": "hình ảnh",
+              "query_index": 1,
+              "value": "63",
+              "extracted_value": 63
+            },
+            {
+              "query": "video",
+              "query_index": 2,
+              "value": "73",
+              "extracted_value": 73
+            },
+            {
+              "query": "bình luận",
+              "query_index": 3,
+              "value": "3",
+              "extracted_value": 3
+            }
+          ]
+        },
+        {
+          "date": "19 – 25 thg 10, 2025",
+          "values": [
+            {
+              "query": "tâm linh - tin tức",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            },
+            {
+              "query": "hình ảnh",
+              "query_index": 1,
+              "value": "62",
+              "extracted_value": 62
+            },
+            {
+              "query": "video",
+              "query_index": 2,
+              "value": "73",
+              "extracted_value": 73
+            },
+            {
+              "query": "bình luận",
+              "query_index": 3,
+              "value": "3",
+              "extracted_value": 3
+            }
+          ]
+        },
+        {
+          "date": "26 thg 10 – 1 thg 11, 2025",
+          "values": [
+            {
+              "query": "tâm linh - tin tức",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            },
+            {
+              "query": "hình ảnh",
+              "query_index": 1,
+              "value": "61",
+              "extracted_value": 61
+            },
+            {
+              "query": "video",
+              "query_index": 2,
+              "value": "73",
+              "extracted_value": 73
+            },
+            {
+              "query": "bình luận",
+              "query_index": 3,
+              "value": "3",
+              "extracted_value": 3
+            }
+          ]
+        },
+        {
+          "date": "2 – 8 thg 11, 2025",
+          "values": [
+            {
+              "query": "tâm linh - tin tức",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            },
+            {
+              "query": "hình ảnh",
+              "query_index": 1,
+              "value": "59",
+              "extracted_value": 59
+            },
+            {
+              "query": "video",
+              "query_index": 2,
+              "value": "81",
+              "extracted_value": 81
+            },
+            {
+              "query": "bình luận",
+              "query_index": 3,
+              "value": "3",
+              "extracted_value": 3
+            }
+          ]
+        },
+        {
+          "date": "9 – 15 thg 11, 2025",
+          "values": [
+            {
+              "query": "tâm linh - tin tức",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            },
+            {
+              "query": "hình ảnh",
+              "query_index": 1,
+              "value": "60",
+              "extracted_value": 60
+            },
+            {
+              "query": "video",
+              "query_index": 2,
+              "value": "84",
+              "extracted_value": 84
+            },
+            {
+              "query": "bình luận",
+              "query_index": 3,
+              "value": "3",
+              "extracted_value": 3
+            }
+          ]
+        },
+        {
+          "date": "16 – 22 thg 11, 2025",
+          "values": [
+            {
+              "query": "tâm linh - tin tức",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            },
+            {
+              "query": "hình ảnh",
+              "query_index": 1,
+              "value": "54",
+              "extracted_value": 54
+            },
+            {
+              "query": "video",
+              "query_index": 2,
+              "value": "77",
+              "extracted_value": 77
+            },
+            {
+              "query": "bình luận",
+              "query_index": 3,
+              "value": "3",
+              "extracted_value": 3
+            }
+          ]
+        },
+        {
+          "date": "23 – 29 thg 11, 2025",
+          "values": [
+            {
+              "query": "tâm linh - tin tức",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            },
+            {
+              "query": "hình ảnh",
+              "query_index": 1,
+              "value": "59",
+              "extracted_value": 59
+            },
+            {
+              "query": "video",
+              "query_index": 2,
+              "value": "87",
+              "extracted_value": 87
+            },
+            {
+              "query": "bình luận",
+              "query_index": 3,
+              "value": "3",
+              "extracted_value": 3
+            }
+          ]
+        },
+        {
+          "date": "30 thg 11 – 6 thg 12, 2025",
+          "values": [
+            {
+              "query": "tâm linh - tin tức",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            },
+            {
+              "query": "hình ảnh",
+              "query_index": 1,
+              "value": "60",
+              "extracted_value": 60
+            },
+            {
+              "query": "video",
+              "query_index": 2,
+              "value": "100",
+              "extracted_value": 100
+            },
+            {
+              "query": "bình luận",
+              "query_index": 3,
+              "value": "3",
+              "extracted_value": 3
+            }
+          ]
+        },
+        {
+          "date": "7 – 13 thg 12, 2025",
+          "values": [
+            {
+              "query": "tâm linh - tin tức",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            },
+            {
+              "query": "hình ảnh",
+              "query_index": 1,
+              "value": "57",
+              "extracted_value": 57
+            },
+            {
+              "query": "video",
+              "query_index": 2,
+              "value": "81",
+              "extracted_value": 81
+            },
+            {
+              "query": "bình luận",
+              "query_index": 3,
+              "value": "3",
+              "extracted_value": 3
+            }
+          ]
+        },
+        {
+          "date": "14 – 20 thg 12, 2025",
+          "values": [
+            {
+              "query": "tâm linh - tin tức",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            },
+            {
+              "query": "hình ảnh",
+              "query_index": 1,
+              "value": "58",
+              "extracted_value": 58
+            },
+            {
+              "query": "video",
+              "query_index": 2,
+              "value": "77",
+              "extracted_value": 77
+            },
+            {
+              "query": "bình luận",
+              "query_index": 3,
+              "value": "4",
+              "extracted_value": 4
+            }
+          ]
+        },
+        {
+          "date": "21 – 27 thg 12, 2025",
+          "values": [
+            {
+              "query": "tâm linh - tin tức",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            },
+            {
+              "query": "hình ảnh",
+              "query_index": 1,
+              "value": "55",
+              "extracted_value": 55
+            },
+            {
+              "query": "video",
+              "query_index": 2,
+              "value": "74",
+              "extracted_value": 74
+            },
+            {
+              "query": "bình luận",
+              "query_index": 3,
+              "value": "3",
+              "extracted_value": 3
+            }
+          ]
+        },
+        {
+          "date": "28 thg 12, 2025 – 3 thg 1, 2026",
+          "values": [
+            {
+              "query": "tâm linh - tin tức",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            },
+            {
+              "query": "hình ảnh",
+              "query_index": 1,
+              "value": "49",
+              "extracted_value": 49
+            },
+            {
+              "query": "video",
+              "query_index": 2,
+              "value": "73",
+              "extracted_value": 73
+            },
+            {
+              "query": "bình luận",
+              "query_index": 3,
+              "value": "3",
+              "extracted_value": 3
+            }
+          ]
+        },
+        {
+          "date": "4 – 10 thg 1, 2026",
+          "values": [
+            {
+              "query": "tâm linh - tin tức",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            },
+            {
+              "query": "hình ảnh",
+              "query_index": 1,
+              "value": "48",
+              "extracted_value": 48
+            },
+            {
+              "query": "video",
+              "query_index": 2,
+              "value": "69",
+              "extracted_value": 69
+            },
+            {
+              "query": "bình luận",
+              "query_index": 3,
+              "value": "3",
+              "extracted_value": 3
+            }
+          ]
+        },
+        {
+          "date": "11 – 17 thg 1, 2026",
+          "values": [
+            {
+              "query": "tâm linh - tin tức",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            },
+            {
+              "query": "hình ảnh",
+              "query_index": 1,
+              "value": "41",
+              "extracted_value": 41
+            },
+            {
+              "query": "video",
+              "query_index": 2,
+              "value": "70",
+              "extracted_value": 70
+            },
+            {
+              "query": "bình luận",
+              "query_index": 3,
+              "value": "4",
+              "extracted_value": 4
+            }
+          ]
+        },
+        {
+          "date": "18 – 24 thg 1, 2026",
+          "values": [
+            {
+              "query": "tâm linh - tin tức",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            },
+            {
+              "query": "hình ảnh",
+              "query_index": 1,
+              "value": "48",
+              "extracted_value": 48
+            },
+            {
+              "query": "video",
+              "query_index": 2,
+              "value": "70",
+              "extracted_value": 70
+            },
+            {
+              "query": "bình luận",
+              "query_index": 3,
+              "value": "4",
+              "extracted_value": 4
+            }
+          ]
+        },
+        {
+          "date": "25 – 31 thg 1, 2026",
+          "values": [
+            {
+              "query": "tâm linh - tin tức",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            },
+            {
+              "query": "hình ảnh",
+              "query_index": 1,
+              "value": "50",
+              "extracted_value": 50
+            },
+            {
+              "query": "video",
+              "query_index": 2,
+              "value": "74",
+              "extracted_value": 74
+            },
+            {
+              "query": "bình luận",
+              "query_index": 3,
+              "value": "3",
+              "extracted_value": 3
+            }
+          ]
+        },
+        {
+          "date": "1 – 7 thg 2, 2026",
+          "values": [
+            {
+              "query": "tâm linh - tin tức",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            },
+            {
+              "query": "hình ảnh",
+              "query_index": 1,
+              "value": "48",
+              "extracted_value": 48
+            },
+            {
+              "query": "video",
+              "query_index": 2,
+              "value": "74",
+              "extracted_value": 74
+            },
+            {
+              "query": "bình luận",
+              "query_index": 3,
+              "value": "3",
+              "extracted_value": 3
+            }
+          ]
+        },
+        {
+          "date": "8 – 14 thg 2, 2026",
+          "values": [
+            {
+              "query": "tâm linh - tin tức",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            },
+            {
+              "query": "hình ảnh",
+              "query_index": 1,
+              "value": "37",
+              "extracted_value": 37
+            },
+            {
+              "query": "video",
+              "query_index": 2,
+              "value": "75",
+              "extracted_value": 75
+            },
+            {
+              "query": "bình luận",
+              "query_index": 3,
+              "value": "2",
+              "extracted_value": 2
+            }
+          ]
+        },
+        {
+          "date": "15 – 21 thg 2, 2026",
+          "values": [
+            {
+              "query": "tâm linh - tin tức",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            },
+            {
+              "query": "hình ảnh",
+              "query_index": 1,
+              "value": "29",
+              "extracted_value": 29
+            },
+            {
+              "query": "video",
+              "query_index": 2,
+              "value": "78",
+              "extracted_value": 78
+            },
+            {
+              "query": "bình luận",
+              "query_index": 3,
+              "value": "2",
+              "extracted_value": 2
+            }
+          ]
+        },
+        {
+          "date": "22 – 28 thg 2, 2026",
+          "values": [
+            {
+              "query": "tâm linh - tin tức",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            },
+            {
+              "query": "hình ảnh",
+              "query_index": 1,
+              "value": "46",
+              "extracted_value": 46
+            },
+            {
+              "query": "video",
+              "query_index": 2,
+              "value": "74",
+              "extracted_value": 74
+            },
+            {
+              "query": "bình luận",
+              "query_index": 3,
+              "value": "3",
+              "extracted_value": 3
+            }
+          ]
+        },
+        {
+          "date": "1 – 7 thg 3, 2026",
+          "values": [
+            {
+              "query": "tâm linh - tin tức",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            },
+            {
+              "query": "hình ảnh",
+              "query_index": 1,
+              "value": "53",
+              "extracted_value": 53
+            },
+            {
+              "query": "video",
+              "query_index": 2,
+              "value": "69",
+              "extracted_value": 69
+            },
+            {
+              "query": "bình luận",
+              "query_index": 3,
+              "value": "3",
+              "extracted_value": 3
+            }
+          ]
+        },
+        {
+          "date": "8 – 14 thg 3, 2026",
+          "values": [
+            {
+              "query": "tâm linh - tin tức",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            },
+            {
+              "query": "hình ảnh",
+              "query_index": 1,
+              "value": "54",
+              "extracted_value": 54
+            },
+            {
+              "query": "video",
+              "query_index": 2,
+              "value": "81",
+              "extracted_value": 81
+            },
+            {
+              "query": "bình luận",
+              "query_index": 3,
+              "value": "3",
+              "extracted_value": 3
+            }
+          ]
+        },
+        {
+          "date": "15 – 21 thg 3, 2026",
+          "values": [
+            {
+              "query": "tâm linh - tin tức",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            },
+            {
+              "query": "hình ảnh",
+              "query_index": 1,
+              "value": "49",
+              "extracted_value": 49
+            },
+            {
+              "query": "video",
+              "query_index": 2,
+              "value": "71",
+              "extracted_value": 71
+            },
+            {
+              "query": "bình luận",
+              "query_index": 3,
+              "value": "3",
+              "extracted_value": 3
+            }
+          ]
+        },
+        {
+          "date": "22 – 28 thg 3, 2026",
+          "values": [
+            {
+              "query": "tâm linh - tin tức",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            },
+            {
+              "query": "hình ảnh",
+              "query_index": 1,
+              "value": "48",
+              "extracted_value": 48
+            },
+            {
+              "query": "video",
+              "query_index": 2,
+              "value": "71",
+              "extracted_value": 71
+            },
+            {
+              "query": "bình luận",
+              "query_index": 3,
+              "value": "3",
+              "extracted_value": 3
+            }
+          ]
+        },
+        {
+          "date": "29 thg 3 – 4 thg 4, 2026",
+          "values": [
+            {
+              "query": "tâm linh - tin tức",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            },
+            {
+              "query": "hình ảnh",
+              "query_index": 1,
+              "value": "49",
+              "extracted_value": 49
+            },
+            {
+              "query": "video",
+              "query_index": 2,
+              "value": "74",
+              "extracted_value": 74
+            },
+            {
+              "query": "bình luận",
+              "query_index": 3,
+              "value": "4",
+              "extracted_value": 4
+            }
+          ]
+        },
+        {
+          "date": "5 – 11 thg 4, 2026",
+          "values": [
+            {
+              "query": "tâm linh - tin tức",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            },
+            {
+              "query": "hình ảnh",
+              "query_index": 1,
+              "value": "49",
+              "extracted_value": 49
+            },
+            {
+              "query": "video",
+              "query_index": 2,
+              "value": "79",
+              "extracted_value": 79
+            },
+            {
+              "query": "bình luận",
+              "query_index": 3,
+              "value": "3",
+              "extracted_value": 3
+            }
+          ]
+        },
+        {
+          "date": "12 – 18 thg 4, 2026",
+          "values": [
+            {
+              "query": "tâm linh - tin tức",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            },
+            {
+              "query": "hình ảnh",
+              "query_index": 1,
+              "value": "50",
+              "extracted_value": 50
+            },
+            {
+              "query": "video",
+              "query_index": 2,
+              "value": "77",
+              "extracted_value": 77
+            },
+            {
+              "query": "bình luận",
+              "query_index": 3,
+              "value": "3",
+              "extracted_value": 3
+            }
+          ]
+        },
+        {
+          "date": "19 – 25 thg 4, 2026",
+          "values": [
+            {
+              "query": "tâm linh - tin tức",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            },
+            {
+              "query": "hình ảnh",
+              "query_index": 1,
+              "value": "50",
+              "extracted_value": 50
+            },
+            {
+              "query": "video",
+              "query_index": 2,
+              "value": "72",
+              "extracted_value": 72
+            },
+            {
+              "query": "bình luận",
+              "query_index": 3,
+              "value": "3",
+              "extracted_value": 3
+            }
+          ]
+        },
+        {
+          "date": "26 thg 4 – 2 thg 5, 2026",
+          "values": [
+            {
+              "query": "tâm linh - tin tức",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            },
+            {
+              "query": "hình ảnh",
+              "query_index": 1,
+              "value": "43",
+              "extracted_value": 43
+            },
+            {
+              "query": "video",
+              "query_index": 2,
+              "value": "72",
+              "extracted_value": 72
+            },
+            {
+              "query": "bình luận",
+              "query_index": 3,
+              "value": "3",
+              "extracted_value": 3
+            }
+          ]
+        },
+        {
+          "date": "3 – 9 thg 5, 2026",
+          "values": [
+            {
+              "query": "tâm linh - tin tức",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            },
+            {
+              "query": "hình ảnh",
+              "query_index": 1,
+              "value": "48",
+              "extracted_value": 48
+            },
+            {
+              "query": "video",
+              "query_index": 2,
+              "value": "70",
+              "extracted_value": 70
+            },
+            {
+              "query": "bình luận",
+              "query_index": 3,
+              "value": "3",
+              "extracted_value": 3
+            }
+          ]
+        },
+        {
+          "date": "10 – 16 thg 5, 2026",
+          "values": [
+            {
+              "query": "tâm linh - tin tức",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            },
+            {
+              "query": "hình ảnh",
+              "query_index": 1,
+              "value": "43",
+              "extracted_value": 43
+            },
+            {
+              "query": "video",
+              "query_index": 2,
+              "value": "75",
+              "extracted_value": 75
+            },
+            {
+              "query": "bình luận",
+              "query_index": 3,
+              "value": "3",
+              "extracted_value": 3
+            }
+          ]
+        },
+        {
+          "date": "17 – 23 thg 5, 2026",
+          "values": [
+            {
+              "query": "tâm linh - tin tức",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            },
+            {
+              "query": "hình ảnh",
+              "query_index": 1,
+              "value": "40",
+              "extracted_value": 40
+            },
+            {
+              "query": "video",
+              "query_index": 2,
+              "value": "73",
+              "extracted_value": 73
+            },
+            {
+              "query": "bình luận",
+              "query_index": 3,
+              "value": "3",
+              "extracted_value": 3
+            }
+          ]
+        },
+        {
+          "date": "24 – 30 thg 5, 2026",
+          "values": [
+            {
+              "query": "tâm linh - tin tức",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            },
+            {
+              "query": "hình ảnh",
+              "query_index": 1,
+              "value": "36",
+              "extracted_value": 36
+            },
+            {
+              "query": "video",
+              "query_index": 2,
+              "value": "71",
+              "extracted_value": 71
+            },
+            {
+              "query": "bình luận",
+              "query_index": 3,
+              "value": "3",
+              "extracted_value": 3
+            }
+          ]
+        },
+        {
+          "date": "31 thg 5 – 6 thg 6, 2026",
+          "values": [
+            {
+              "query": "tâm linh - tin tức",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            },
+            {
+              "query": "hình ảnh",
+              "query_index": 1,
+              "value": "37",
+              "extracted_value": 37
+            },
+            {
+              "query": "video",
+              "query_index": 2,
+              "value": "81",
+              "extracted_value": 81
+            },
+            {
+              "query": "bình luận",
+              "query_index": 3,
+              "value": "3",
+              "extracted_value": 3
+            }
+          ]
+        },
+        {
+          "date": "7 – 13 thg 6, 2026",
+          "values": [
+            {
+              "query": "tâm linh - tin tức",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            },
+            {
+              "query": "hình ảnh",
+              "query_index": 1,
+              "value": "34",
+              "extracted_value": 34
+            },
+            {
+              "query": "video",
+              "query_index": 2,
+              "value": "68",
+              "extracted_value": 68
+            },
+            {
+              "query": "bình luận",
+              "query_index": 3,
+              "value": "4",
+              "extracted_value": 4
+            }
+          ]
+        },
+        {
+          "date": "14 – 20 thg 6, 2026",
+          "values": [
+            {
+              "query": "tâm linh - tin tức",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            },
+            {
+              "query": "hình ảnh",
+              "query_index": 1,
+              "value": "33",
+              "extracted_value": 33
+            },
+            {
+              "query": "video",
+              "query_index": 2,
+              "value": "62",
+              "extracted_value": 62
+            },
+            {
+              "query": "bình luận",
+              "query_index": 3,
+              "value": "4",
+              "extracted_value": 4
+            }
+          ]
+        },
+        {
+          "date": "21 – 27 thg 6, 2026",
+          "values": [
+            {
+              "query": "tâm linh - tin tức",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            },
+            {
+              "query": "hình ảnh",
+              "query_index": 1,
+              "value": "30",
+              "extracted_value": 30
+            },
+            {
+              "query": "video",
+              "query_index": 2,
+              "value": "61",
+              "extracted_value": 61
+            },
+            {
+              "query": "bình luận",
+              "query_index": 3,
+              "value": "3",
+              "extracted_value": 3
+            }
+          ]
+        },
+        {
+          "date": "28 thg 6 – 4 thg 7, 2026",
+          "values": [
+            {
+              "query": "tâm linh - tin tức",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            },
+            {
+              "query": "hình ảnh",
+              "query_index": 1,
+              "value": "30",
+              "extracted_value": 30
+            },
+            {
+              "query": "video",
+              "query_index": 2,
+              "value": "60",
+              "extracted_value": 60
+            },
+            {
+              "query": "bình luận",
+              "query_index": 3,
+              "value": "3",
+              "extracted_value": 3
+            }
+          ]
+        },
+        {
+          "date": "5 – 11 thg 7, 2026",
+          "values": [
+            {
+              "query": "tâm linh - tin tức",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            },
+            {
+              "query": "hình ảnh",
+              "query_index": 1,
+              "value": "32",
+              "extracted_value": 32
+            },
+            {
+              "query": "video",
+              "query_index": 2,
+              "value": "66",
+              "extracted_value": 66
+            },
+            {
+              "query": "bình luận",
+              "query_index": 3,
+              "value": "3",
+              "extracted_value": 3
+            }
+          ]
+        },
+        {
+          "date": "12 – 18 thg 7, 2026",
+          "values": [
+            {
+              "query": "tâm linh - tin tức",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            },
+            {
+              "query": "hình ảnh",
+              "query_index": 1,
+              "value": "33",
+              "extracted_value": 33
+            },
+            {
+              "query": "video",
+              "query_index": 2,
+              "value": "77",
+              "extracted_value": 77
+            },
+            {
+              "query": "bình luận",
+              "query_index": 3,
+              "value": "3",
+              "extracted_value": 3
+            }
+          ]
+        },
+        {
+          "date": "19 – 25 thg 7, 2026",
+          "values": [
+            {
+              "query": "tâm linh - tin tức",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            },
+            {
+              "query": "hình ảnh",
+              "query_index": 1,
+              "value": "26",
+              "extracted_value": 26
+            },
+            {
+              "query": "video",
+              "query_index": 2,
+              "value": "76",
+              "extracted_value": 76
+            },
+            {
+              "query": "bình luận",
+              "query_index": 3,
+              "value": "2",
+              "extracted_value": 2
+            }
+          ]
+        },
+        {
+          "date": "26 thg 7 – 1 thg 8, 2026",
+          "values": [
+            {
+              "query": "tâm linh - tin tức",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            },
+            {
+              "query": "hình ảnh",
+              "query_index": 1,
+              "value": "34",
+              "extracted_value": 34
+            },
+            {
+              "query": "video",
+              "query_index": 2,
+              "value": "73",
+              "extracted_value": 73
+            },
+            {
+              "query": "bình luận",
+              "query_index": 3,
+              "value": "3",
+              "extracted_value": 3
+            }
+          ]
+        },
+        {
+          "date": "2 – 8 thg 8, 2026",
+          "values": [
+            {
+              "query": "tâm linh - tin tức",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            },
+            {
+              "query": "hình ảnh",
+              "query_index": 1,
+              "value": "32",
+              "extracted_value": 32
+            },
+            {
+              "query": "video",
+              "query_index": 2,
+              "value": "69",
+              "extracted_value": 69
+            },
+            {
+              "query": "bình luận",
+              "query_index": 3,
+              "value": "3",
+              "extracted_value": 3
+            }
+          ]
+        },
+        {
+          "date": "9 – 15 thg 8, 2026",
+          "values": [
+            {
+              "query": "tâm linh - tin tức",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            },
+            {
+              "query": "hình ảnh",
+              "query_index": 1,
+              "value": "35",
+              "extracted_value": 35
+            },
+            {
+              "query": "video",
+              "query_index": 2,
+              "value": "73",
+              "extracted_value": 73
+            },
+            {
+              "query": "bình luận",
+              "query_index": 3,
+              "value": "3",
+              "extracted_value": 3
+            }
+          ]
+        },
+        {
+          "date": "16 – 22 thg 8, 2026",
+          "values": [
+            {
+              "query": "tâm linh - tin tức",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            },
+            {
+              "query": "hình ảnh",
+              "query_index": 1,
+              "value": "34",
+              "extracted_value": 34
+            },
+            {
+              "query": "video",
+              "query_index": 2,
+              "value": "71",
+              "extracted_value": 71
+            },
+            {
+              "query": "bình luận",
+              "query_index": 3,
+              "value": "3",
+              "extracted_value": 3
+            }
+          ]
+        },
+        {
+          "date": "23 – 29 thg 8, 2026",
+          "values": [
+            {
+              "query": "tâm linh - tin tức",
+              "query_index": 0,
+              "value": "<1",
+              "extracted_value": 0
+            },
+            {
+              "query": "hình ảnh",
+              "query_index": 1,
+              "value": "37",
+              "extracted_value": 37
+            },
+            {
+              "query": "video",
+              "query_index": 2,
+              "value": "65",
+              "extracted_value": 65
+            },
+            {
+              "query": "bình luận",
+              "query_index": 3,
+              "value": "3",
+              "extracted_value": 3
+            }
+          ]
+        },
+        {
+          "date": "30 thg 8 – 5 thg 9, 2026",
+          "values": [
+            {
+              "query": "tâm linh - tin tức",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            },
+            {
+              "query": "hình ảnh",
+              "query_index": 1,
+              "value": "35",
+              "extracted_value": 35
+            },
+            {
+              "query": "video",
+              "query_index": 2,
+              "value": "70",
+              "extracted_value": 70
+            },
+            {
+              "query": "bình luận",
+              "query_index": 3,
+              "value": "3",
+              "extracted_value": 3
+            }
+          ]
+        },
+        {
+          "date": "6 – 12 thg 9, 2026",
+          "values": [
+            {
+              "query": "tâm linh - tin tức",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            },
+            {
+              "query": "hình ảnh",
+              "query_index": 1,
+              "value": "35",
+              "extracted_value": 35
+            },
+            {
+              "query": "video",
+              "query_index": 2,
+              "value": "70",
+              "extracted_value": 70
+            },
+            {
+              "query": "bình luận",
+              "query_index": 3,
+              "value": "2",
+              "extracted_value": 2
+            }
+          ]
+        }
+      ],
+      "retrieved_at": "2026-09-07T04:32:16.764085+00:00",
+      "error": null
+    },
+    "vidiq": {
+      "source": "vidiq",
+      "status": "unavailable",
+      "query": "tâm linh - tin tức, hình ảnh, video, bình luận",
+      "records": [],
+      "retrieved_at": "2026-09-07T04:32:16.765949+00:00",
+      "error": "vidIQ tùy chọn: set VIDIQ_RESEARCH_JSON nếu có export"
+    }
+  },
+  "normalized": {
+    "keyword": "tâm linh - tin tức, hình ảnh, video, bình luận",
+    "country": "VN",
+    "language": "vi",
+    "demand_signals": {
+      "serpapi": 9,
+      "google_trends": 52,
+      "vidiq": 0
+    },
+    "source_status": {
+      "serpapi": "ok",
+      "google_trends": "ok",
+      "vidiq": "unavailable"
+    },
+    "provider_summary": {
+      "serpapi": {
+        "status": "ok",
+        "record_count": 9,
+        "error": null
+      },
+      "google_trends": {
+        "status": "ok",
+        "record_count": 52,
+        "error": null
+      },
+      "vidiq": {
+        "status": "unavailable",
+        "record_count": 0,
+        "error": "vidIQ tùy chọn: set VIDIQ_RESEARCH_JSON nếu có export"
+      }
+    }
+  },
+  "opportunities": [
+    {
+      "opportunity_id": "opp-32c6994112",
+      "keyword": "tâm linh - tin tức, hình ảnh, video, bình luận",
+      "country": "VN",
+      "language": "vi",
+      "gap_statement": "Đối thủ đang bao phủ 'tâm linh - tin tức, hình ảnh, video, bình luận' ở mức chủ đề; chưa có bằng chứng đủ mạnh rằng họ giải quyết khoảnh khắc/câu hỏi cụ thể 'tâm linh - tin tức, hình ảnh, video, bình luận' theo cấu trúc cơ chế tâm lý trước giải pháp.",
+      "audience_moment": "Người xem tại VN đang tìm câu trả lời cho: tâm linh - tin tức, hình ảnh, video, bình luận",
+      "unserved_question": "tâm linh - tin tức, hình ảnh, video, bình luận",
+      "editorial_angle": "recognition → mechanism → self-understanding → practical shift",
+      "promise": "Hiểu chính xác điều đang xảy ra phía sau 'tâm linh - tin tức, hình ảnh, video, bình luận' mà không biến nó thành lời khuyên sáo rỗng.",
+      "competitor_coverage": "observed",
+      "specific_moment_coverage": "needs_validation",
+      "evidence_sources": [
+        "serpapi",
+        "google_trends"
+      ],
+      "evidence_count": 61,
+      "evidence_summary": {
+        "competitors": {
+          "observed_items": 9,
+          "keyword_aligned_items": 9,
+          "sample_titles": [
+            "văn hóa tâm linh - tin tức, hình ảnh, video, bình luận",
+            "văn hóa tâm linh - tin tức, hình ảnh, video, bình luận",
+            "tâm linh - tin tức, hình ảnh, video, bình luận",
+            "Mê tín dị đoan: tin tức, hình ảnh, video, bình luận mới nhất",
+            "không gian tâm linh' - tin tức, hình ảnh, video, bình luận",
+            "phim kinh dị tâm linh - tin tức, hình ảnh, video, bình luận",
+            "cột mốc tâm linh - tin tức, hình ảnh, video, bình luận",
+            "lệch chuẩn tâm linh - tin tức, hình ảnh, video, bình luận",
+            "Tin tức, hình ảnh, video clip mới nhất về lừa đảo tâm linh"
+          ],
+          "coverage_ratio": 1.0
+        },
+        "trends": {
+          "rising_queries": [],
+          "timeline_points": 52
+        },
+        "questions": []
+      },
+      "channel_fit": "high",
+      "opportunity_score": 88,
+      "score_breakdown": {
+        "demand": 30,
+        "evidence_quality": 20,
+        "competitor_coverage": 18,
+        "channel_fit": 20
+      },
+      "risk_flags": [
+        "no_specific_demand_signal"
+      ],
+      "coverage_terms": [
+        "tâm linh - tin tức, hình ảnh, video, bình luận",
+        "văn hóa tâm linh - tin tức, hình ảnh, video, bình luận",
+        "văn hóa tâm linh - tin tức, hình ảnh, video, bình luận",
+        "tâm linh - tin tức, hình ảnh, video, bình luận",
+        "Mê tín dị đoan: tin tức, hình ảnh, video, bình luận mới nhất",
+        "không gian tâm linh' - tin tức, hình ảnh, video, bình luận",
+        "phim kinh dị tâm linh - tin tức, hình ảnh, video, bình luận",
+        "cột mốc tâm linh - tin tức, hình ảnh, video, bình luận",
+        "lệch chuẩn tâm linh - tin tức, hình ảnh, video, bình luận",
+        "Tin tức, hình ảnh, video clip mới nhất về lừa đảo tâm linh"
+      ]
+    }
+  ],
+  "selected_opportunity_id": null
+}

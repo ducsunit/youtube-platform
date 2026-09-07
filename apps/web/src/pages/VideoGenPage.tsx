@@ -14,7 +14,11 @@ import {
 import { LogViewer } from '../components/LogViewer';
 import { usePolling } from '../hooks/usePolling';
 import { useT } from '../i18n';
-import type { VeoJob } from '../types';
+import { useChannelContext } from '../contexts/ChannelContext';
+import type { ChannelScope, VeoJob } from '../types';
+
+const scopeForChannel = (channel: ReturnType<typeof useChannelContext>['currentChannel']): ChannelScope | null =>
+  channel ? { user_id: channel.user_id, channel_id: channel.channel_id } : null;
 
 const STATUS_INTERVAL_MS = 8000;
 const JOB_INTERVAL_MS = 3000;
@@ -44,20 +48,36 @@ function fmtBytes(n: number | null): string {
  */
 export function VideoGenPage() {
   const { t } = useT();
+  const { currentChannel, loading: channelLoading } = useChannelContext();
+  const scope = scopeForChannel(currentChannel);
+  const channelScope = scope ?? undefined;
+  const scopeKey = scope ? `${scope.user_id}:${scope.channel_id}` : null;
 
-  const veoPoll = usePolling(() => getVeoStatus(), {
-    enabled: true,
+  const veoPoll = usePolling(() => getVeoStatus(channelScope), {
+    enabled: scope !== null,
     intervalMs: STATUS_INTERVAL_MS,
   });
   const veo = veoPoll.data;
 
-  const runsPoll = usePolling(() => listRuns(), {
-    enabled: true,
+  const runsPoll = usePolling(() => (scope ? listRuns(scope) : Promise.resolve(null)), {
+    enabled: scope !== null,
     intervalMs: STATUS_INTERVAL_MS,
   });
-  const runs = runsPoll.data?.runs ?? [];
+  const [runsScopeKey, setRunsScopeKey] = useState<string | null>(null);
+  const scopeReady = scope !== null && runsScopeKey === scopeKey;
+  const runs = scopeReady ? runsPoll.data?.runs ?? [] : [];
 
   const [runId, setRunId] = useState<string>('');
+  useEffect(() => {
+    let cancelled = false;
+    setRunId('');
+    setRunsScopeKey(null);
+    if (!scopeKey) return () => { cancelled = true; };
+    void runsPoll.refresh().then(() => {
+      if (!cancelled) setRunsScopeKey(scopeKey);
+    });
+    return () => { cancelled = true; };
+  }, [scopeKey, runsPoll.refresh]);
   useEffect(() => {
     if (runId === '' && runs.length > 0) {
       const packRuns = runs.filter((r) => r.has_manifest);
@@ -65,11 +85,11 @@ export function VideoGenPage() {
     }
   }, [runs, runId]);
 
-  const candPoll = usePolling(() => getVeoCandidates(runId), {
-    enabled: runId !== '',
+  const candPoll = usePolling(() => getVeoCandidates(runId, channelScope), {
+    enabled: runId !== '' && scopeReady,
     intervalMs: STATUS_INTERVAL_MS,
   });
-  const cand = candPoll.data;
+  const cand = scopeReady && candPoll.data?.run_id === runId ? candPoll.data : undefined;
   const candidates = cand?.candidates ?? [];
 
   const [model, setModel] = useState<string>('');
@@ -78,19 +98,24 @@ export function VideoGenPage() {
   }, [veo, model]);
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [skipExisting, setSkipExisting] = useState(true);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [job, setJob] = useState<VeoJob | null>(null);
+
   useEffect(() => {
     setSelected(new Set());
   }, [runId]);
-
-  const [skipExisting, setSkipExisting] = useState(true);
-  const [actionError, setActionError] = useState<string | null>(null);
-
-  const [jobId, setJobId] = useState<string | null>(null);
-  const [job, setJob] = useState<VeoJob | null>(null);
+  useEffect(() => {
+    setSelected(new Set());
+    setActionError(null);
+    setJobId(null);
+    setJob(null);
+  }, [scopeKey]);
   const jobDone = job !== null && job.status !== 'running';
   const jobRunning = jobId !== null && !jobDone;
-  const jobPoll = usePolling(() => getVeoJob(jobId ?? ''), {
-    enabled: jobId !== null && !jobDone,
+  const jobPoll = usePolling(() => getVeoJob(jobId ?? '', channelScope), {
+    enabled: jobId !== null && !jobDone && scope !== null,
     intervalMs: JOB_INTERVAL_MS,
   });
   useEffect(() => {
@@ -130,7 +155,7 @@ export function VideoGenPage() {
         images: selectedList,
         model: model || undefined,
         skip_existing: skipExisting,
-      });
+      }, channelScope);
       setJobId(started.job_id);
       setJob(null);
     } catch (e) {
@@ -141,19 +166,24 @@ export function VideoGenPage() {
   async function doCancel() {
     if (!jobId) return;
     try {
-      await cancelVeoJob(jobId);
+      await cancelVeoJob(jobId, channelScope);
     } catch (e) {
       setActionError(errMessage(e));
     }
   }
 
   const canGenerate =
+    scopeReady &&
     (veo?.available ?? false) &&
     runId !== '' &&
     selectedList.length > 0 &&
     selectedList.length <= MAX_PER_JOB &&
     !jobRunning &&
     !(veo?.busy ?? false);
+
+  if (channelLoading || !currentChannel) {
+    return <div className="page"><div className="empty-state">{channelLoading ? 'Đang tải channel...' : 'Chưa có channel được đăng ký.'}</div></div>;
+  }
 
   return (
     <div className="page">
@@ -295,7 +325,7 @@ export function VideoGenPage() {
                       </span>
                     )}
                     {c.clip_exists && c.clip_path && (
-                      <a href={artifactUrl(runId, c.clip_path)} target="_blank" rel="noreferrer" className="btn btn-ghost" style={{ padding: '2px 8px', fontSize: 12 }}>
+                      <a href={artifactUrl(runId, c.clip_path, false, channelScope)} target="_blank" rel="noreferrer" className="btn btn-ghost" style={{ padding: '2px 8px', fontSize: 12 }}>
                         <Film size={12} /> mp4
                       </a>
                     )}
@@ -370,7 +400,7 @@ export function VideoGenPage() {
               )}
             </div>
             <LogViewer
-              logFetcher={(offset, limit) => getVeoJobLog(jobId, offset, limit)}
+              logFetcher={(offset, limit) => getVeoJobLog(jobId, offset, limit, channelScope)}
               running={jobRunning}
               intervalMs={JOB_INTERVAL_MS}
             />

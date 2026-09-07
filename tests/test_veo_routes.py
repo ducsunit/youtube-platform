@@ -20,7 +20,7 @@ from unittest import mock
 from fastapi.testclient import TestClient
 
 from youtube_pipeline.api import app, paths, veo_routes
-from youtube_pipeline.api.veo_runner import veo_runner
+from youtube_pipeline.api.veo_runner import VeoRunner, veo_runner
 from youtube_pipeline.veo_gen import (
     _build_veo_prompt,
     _find_image,
@@ -160,6 +160,57 @@ class VeoApiTestCase(unittest.TestCase):
         return self.client.post(
             "/api/veo/runs/%s/generate" % self.run_id, json=payload
         )
+
+    # --------------------------------------------------------------- scope
+
+    def test_scoped_candidates_resolve_channel_run_only(self) -> None:
+        scoped = self.root / "users" / "dev-user" / "channels" / "channel-a" / "runs" / self.run_id
+        (scoped / "visuals" / "prompts").mkdir(parents=True)
+        images = scoped / "video-build" / "images"
+        images.mkdir(parents=True)
+        (scoped / "run_state.json").write_text(json.dumps({"run_id": self.run_id, "stages": []}), encoding="utf-8")
+        (scoped / "visuals" / "prompts" / "prompts-video.txt").write_text(
+            "IMG-07 | slow push-in — Scoped prompt.\n", encoding="utf-8"
+        )
+        (images / "IMG-07.png").write_bytes(_tiny_png())
+
+        response = self.client.get("/api/veo/runs/%s/candidates?user_id=dev-user&channel_id=channel-a" % self.run_id)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["candidates"][0]["name"], "IMG-07")
+
+    def test_routes_reject_partial_scope(self) -> None:
+        response = self.client.get("/api/veo/status?user_id=dev-user")
+        self.assertEqual(response.status_code, 400)
+
+    def test_scoped_runner_isolates_jobs_files_and_finished_state(self) -> None:
+        runner = VeoRunner()
+        proc = mock.Mock()
+        proc.poll.return_value = None
+        job = {"id": "job-a", "run_id": "run-a", "user_id": "dev-user", "channel_id": "channel-a", "started_at": "t", "log_path": "/a/job-a.log"}
+        runner._jobs[("dev-user", "channel-a")] = (proc, job)
+        runner._finished[(("dev-user", "channel-a"), "finished-a")] = {**job, "id": "finished-a", "status": "complete", "exit_code": 0}
+
+        self.assertTrue(runner.busy(user_id="dev-user", channel_id="channel-a"))
+        self.assertFalse(runner.busy(user_id="dev-user", channel_id="channel-b"))
+        self.assertEqual(runner.active_job(user_id="dev-user", channel_id="channel-a")["id"], "job-a")
+        self.assertEqual(runner.job_status("finished-a", user_id="dev-user", channel_id="channel-a")["status"], "complete")
+        self.assertIsNone(runner.job_status("finished-a", user_id="dev-user", channel_id="channel-b"))
+        self.assertEqual(
+            runner.jobs_dir("dev-user", "channel-a"),
+            self.root / "users" / "dev-user" / "channels" / "channel-a" / "runtime" / "veo-jobs",
+        )
+
+    def test_scoped_job_status_and_log_do_not_fall_back_to_legacy(self) -> None:
+        legacy_jobs = self.root / "runtime" / "logs" / "api-veo"
+        legacy_jobs.mkdir(parents=True)
+        (legacy_jobs / "shared.log").write_text("=== exit code 0 ===\n", encoding="utf-8")
+        runner = VeoRunner()
+        self.assertIsNone(runner.job_status("shared", user_id="dev-user", channel_id="channel-a"))
+        self.assertFalse(runner.get_log("shared", user_id="dev-user", channel_id="channel-a")["log_exists"])
+
+    def test_scoped_runner_rejects_partial_scope(self) -> None:
+        with self.assertRaises(ValueError):
+            VeoRunner().busy(user_id="dev-user")
 
     # --------------------------------------------------------------- status
 

@@ -25,6 +25,17 @@ export function NewRunDialog({ open, config, initialInputFile, onClose, onStarte
   const [outputDir, setOutputDir] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const channelScope = config?.channel
+    ? {
+        user_id: config.channel.user_id,
+        channel_id: config.channel.channel_id,
+        youtube_channel_id: config.channel.youtube_channel_id,
+        flow_profile: config.channel.flow_profile,
+      }
+    : null;
+  const dataScope = channelScope
+    ? { user_id: channelScope.user_id, channel_id: channelScope.channel_id }
+    : null;
 
   useEffect(() => {
     if (open) {
@@ -47,8 +58,9 @@ export function NewRunDialog({ open, config, initialInputFile, onClose, onStarte
   const busy = Boolean(config?.busy);
 
   const waitForDataJob = async (jobId: string) => {
+    if (!dataScope) throw new Error('Chưa chọn channel để theo dõi data job.');
     for (;;) {
-      const job = await getDataJob(jobId);
+      const job = await getDataJob(jobId, dataScope);
       if (job.status !== 'running') return job;
       await new Promise((resolve) => window.setTimeout(resolve, 1500));
     }
@@ -59,10 +71,13 @@ export function NewRunDialog({ open, config, initialInputFile, onClose, onStarte
     setError(null);
     setSyncMessage(null);
     try {
+      if (!channelScope || !dataScope) {
+        throw new Error('Chưa chọn channel. Hãy chọn channel trước khi tạo run.');
+      }
       let latestInputFile = inputFile || config?.default_input_file || undefined;
 
       if (mode === 'production' && channelDataMode === 'refresh') {
-        const dataStatus = await getDataStatus();
+        const dataStatus = await getDataStatus(dataScope);
         if (!dataStatus.available) {
           throw new Error('Không tìm thấy YouTube data puller.');
         }
@@ -75,14 +90,18 @@ export function NewRunDialog({ open, config, initialInputFile, onClose, onStarte
         setSyncMessage('Đang kéo dữ liệu YouTube mới nhất...');
         const pull = await pullData({
           mode: 'all',
-          out_file: 'data/channels/youtube_data.json',
+          ...channelScope,
         });
         const job = await waitForDataJob(pull.job_id);
         if (job.status !== 'complete') {
           throw new Error(`Kéo data thất bại (job ${pull.job_id}). Mở trang Data để xem log.`);
         }
         setSyncMessage('Đang đồng bộ Reporting analytics (CTR, impressions, retention)...');
-        const reporting = await reportingData({ action: 'sync', out_file: 'data/channels/youtube_data.json' });
+        const reporting = await reportingData({
+          action: 'sync',
+          out_file: 'data/channels/youtube_data.json',
+          ...channelScope,
+        });
         const reportingJob = await waitForDataJob(reporting.job_id);
         if (reportingJob.status !== 'complete') {
           throw new Error('Reporting sync thất bại. Kiểm tra kết nối Reporting API ở trang Data trước khi chạy.');
@@ -101,6 +120,7 @@ export function NewRunDialog({ open, config, initialInputFile, onClose, onStarte
         ...(mode === 'production' && channelDataMode === 'none' && manualTopic.trim() ? { manual_topic: manualTopic.trim() } : {}),
         ...(runId.trim() ? { run_id: runId.trim() } : {}),
         ...(outputDir.trim() ? { output_dir: outputDir.trim() } : {}),
+        ...channelScope,
       });
       onStarted(result.run_id);
     } catch (e) {

@@ -111,13 +111,34 @@ def resolve_pull_python(pull_dir: str) -> str:
 # ------------------------------------------------------------- command build
 
 
-def build_connect_command(python: str) -> list[str]:
-    """Token hợp lệ -> exit 0 ngay; ngược lại mở browser flow (log in URL).
+def build_connect_command(python: str, *, token_file: Optional[Path] = None) -> list[str]:
+    """Build OAuth connect command with an optional isolated token path."""
+    code = "import youtube_pull; youtube_pull.get_credentials()"
+    argv = [python, "-u", "-c", code]
+    if token_file is not None:
+        # youtube_pull reads TOKEN_FILE at import time, so set it before import.
+        code = "import os; os.environ['TOKEN_FILE'] = %r; import youtube_pull; youtube_pull.get_credentials()" % str(token_file)
+        argv[-1] = code
+    return argv
 
-    `-u` (unbuffered): stdout khi redirect vào file log bị block-buffer 8KB —
-    không có `-u` thì URL xác nhận trong browser không hiện ra log kịp.
-    """
-    return [python, "-u", "-c", "import youtube_pull; youtube_pull.get_credentials()"]
+
+def _job_env(user_id: Optional[str], channel_id: Optional[str]) -> dict[str, str]:
+    env = os.environ.copy()
+    if user_id and channel_id:
+        token_file = token_path(paths.backend_root(), user_id=user_id, channel_id=channel_id)
+        token_file.parent.mkdir(parents=True, exist_ok=True)
+        env["TOKEN_FILE"] = str(token_file)
+        # The puller verifies this identity after OAuth authentication.
+        try:
+            from youtube_pipeline.platform_db import PlatformDatabase
+            registered = PlatformDatabase(paths.backend_root() / "runtime" / "platform.sqlite3").get_channel(
+                user_id=user_id, channel_id=channel_id, include_inactive=False
+            )
+        except (OSError, ValueError):
+            registered = None
+        if registered:
+            env["EXPECTED_YOUTUBE_CHANNEL_ID"] = registered["youtube_channel_id"]
+    return env
 
 
 def build_pull_command(
@@ -186,8 +207,29 @@ def validate_dates(start_date, end_date) -> tuple[str, str]:
     return start_date, end_date
 
 
-def resolve_out_file(out_file: Optional[str] = None) -> Path:
-    """Resolve a JSON output below the canonical data/channels directory."""
+def resolve_out_file(out_file: Optional[str] = None, *, user_id: Optional[str] = None, channel_id: Optional[str] = None) -> Path:
+    """Resolve a dataset under legacy or channel-scoped data namespace."""
+    if bool(user_id) != bool(channel_id):
+        raise ValueError("user_id và channel_id phải được truyền cùng nhau")
+    name = (out_file or DEFAULT_DATASET_FILE).strip()
+    if user_id and channel_id and (out_file is None or name == DEFAULT_DATASET_FILE):
+        name = str(paths.channel_data_dir(user_id, channel_id) / "youtube_data.json")
+    elif user_id and channel_id and not Path(name).is_absolute() and not name.startswith("users/"):
+        name = str(paths.channel_data_dir(user_id, channel_id) / Path(name).name)
+    if Path(name).is_absolute():
+        out = Path(name).resolve()
+    else:
+        out = (paths.backend_root() / name).resolve()
+    root = paths.backend_root().resolve()
+    data_root = (paths.channel_data_dir(user_id, channel_id).resolve() if user_id and channel_id else (root / "data/channels").resolve())
+    if not out.is_relative_to(data_root):
+        raise ValueError("out_file phải nằm trong namespace channel data")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    return out
+
+
+def _legacy_resolve_out_file(out_file: Optional[str] = None) -> Path:
+    """Legacy implementation retained for callers that need global paths."""
     name = (out_file or DEFAULT_DATASET_FILE).strip()
     if not name.endswith(".json"):
         raise ValueError("out_file phải kết thúc bằng .json")
@@ -245,13 +287,24 @@ def _dataset_metadata(path: Path) -> Optional[dict]:
     }
 
 
-def list_datasets() -> list[dict]:
-    """Discover only approved snapshot locations; never expose arbitrary paths."""
+def list_datasets(*, user_id: Optional[str] = None, channel_id: Optional[str] = None) -> list[dict]:
+    """Discover datasets globally or within one channel namespace."""
+    if bool(user_id) != bool(channel_id):
+        raise ValueError("user_id và channel_id phải được truyền cùng nhau")
     root = paths.backend_root().resolve()
     found: list[dict] = []
     seen: set[Path] = set()
-    for relative in DATASET_DIRECTORIES:
-        directory = (root / relative).resolve()
+    directories = [paths.channel_data_dir(user_id, channel_id)] if user_id and channel_id else [root / relative for relative in DATASET_DIRECTORIES]
+    for raw_directory in directories:
+        directory = Path(raw_directory).resolve()
+        if user_id and channel_id:
+            directory = directory / "snapshots" if (directory / "snapshots").is_dir() else directory
+        else:
+            directory = directory
+
+        directory = directory.resolve()
+        if not directory.is_dir() or not directory.is_relative_to(root):
+            continue
         if not directory.is_dir() or not directory.is_relative_to(root):
             continue
         iterator = directory.rglob("*.json")
@@ -266,52 +319,76 @@ def list_datasets() -> list[dict]:
     return sorted(found, key=lambda item: (item.get("generated_at") or "", item["modified_at"]), reverse=True)
 
 
-def resolve_dataset_file(name: str) -> Path:
-    """Resolve a dataset by its UI-provided relative name and approved catalog."""
-    catalog = {item["file"]: item for item in list_datasets()}
+def resolve_dataset_file(name: str, *, user_id: Optional[str] = None, channel_id: Optional[str] = None) -> Path:
+    """Resolve a dataset from the global catalog or one channel catalog."""
+    catalog = {item["file"]: item for item in list_datasets(user_id=user_id, channel_id=channel_id)}
     if name not in catalog:
-        raise ValueError("Dataset không tồn tại hoặc không phải channel snapshot hợp lệ: %s" % name)
+        raise ValueError("Dataset không tồn tại trong namespace channel hiện tại: %s" % name)
     path = (paths.backend_root().resolve() / name).resolve()
     if not path.is_file():
         raise ValueError("Dataset không còn tồn tại: %s" % name)
     return path
 
 
+def _scoped_dataset_path(user_id: Optional[str], channel_id: Optional[str], out_file: Optional[str] = None) -> Path:
+    return resolve_out_file(out_file, user_id=user_id, channel_id=channel_id)
+
+
 # ------------------------------------------------------------------ token
 
 
-def token_status(pull_dir: Path) -> dict:
+def token_path(pull_dir: Path, *, user_id: Optional[str] = None, channel_id: Optional[str] = None) -> Path:
+    if bool(user_id) != bool(channel_id):
+        raise ValueError("user_id và channel_id phải được truyền cùng nhau")
+    if user_id and channel_id:
+        return paths.channel_root(user_id, channel_id) / "runtime" / "oauth" / "token.json"
+    return pull_dir / "token.json"
+
+
+def token_status(
+    pull_dir: Path,
+    *,
+    user_id: Optional[str] = None,
+    channel_id: Optional[str] = None,
+    expected_youtube_channel_id: Optional[str] = None,
+) -> dict:
     """Đọc token.json của puller -> {exists, expires_at, scopes_ok}.
 
     Token hết hạn nhưng refresh được vẫn coi là kết nối được — puller tự
     refresh; `scopes_ok` thiếu scope mới là vấn đề (puller tự exit).
     """
-    token_file = pull_dir / "token.json"
+    token_file = token_path(pull_dir, user_id=user_id, channel_id=channel_id)
     if not token_file.is_file():
-        return {"exists": False, "expires_at": None, "scopes_ok": False}
+        return {"exists": False, "expires_at": None, "scopes_ok": False, "identity_ok": None}
     try:
         data = json.loads(token_file.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
-        return {"exists": True, "expires_at": None, "scopes_ok": False}
+        return {"exists": True, "expires_at": None, "scopes_ok": False, "identity_ok": False}
     raw_scopes = data.get("scopes") or []
     # Token lưu list URL scope; vài flow cũ lưu chuỗi cách nhau dấu cách.
     if isinstance(raw_scopes, str):
         raw_scopes = raw_scopes.split()
     scopes = set(raw_scopes)
+    identity = data.get("youtube_channel_id")
+    # google-auth token.json normally has no channel claim; the puller performs
+    # the authoritative ``mine=true`` check at job start.  Only compare a
+    # persisted claim when one is available.
+    identity_ok = None if expected_youtube_channel_id is None or not identity else identity == expected_youtube_channel_id
     return {
         "exists": True,
         "expires_at": data.get("expiry"),
         "scopes_ok": set(REQUIRED_SCOPES).issubset(scopes),
+        "identity_ok": identity_ok,
     }
 
 
 # ------------------------------------------------------------------ results
 
 
-def last_result() -> Optional[dict]:
-    """Đọc file kéo gần nhất ở gốc backend -> {file, generated_at, ...}."""
-    preferred = data_runner.last_out_file()
-    datasets = list_datasets()
+def last_result(*, user_id: Optional[str] = None, channel_id: Optional[str] = None) -> Optional[dict]:
+    """Return the latest dataset in the requested namespace."""
+    preferred = data_runner.last_out_file(user_id=user_id, channel_id=channel_id)
+    datasets = list_datasets(user_id=user_id, channel_id=channel_id)
     if preferred:
         match = next((item for item in datasets if item["file"] == preferred), None)
         if match:
@@ -357,11 +434,16 @@ def _read_pid_info(pid_file: Path) -> Optional[dict]:
         return None
     if pid <= 0:
         return None
-    return {"pid": pid, "kind": kind}
+    return {
+        "pid": pid,
+        "kind": kind,
+        "user_id": data.get("user_id") if isinstance(data, dict) else None,
+        "channel_id": data.get("channel_id") if isinstance(data, dict) else None,
+    }
 
 
-def _write_pid_info(pid_file: Path, pid: int, kind: str) -> None:
-    pid_file.write_text(json.dumps({"pid": pid, "kind": kind}), encoding="utf-8")
+def _write_pid_info(pid_file: Path, pid: int, kind: str, *, user_id: Optional[str] = None, channel_id: Optional[str] = None) -> None:
+    pid_file.write_text(json.dumps({"pid": pid, "kind": kind, "user_id": user_id, "channel_id": channel_id}), encoding="utf-8")
 
 
 def read_log_page(log_file: Path, offset: int, limit: int) -> dict:
@@ -391,6 +473,14 @@ def read_log_page(log_file: Path, offset: int, limit: int) -> dict:
     }
 
 
+def _job_dir(user_id: Optional[str] = None, channel_id: Optional[str] = None) -> Path:
+    if bool(user_id) != bool(channel_id):
+        raise ValueError("user_id và channel_id phải được truyền cùng nhau")
+    if user_id and channel_id:
+        return paths.channel_root(user_id, channel_id) / "runtime" / "data-jobs"
+    return paths.data_jobs_dir()
+
+
 class DataPullRunner:
     """Singleton quản lý tối đa một data job (kéo/connect/reporting) đang chạy.
 
@@ -401,35 +491,32 @@ class DataPullRunner:
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
-        self._proc: Optional[subprocess.Popen] = None
-        self._job: Optional[dict] = None
-        self._finished: dict[str, dict] = {}
-        self._last_out: Optional[str] = None
+        self._jobs: dict[tuple[str | None, str | None], tuple[subprocess.Popen, dict]] = {}
+        self._finished: dict[tuple[tuple[str | None, str | None], str], dict] = {}
+        self._finished_order: list[tuple[tuple[str | None, str | None], str]] = []
+        self._last_out_by_scope: dict[tuple[str | None, str | None], str] = {}
 
     # --------------------------------------------------------------- query
 
-    def active_job(self) -> Optional[dict]:
-        """{id, kind, started_at, log_path, orphaned} | None."""
+    def active_job(self, *, user_id: Optional[str] = None, channel_id: Optional[str] = None) -> Optional[dict]:
+        """Return the active job in legacy or channel namespace."""
         with self._lock:
-            return self._active_unlocked()
+            return self._active_unlocked(_job_dir(user_id, channel_id))
 
-    def busy(self) -> bool:
-        return self.active_job() is not None
+    def busy(self, *, user_id: Optional[str] = None, channel_id: Optional[str] = None) -> bool:
+        return self.active_job(user_id=user_id, channel_id=channel_id) is not None
 
-    def last_out_file(self) -> Optional[str]:
+    def last_out_file(self, *, user_id: Optional[str] = None, channel_id: Optional[str] = None) -> Optional[str]:
+        if bool(user_id) != bool(channel_id):
+            raise ValueError("user_id và channel_id phải được truyền cùng nhau")
         with self._lock:
-            return self._last_out
+            return self._last_out_by_scope.get((user_id, channel_id))
 
-    def _active_unlocked(self) -> Optional[dict]:
-        if self._proc is not None and self._proc.poll() is None and self._job:
-            return {
-                "id": self._job["id"],
-                "kind": self._job["kind"],
-                "started_at": self._job["started_at"],
-                "log_path": self._job["log_path"],
-                "orphaned": False,
-            }
-        jobs_dir = paths.data_jobs_dir()
+    def _active_unlocked(self, jobs_dir: Optional[Path] = None) -> Optional[dict]:
+        for proc, job in self._jobs.values():
+            if proc.poll() is None and (jobs_dir is None or Path(job["log_path"]).parent == jobs_dir):
+                return {**job, "orphaned": False}
+        jobs_dir = jobs_dir or paths.data_jobs_dir()
         if jobs_dir.is_dir():
             for pid_file in sorted(jobs_dir.glob("*.pid")):
                 info = _read_pid_info(pid_file)
@@ -444,6 +531,8 @@ class DataPullRunner:
                     "kind": info.get("kind"),
                     "started_at": None,
                     "log_path": str(jobs_dir / ("%s.log" % pid_file.stem)),
+                    "user_id": info.get("user_id"),
+                    "channel_id": info.get("channel_id"),
                     "orphaned": True,
                 }
         return None
@@ -456,14 +545,19 @@ class DataPullRunner:
         argv: list[str],
         cwd: Path,
         out_file: Optional[Path] = None,
+        *,
+        user_id: Optional[str] = None,
+        channel_id: Optional[str] = None,
     ) -> dict:
         """Spawn data job mới; trả {id, kind, started_at, log_path}."""
+        jobs_dir = _job_dir(user_id, channel_id)
         with self._lock:
-            active = self._active_unlocked()
+            scope = (user_id, channel_id)
+            active = self._active_unlocked(jobs_dir)
             if active is not None:
                 raise BusyError(str(active["id"]))
             job_id = uuid.uuid4().hex
-            log_file = paths.data_jobs_dir() / ("%s.log" % job_id)
+            log_file = jobs_dir / ("%s.log" % job_id)
             log_file.parent.mkdir(parents=True, exist_ok=True)
             # fd kế thừa — KHÔNG PIPE: server chết -> child không bị SIGPIPE,
             # log tiếp tục ghi, server mới đọc lại được.
@@ -478,7 +572,7 @@ class DataPullRunner:
                 proc = subprocess.Popen(
                     argv,
                     cwd=str(cwd),  # bắt buộc: puller load .env + token.json theo CWD
-                    env=os.environ.copy(),
+                    env=_job_env(user_id, channel_id),
                     stdout=handle,
                     stderr=subprocess.STDOUT,
                     start_new_session=True,
@@ -490,74 +584,68 @@ class DataPullRunner:
             # không giữ thì mỗi job start là một fd rò rỉ.
             handle.close()
             try:
-                _write_pid_info(paths.data_jobs_dir() / ("%s.pid" % job_id), proc.pid, kind)
+                _write_pid_info(jobs_dir / ("%s.pid" % job_id), proc.pid, kind, user_id=user_id, channel_id=channel_id)
             except OSError:
                 pass
-            self._proc = proc
             started_at = _now_iso()
-            self._job = {
+            job = {
                 "id": job_id,
                 "kind": kind,
                 "started_at": started_at,
                 "log_path": str(log_file),
             }
+            self._jobs[scope] = (proc, job)
             if out_file is not None:
-                self._last_out = out_file.name
+                self._last_out_by_scope[scope] = str(out_file.resolve().relative_to(paths.backend_root().resolve()))
             threading.Thread(
-                target=self._waiter, args=(proc, job_id, kind, started_at), daemon=True
+                target=self._waiter, args=(proc, job_id, kind, started_at, jobs_dir), daemon=True
             ).start()
             return {"id": job_id, "kind": kind, "started_at": started_at, "log_path": str(log_file)}
 
-    def _waiter(self, proc: subprocess.Popen, job_id: str, kind: str, started_at: str) -> None:
+    def _waiter(self, proc: subprocess.Popen, job_id: str, kind: str, started_at: str, jobs_dir: Path) -> None:
         code = proc.wait()
         with self._lock:
-            if self._proc is proc:
-                self._proc = None
-                self._job = None
-            self._finished[job_id] = {
+            scope = next((key for key, value in self._jobs.items() if value[0] is proc), (None, None))
+            self._jobs.pop(scope, None)
+            job = {
                 "id": job_id,
                 "kind": kind,
                 "status": "complete" if code == 0 else "failed",
                 "exit_code": code,
                 "started_at": started_at,
                 "finished_at": _now_iso(),
-                "log_path": str(paths.data_jobs_dir() / ("%s.log" % job_id)),
+                "log_path": str(jobs_dir / ("%s.log" % job_id)),
+                "user_id": scope[0],
+                "channel_id": scope[1],
             }
-            while len(self._finished) > 20:  # ring nhỏ, không lớn mãi
-                self._finished.pop(next(iter(self._finished)))
+            self._finished[(scope, job_id)] = job
+            self._finished_order.append((scope, job_id))
+            while len(self._finished_order) > 20:
+                self._finished.pop(self._finished_order.pop(0), None)
         try:
-            with open(paths.data_jobs_dir() / ("%s.log" % job_id), "ab") as fh:
+            with open(jobs_dir / ("%s.log" % job_id), "ab") as fh:
                 fh.write(("=== exit code %d ===\n" % code).encode("utf-8"))
         except OSError:
             pass
         try:
-            (paths.data_jobs_dir() / ("%s.pid" % job_id)).unlink()
+            (jobs_dir / ("%s.pid" % job_id)).unlink()
         except OSError:
             pass
 
     # --------------------------------------------------------------- status
 
-    def job_status(self, job_id: str) -> Optional[dict]:
+    def job_status(self, job_id: str, *, user_id: Optional[str] = None, channel_id: Optional[str] = None) -> Optional[dict]:
         """{id, kind, status, exit_code, started_at, finished_at} | None."""
+        jobs_dir = _job_dir(user_id, channel_id)
+        scope = (user_id, channel_id)
         with self._lock:
-            if (
-                self._job is not None
-                and self._job["id"] == job_id
-                and self._proc is not None
-                and self._proc.poll() is None
-            ):
-                return {
-                    "id": job_id,
-                    "kind": self._job["kind"],
-                    "status": "running",
-                    "exit_code": None,
-                    "started_at": self._job["started_at"],
-                    "finished_at": None,
-                }
-            if job_id in self._finished:
-                return dict(self._finished[job_id])
+            for job_scope, (proc, job) in self._jobs.items():
+                if job_scope == scope and job["id"] == job_id and proc.poll() is None:
+                    return {"id": job_id, "kind": job["kind"], "status": "running", "exit_code": None, "started_at": job["started_at"], "finished_at": None, "user_id": user_id, "channel_id": channel_id}
+            finished = self._finished.get((scope, job_id))
+            if finished is not None:
+                return dict(finished)
         # Đường đĩa — phục vụ job mồ côi / sau khi server restart.
-        jobs_dir = paths.data_jobs_dir()
         log_file = jobs_dir / ("%s.log" % job_id)
         pid_file = jobs_dir / ("%s.pid" % job_id)
         info = _read_pid_info(pid_file)
@@ -569,6 +657,8 @@ class DataPullRunner:
                 "exit_code": None,
                 "started_at": None,
                 "finished_at": None,
+                "user_id": info.get("user_id"),
+                "channel_id": info.get("channel_id"),
             }
         if log_file.is_file():
             text = log_file.read_text(encoding="utf-8", errors="replace")
@@ -577,11 +667,13 @@ class DataPullRunner:
                 code = int(markers[-1])
                 return {
                     "id": job_id,
-                    "kind": None,
+                    "kind": info.get("kind") if info else None,
                     "status": "complete" if code == 0 else "failed",
                     "exit_code": code,
                     "started_at": None,
                     "finished_at": None,
+                    "user_id": info.get("user_id") if info else user_id,
+                    "channel_id": info.get("channel_id") if info else channel_id,
                 }
             # Log tồn tại nhưng không có marker và pid đã chết: server trước
             # chết giữa chừng — báo failed, không biết exit code.
@@ -597,18 +689,16 @@ class DataPullRunner:
 
     # --------------------------------------------------------------- cancel
 
-    def cancel(self, job_id: str) -> bool:
-        """SIGTERM cả process group; đúng cho proc trong bộ nhớ lẫn orphan."""
+    def cancel(self, job_id: str, *, user_id: Optional[str] = None, channel_id: Optional[str] = None) -> bool:
+        """SIGTERM process group in the requested namespace."""
+        jobs_dir = _job_dir(user_id, channel_id)
+        scope = (user_id, channel_id)
         with self._lock:
-            if (
-                self._proc is not None
-                and self._job is not None
-                and self._job["id"] == job_id
-                and self._proc.poll() is None
-            ):
-                self._terminate(self._proc)
-                return True
-        info = _read_pid_info(paths.data_jobs_dir() / ("%s.pid" % job_id))
+            for job_scope, (proc, job) in self._jobs.items():
+                if job_scope == scope and job["id"] == job_id and proc.poll() is None:
+                    self._terminate(proc)
+                    return True
+        info = _read_pid_info(jobs_dir / ("%s.pid" % job_id))
         if info is not None and _pid_alive(info["pid"]):
             try:
                 os.killpg(os.getpgid(info["pid"]), signal.SIGTERM)

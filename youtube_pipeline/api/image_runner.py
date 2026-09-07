@@ -1,8 +1,9 @@
-"""Detached runner for OpenAI image-generation batches."""
+"""Detached runner for OpenAI image-generation batches, isolated per channel namespace."""
 from __future__ import annotations
 
 import json
 import os
+import signal
 import subprocess
 import sys
 import threading
@@ -27,79 +28,152 @@ class ImageBusyError(Exception):
 
 
 class ImageRunner:
+    """At most one image job per user/channel namespace; legacy scope remains supported."""
+
     def __init__(self) -> None:
         self._lock = threading.Lock()
-        self._proc: Optional[subprocess.Popen] = None
-        self._job: Optional[dict] = None
-        self._finished: dict[str, dict] = {}
+        self._jobs: dict[tuple[str | None, str | None], tuple[subprocess.Popen, dict]] = {}
+        self._finished: dict[tuple[tuple[str | None, str | None], str], dict] = {}
+        self._finished_order: list[tuple[tuple[str | None, str | None], str]] = []
 
-    def _active_unlocked(self) -> Optional[dict]:
-        if self._proc is not None and self._proc.poll() is None and self._job:
-            return {**self._job, "status": "running", "orphaned": False}
-        directory = paths.image_jobs_dir()
-        if directory.is_dir():
-            for pid_file in sorted(directory.glob("*.pid")):
+    @staticmethod
+    def _scope(user_id: str | None, channel_id: str | None) -> tuple[str | None, str | None]:
+        if bool(user_id) != bool(channel_id):
+            raise ValueError("user_id và channel_id phải được truyền cùng nhau")
+        return user_id, channel_id
+
+    @staticmethod
+    def jobs_dir(user_id: str | None = None, channel_id: str | None = None) -> Path:
+        if bool(user_id) != bool(channel_id):
+            raise ValueError("user_id và channel_id phải được truyền cùng nhau")
+        return (
+            paths.channel_root(user_id, channel_id) / "runtime" / "image-jobs"
+            if user_id and channel_id
+            else paths.image_jobs_dir()
+        )
+
+    def _active_unlocked(
+        self,
+        jobs_dir: Path | None = None,
+        scope: tuple[str | None, str | None] | None = None,
+    ) -> Optional[dict]:
+        jobs_dir = jobs_dir or paths.image_jobs_dir()
+        for job_scope, (proc, job) in self._jobs.items():
+            if proc.poll() is None and (scope is None or job_scope == scope):
+                return {**job, "status": "running", "orphaned": False}
+        if jobs_dir.is_dir():
+            for pid_file in sorted(jobs_dir.glob("*.pid")):
                 info = _read_pid_info(pid_file)
-                if info and _pid_alive(info["pid"]):
-                    return {"id": pid_file.stem, "run_id": info.get("run_id"), "status": "running", "orphaned": True}
-                pid_file.unlink(missing_ok=True)
+                if info is None or not _pid_alive(info["pid"]):
+                    pid_file.unlink(missing_ok=True)
+                    continue
+                if scope is not None and (info.get("user_id"), info.get("channel_id")) != scope:
+                    continue
+                return {
+                    "id": pid_file.stem,
+                    "run_id": info.get("run_id"),
+                    "user_id": info.get("user_id"),
+                    "channel_id": info.get("channel_id"),
+                    "status": "running",
+                    "orphaned": True,
+                }
         return None
 
-    def active_job(self) -> Optional[dict]:
+    def active_job(self, *, user_id: str | None = None, channel_id: str | None = None) -> Optional[dict]:
+        scope = self._scope(user_id, channel_id)
         with self._lock:
-            return self._active_unlocked()
+            return self._active_unlocked(self.jobs_dir(user_id, channel_id), scope)
 
-    def busy(self) -> bool:
-        return self.active_job() is not None
+    def busy(self, *, user_id: str | None = None, channel_id: str | None = None) -> bool:
+        return self.active_job(user_id=user_id, channel_id=channel_id) is not None
 
-    def start(self, run_id: str, run_dir: Path, indices: list[str], model: str, size: str, quality: str) -> dict:
+    def start(
+        self,
+        run_id: str,
+        run_dir: Path,
+        indices: list[str],
+        model: str,
+        size: str,
+        quality: str,
+        *,
+        user_id: str | None = None,
+        channel_id: str | None = None,
+    ) -> dict:
+        scope = self._scope(user_id, channel_id)
+        jobs_dir = self.jobs_dir(user_id, channel_id)
         with self._lock:
-            active = self._active_unlocked()
+            active = self._active_unlocked(jobs_dir, scope)
             if active:
                 raise ImageBusyError(str(active["id"]))
             job_id = uuid.uuid4().hex
-            log_path = paths.image_jobs_dir() / (job_id + ".log")
+            log_path = jobs_dir / (job_id + ".log")
             log_path.parent.mkdir(parents=True, exist_ok=True)
-            argv = [sys.executable, "-u", "-m", "youtube_pipeline.image_gen", str(run_dir), model, size, quality, *indices]
+            argv = [sys.executable, "-u", "-m", "youtube_pipeline.image_gen"]
+            if user_id and channel_id:
+                argv.extend(["--user-id", user_id, "--channel-id", channel_id])
+            argv.extend([str(run_dir), model, size, quality, *indices])
             handle = open(log_path, "ab")
-            handle.write(("=== start %s kind=image-gen job=%s run=%s ===\n" % (_now_iso(), job_id, run_id)).encode())
-            handle.write(("REQUEST model=%s size=%s quality=%s images=%d ids=%s python=%s cwd=%s\n" % (model, size, quality, len(indices), ",".join(indices), sys.executable, paths.backend_root())).encode())
-            handle.flush()
             try:
+                handle.write(("=== start %s kind=image-gen job=%s run=%s ===\n" % (_now_iso(), job_id, run_id)).encode())
+                handle.write(("REQUEST model=%s size=%s quality=%s images=%d ids=%s python=%s cwd=%s\n" % (model, size, quality, len(indices), ",".join(indices), sys.executable, paths.backend_root())).encode())
+                handle.flush()
                 proc = subprocess.Popen(argv, cwd=str(paths.backend_root()), env=os.environ.copy(), stdout=handle, stderr=subprocess.STDOUT, start_new_session=True)
             finally:
                 handle.close()
-            (paths.image_jobs_dir() / (job_id + ".pid")).write_text(json.dumps({"pid": proc.pid, "kind": "image-gen", "run_id": run_id}), encoding="utf-8")
-            self._proc = proc
-            self._job = {"id": job_id, "run_id": run_id, "started_at": _now_iso(), "log_path": str(log_path)}
-            threading.Thread(target=self._waiter, args=(proc, job_id, run_id), daemon=True).start()
-            return self._job.copy()
+            (jobs_dir / (job_id + ".pid")).write_text(
+                json.dumps({"pid": proc.pid, "kind": "image-gen", "run_id": run_id, "user_id": user_id, "channel_id": channel_id}),
+                encoding="utf-8",
+            )
+            job = {
+                "id": job_id,
+                "run_id": run_id,
+                "user_id": user_id,
+                "channel_id": channel_id,
+                "started_at": _now_iso(),
+                "log_path": str(log_path),
+            }
+            self._jobs[scope] = (proc, job)
+            threading.Thread(target=self._waiter, args=(proc, job, jobs_dir, scope), daemon=True).start()
+            return job.copy()
 
-    def _waiter(self, proc: subprocess.Popen, job_id: str, run_id: str) -> None:
+    def _waiter(self, proc: subprocess.Popen, job: dict, jobs_dir: Path, scope: tuple[str | None, str | None]) -> None:
         code = proc.wait()
+        job_id = job["id"]
         with self._lock:
-            if self._proc is proc:
-                self._proc = None
-                self._job = None
-            self._finished[job_id] = {"id": job_id, "run_id": run_id, "status": "complete" if code == 0 else "failed", "exit_code": code, "finished_at": _now_iso()}
+            current = self._jobs.get(scope)
+            if current is not None and current[0] is proc:
+                self._jobs.pop(scope, None)
+            self._finished[(scope, job_id)] = {
+                **job,
+                "status": "complete" if code == 0 else "failed",
+                "exit_code": code,
+                "finished_at": _now_iso(),
+            }
+            self._finished_order.append((scope, job_id))
+            while len(self._finished_order) > 20:
+                self._finished.pop(self._finished_order.pop(0), None)
         try:
-            with open(paths.image_jobs_dir() / (job_id + ".log"), "ab") as handle:
+            with open(jobs_dir / (job_id + ".log"), "ab") as handle:
                 handle.write(("=== exit %s code=%d ===\n" % (_now_iso(), code)).encode())
-            (paths.image_jobs_dir() / (job_id + ".pid")).unlink(missing_ok=True)
+            (jobs_dir / (job_id + ".pid")).unlink(missing_ok=True)
         except OSError:
             pass
 
-    def job_status(self, job_id: str) -> Optional[dict]:
+    def job_status(self, job_id: str, *, user_id: str | None = None, channel_id: str | None = None) -> Optional[dict]:
+        scope = self._scope(user_id, channel_id)
         with self._lock:
-            if self._job and self._job["id"] == job_id and self._proc and self._proc.poll() is None:
-                return {**self._job, "status": "running", "exit_code": None}
-            if job_id in self._finished:
-                return self._finished[job_id].copy()
-        log_path = paths.image_jobs_dir() / (job_id + ".log")
-        pid_path = paths.image_jobs_dir() / (job_id + ".pid")
+            current = self._jobs.get(scope)
+            if current is not None and current[1]["id"] == job_id and current[0].poll() is None:
+                return {**current[1], "status": "running", "exit_code": None}
+            finished = self._finished.get((scope, job_id))
+            if finished is not None:
+                return finished.copy()
+        jobs_dir = self.jobs_dir(user_id, channel_id)
+        log_path = jobs_dir / (job_id + ".log")
+        pid_path = jobs_dir / (job_id + ".pid")
         info = _read_pid_info(pid_path)
         if info and _pid_alive(info["pid"]):
-            return {"id": job_id, "run_id": info.get("run_id"), "status": "running", "exit_code": None}
+            return {"id": job_id, "run_id": info.get("run_id"), "user_id": info.get("user_id"), "channel_id": info.get("channel_id"), "status": "running", "exit_code": None}
         if log_path.is_file():
             text = log_path.read_text(encoding="utf-8", errors="replace")
             # Image jobs include a timestamp in the exit marker. Accept the
@@ -110,22 +184,34 @@ class ImageRunner:
                     code = int(markers[-1].split(" code=", 1)[1].split(" ===", 1)[0])
                 except (IndexError, ValueError):
                     code = 1
-                return {"id": job_id, "status": "complete" if code == 0 else "failed", "exit_code": code}
+                return {"id": job_id, "user_id": user_id, "channel_id": channel_id, "status": "complete" if code == 0 else "failed", "exit_code": code}
             if "=== exit code 0 ===" in text:  # legacy logs
-                return {"id": job_id, "status": "complete", "exit_code": 0}
-            return {"id": job_id, "status": "failed", "exit_code": 1}
+                return {"id": job_id, "user_id": user_id, "channel_id": channel_id, "status": "complete", "exit_code": 0}
+            return {"id": job_id, "user_id": user_id, "channel_id": channel_id, "status": "failed", "exit_code": 1}
         return None
 
-    def cancel(self, job_id: str) -> bool:
+    def cancel(self, job_id: str, *, user_id: str | None = None, channel_id: str | None = None) -> bool:
+        scope = self._scope(user_id, channel_id)
         with self._lock:
-            proc = self._proc if self._job and self._job["id"] == job_id else None
-        if proc and proc.poll() is None:
-            proc.terminate()
+            current = self._jobs.get(scope)
+            if current is not None and current[1]["id"] == job_id and current[0].poll() is None:
+                try:
+                    os.killpg(os.getpgid(current[0].pid), signal.SIGTERM)
+                except (ProcessLookupError, PermissionError):
+                    return False
+                return True
+        info = _read_pid_info(self.jobs_dir(user_id, channel_id) / (job_id + ".pid"))
+        if info and _pid_alive(info["pid"]):
+            try:
+                os.killpg(os.getpgid(info["pid"]), signal.SIGTERM)
+            except (ProcessLookupError, PermissionError):
+                return False
             return True
         return False
 
-    def get_log(self, job_id: str, offset: int, limit: int) -> dict:
-        return {"job_id": job_id, **read_log_page(paths.image_jobs_dir() / (job_id + ".log"), offset, limit)}
+    def get_log(self, job_id: str, offset: int, limit: int, *, user_id: str | None = None, channel_id: str | None = None) -> dict:
+        self._scope(user_id, channel_id)
+        return {"job_id": job_id, **read_log_page(self.jobs_dir(user_id, channel_id) / (job_id + ".log"), offset, limit)}
 
 
 image_runner = ImageRunner()

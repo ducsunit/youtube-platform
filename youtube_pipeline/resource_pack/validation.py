@@ -662,7 +662,10 @@ def validate_topic_research(value: dict) -> None:
 def validate_topic_candidates(value: dict) -> None:
     require_fields(value, ("candidates",), "topic_candidates")
     candidates = value["candidates"]
-    if not 8 <= len(candidates) <= 12:
+    if value.get("research_locked"):
+        if len(candidates) != 1:
+            raise ValueError("Research-locked topic candidates phải có đúng 1 candidate.")
+    elif not 8 <= len(candidates) <= 12:
         raise ValueError("Gemini phải tạo 8-12 topic candidates.")
     seen_ids = set()
     seen_topics = set()

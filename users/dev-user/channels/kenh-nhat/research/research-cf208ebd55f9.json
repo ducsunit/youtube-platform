@@ -1,0 +1,747 @@
+{
+  "research_run_id": "research-cf208ebd55f9",
+  "user_id": "dev-user",
+  "channel_id": "kenh-nhat",
+  "youtube_channel_id": "UCL3xuEku7ezoFg2C9pwcTXg",
+  "keyword": "tâm linh",
+  "country": "VN",
+  "language": "vi",
+  "created_at": "2026-09-07T04:11:56.788544+00:00",
+  "evidence": {
+    "serpapi": {
+      "source": "serpapi",
+      "status": "ok",
+      "query": "tâm linh",
+      "records": [
+        {
+          "title": "[ Tập 1134 ] CHẾT ĐI SỐNG LẠI - Chuyện Tâm Linh",
+          "link": "https://www.youtube.com/watch?v=ud6tHdy6x3Q",
+          "snippet": "chuyentamlinh#thythanhpham#chuyenmamysu Tập 1134 hôm nay sẽ bao gồm các chuyện: - Ngôi nhà của quỷ - Chết đi sống lại."
+        },
+        {
+          "title": "tâm linh - tin tức, hình ảnh, video, bình luận",
+          "link": "https://giacngo.vn/tam-linh-tag4374.html",
+          "snippet": "Tin nhanh, hình ảnh, video clip, bình luận mới về tâm linh. Cập nhật nhiều tin tức độc quyền 24h về tâm linh nhanh và nóng nhất liên tục trong ngày."
+        },
+        {
+          "title": "Đời sống tâm linh: tin tức, hình ảnh, video, bình luận mới nhất",
+          "link": "https://thanhnien.vn/doi-song-tam-linh-tags1779332.html",
+          "snippet": "Tin nhanh, hình ảnh, video clip, bình luận mới nhất về Đời sống tâm linh. Cập nhật nhiều tin tức độc quyền 24h về Đời sống tâm linh nhanh và nóng nhất liên tục"
+        },
+        {
+          "title": "TÂM LINH LÀ CHUYỆN CÓ THẬT, bình luận còn thêm ...",
+          "link": "https://www.facebook.com/iceofthesun/posts/t%C3%A2m-linh-l%C3%A0-chuy%E1%BB%87n-c%C3%B3-th%E1%BA%ADt-b%C3%ACnh-lu%E1%BA%ADn-c%C3%B2n-th%C3%AAm-nhi%E1%BB%81u-chuy%E1%BB%87n-th%C3%BA-v%E1%BB%8B/28309115982053666/",
+          "snippet": "Ngày xưa bác bảo em rửa mặt để ăn cháo. Mấy chục năm sau, trong giấc mơ, bác lại gọi: “Trang, dậy rửa mặt cho tỉnh táo\" Và lần này, tiếng gọi ấy ..."
+        },
+        {
+          "title": "\"Tâm linh\" rốt cuộc là gì? : r/religion",
+          "link": "https://www.reddit.com/r/religion/comments/s1y4qp/what_does_spiritual_even_mean/?tl\\u003dvi",
+          "snippet": "Thật sự thì tôi chưa bao giờ hiểu \"tâm linh\" nghĩa là gì và mọi người phân biệt nó với cảm xúc như thế nào. Định ..."
+        },
+        {
+          "title": "Tâm Linh là Tâm mình đặt ở đâu thì ở đó có linh thiêng ...",
+          "link": "https://www.facebook.com/tamanlongbinhan/videos/t%C3%A2m-linh-l%C3%A0-t%C3%A2m-m%C3%ACnh-%C4%91%E1%BA%B7t-%E1%BB%9F-%C4%91%C3%A2u-th%C3%AC-%E1%BB%9F-%C4%91%C3%B3-c%C3%B3-linh-thi%C3%AAng-ngocminhchau-xuhuong/26555263080810582/",
+          "snippet": "Video · Tâm Linh là Tâm mình đặt ở đâu thì ở đó có linh thiêng #ngocminhchau #xuhuong. Tâm Linh là Tâm mình đặt ở đâu ..."
+        },
+        {
+          "title": "Chuyện Tâm Linh ● Chư linh theo ám 8 năm hồi hướng tu ...",
+          "link": "https://tamgioitoanthu.com/bai-viet/chuyen-tam-linh-chu-linh-theo-am-8-nam-hoi-huong-tu-tap-0a369946dc4e3a001ce03427",
+          "snippet": "Đôi mắt D nhẹ nhàng nhìn xuống, khẽ nhắm lại một chốc, rồi lại mở mắt ra kêu gào hoảng hốt. Biểu cảm ấy chính là sự hoảng sợ bị tà sư ám hại, thao túng mình."
+        },
+        {
+          "title": "Chuyện tâm Linh là có thật?",
+          "link": "https://vanhoavaphattrien.vn/chuyen-tam-linh-la-co-that-a20291.html",
+          "snippet": "Mọi việc đang diễn ra bình thường, thì gặp một sự cố mà cả đoàn không lường trước được, đó là sương mù nhiều quá, không đủ điều kiện để ghi hình ..."
+        }
+      ],
+      "retrieved_at": "2026-09-07T04:11:56.685082+00:00",
+      "error": null
+    },
+    "google_trends": {
+      "source": "google_trends",
+      "status": "ok",
+      "query": "tâm linh",
+      "records": [
+        {
+          "date": "14 – 20 thg 9, 2025",
+          "values": [
+            {
+              "query": "tâm linh",
+              "query_index": 0,
+              "value": "42",
+              "extracted_value": 42
+            }
+          ]
+        },
+        {
+          "date": "21 – 27 thg 9, 2025",
+          "values": [
+            {
+              "query": "tâm linh",
+              "query_index": 0,
+              "value": "39",
+              "extracted_value": 39
+            }
+          ]
+        },
+        {
+          "date": "28 thg 9 – 4 thg 10, 2025",
+          "values": [
+            {
+              "query": "tâm linh",
+              "query_index": 0,
+              "value": "40",
+              "extracted_value": 40
+            }
+          ]
+        },
+        {
+          "date": "5 – 11 thg 10, 2025",
+          "values": [
+            {
+              "query": "tâm linh",
+              "query_index": 0,
+              "value": "39",
+              "extracted_value": 39
+            }
+          ]
+        },
+        {
+          "date": "12 – 18 thg 10, 2025",
+          "values": [
+            {
+              "query": "tâm linh",
+              "query_index": 0,
+              "value": "41",
+              "extracted_value": 41
+            }
+          ]
+        },
+        {
+          "date": "19 – 25 thg 10, 2025",
+          "values": [
+            {
+              "query": "tâm linh",
+              "query_index": 0,
+              "value": "40",
+              "extracted_value": 40
+            }
+          ]
+        },
+        {
+          "date": "26 thg 10 – 1 thg 11, 2025",
+          "values": [
+            {
+              "query": "tâm linh",
+              "query_index": 0,
+              "value": "43",
+              "extracted_value": 43
+            }
+          ]
+        },
+        {
+          "date": "2 – 8 thg 11, 2025",
+          "values": [
+            {
+              "query": "tâm linh",
+              "query_index": 0,
+              "value": "43",
+              "extracted_value": 43
+            }
+          ]
+        },
+        {
+          "date": "9 – 15 thg 11, 2025",
+          "values": [
+            {
+              "query": "tâm linh",
+              "query_index": 0,
+              "value": "46",
+              "extracted_value": 46
+            }
+          ]
+        },
+        {
+          "date": "16 – 22 thg 11, 2025",
+          "values": [
+            {
+              "query": "tâm linh",
+              "query_index": 0,
+              "value": "39",
+              "extracted_value": 39
+            }
+          ]
+        },
+        {
+          "date": "23 – 29 thg 11, 2025",
+          "values": [
+            {
+              "query": "tâm linh",
+              "query_index": 0,
+              "value": "44",
+              "extracted_value": 44
+            }
+          ]
+        },
+        {
+          "date": "30 thg 11 – 6 thg 12, 2025",
+          "values": [
+            {
+              "query": "tâm linh",
+              "query_index": 0,
+              "value": "37",
+              "extracted_value": 37
+            }
+          ]
+        },
+        {
+          "date": "7 – 13 thg 12, 2025",
+          "values": [
+            {
+              "query": "tâm linh",
+              "query_index": 0,
+              "value": "44",
+              "extracted_value": 44
+            }
+          ]
+        },
+        {
+          "date": "14 – 20 thg 12, 2025",
+          "values": [
+            {
+              "query": "tâm linh",
+              "query_index": 0,
+              "value": "42",
+              "extracted_value": 42
+            }
+          ]
+        },
+        {
+          "date": "21 – 27 thg 12, 2025",
+          "values": [
+            {
+              "query": "tâm linh",
+              "query_index": 0,
+              "value": "42",
+              "extracted_value": 42
+            }
+          ]
+        },
+        {
+          "date": "28 thg 12, 2025 – 3 thg 1, 2026",
+          "values": [
+            {
+              "query": "tâm linh",
+              "query_index": 0,
+              "value": "46",
+              "extracted_value": 46
+            }
+          ]
+        },
+        {
+          "date": "4 – 10 thg 1, 2026",
+          "values": [
+            {
+              "query": "tâm linh",
+              "query_index": 0,
+              "value": "41",
+              "extracted_value": 41
+            }
+          ]
+        },
+        {
+          "date": "11 – 17 thg 1, 2026",
+          "values": [
+            {
+              "query": "tâm linh",
+              "query_index": 0,
+              "value": "38",
+              "extracted_value": 38
+            }
+          ]
+        },
+        {
+          "date": "18 – 24 thg 1, 2026",
+          "values": [
+            {
+              "query": "tâm linh",
+              "query_index": 0,
+              "value": "37",
+              "extracted_value": 37
+            }
+          ]
+        },
+        {
+          "date": "25 – 31 thg 1, 2026",
+          "values": [
+            {
+              "query": "tâm linh",
+              "query_index": 0,
+              "value": "39",
+              "extracted_value": 39
+            }
+          ]
+        },
+        {
+          "date": "1 – 7 thg 2, 2026",
+          "values": [
+            {
+              "query": "tâm linh",
+              "query_index": 0,
+              "value": "42",
+              "extracted_value": 42
+            }
+          ]
+        },
+        {
+          "date": "8 – 14 thg 2, 2026",
+          "values": [
+            {
+              "query": "tâm linh",
+              "query_index": 0,
+              "value": "34",
+              "extracted_value": 34
+            }
+          ]
+        },
+        {
+          "date": "15 – 21 thg 2, 2026",
+          "values": [
+            {
+              "query": "tâm linh",
+              "query_index": 0,
+              "value": "94",
+              "extracted_value": 94
+            }
+          ]
+        },
+        {
+          "date": "22 – 28 thg 2, 2026",
+          "values": [
+            {
+              "query": "tâm linh",
+              "query_index": 0,
+              "value": "100",
+              "extracted_value": 100
+            }
+          ]
+        },
+        {
+          "date": "1 – 7 thg 3, 2026",
+          "values": [
+            {
+              "query": "tâm linh",
+              "query_index": 0,
+              "value": "61",
+              "extracted_value": 61
+            }
+          ]
+        },
+        {
+          "date": "8 – 14 thg 3, 2026",
+          "values": [
+            {
+              "query": "tâm linh",
+              "query_index": 0,
+              "value": "53",
+              "extracted_value": 53
+            }
+          ]
+        },
+        {
+          "date": "15 – 21 thg 3, 2026",
+          "values": [
+            {
+              "query": "tâm linh",
+              "query_index": 0,
+              "value": "47",
+              "extracted_value": 47
+            }
+          ]
+        },
+        {
+          "date": "22 – 28 thg 3, 2026",
+          "values": [
+            {
+              "query": "tâm linh",
+              "query_index": 0,
+              "value": "49",
+              "extracted_value": 49
+            }
+          ]
+        },
+        {
+          "date": "29 thg 3 – 4 thg 4, 2026",
+          "values": [
+            {
+              "query": "tâm linh",
+              "query_index": 0,
+              "value": "49",
+              "extracted_value": 49
+            }
+          ]
+        },
+        {
+          "date": "5 – 11 thg 4, 2026",
+          "values": [
+            {
+              "query": "tâm linh",
+              "query_index": 0,
+              "value": "45",
+              "extracted_value": 45
+            }
+          ]
+        },
+        {
+          "date": "12 – 18 thg 4, 2026",
+          "values": [
+            {
+              "query": "tâm linh",
+              "query_index": 0,
+              "value": "40",
+              "extracted_value": 40
+            }
+          ]
+        },
+        {
+          "date": "19 – 25 thg 4, 2026",
+          "values": [
+            {
+              "query": "tâm linh",
+              "query_index": 0,
+              "value": "46",
+              "extracted_value": 46
+            }
+          ]
+        },
+        {
+          "date": "26 thg 4 – 2 thg 5, 2026",
+          "values": [
+            {
+              "query": "tâm linh",
+              "query_index": 0,
+              "value": "43",
+              "extracted_value": 43
+            }
+          ]
+        },
+        {
+          "date": "3 – 9 thg 5, 2026",
+          "values": [
+            {
+              "query": "tâm linh",
+              "query_index": 0,
+              "value": "45",
+              "extracted_value": 45
+            }
+          ]
+        },
+        {
+          "date": "10 – 16 thg 5, 2026",
+          "values": [
+            {
+              "query": "tâm linh",
+              "query_index": 0,
+              "value": "44",
+              "extracted_value": 44
+            }
+          ]
+        },
+        {
+          "date": "17 – 23 thg 5, 2026",
+          "values": [
+            {
+              "query": "tâm linh",
+              "query_index": 0,
+              "value": "45",
+              "extracted_value": 45
+            }
+          ]
+        },
+        {
+          "date": "24 – 30 thg 5, 2026",
+          "values": [
+            {
+              "query": "tâm linh",
+              "query_index": 0,
+              "value": "47",
+              "extracted_value": 47
+            }
+          ]
+        },
+        {
+          "date": "31 thg 5 – 6 thg 6, 2026",
+          "values": [
+            {
+              "query": "tâm linh",
+              "query_index": 0,
+              "value": "53",
+              "extracted_value": 53
+            }
+          ]
+        },
+        {
+          "date": "7 – 13 thg 6, 2026",
+          "values": [
+            {
+              "query": "tâm linh",
+              "query_index": 0,
+              "value": "47",
+              "extracted_value": 47
+            }
+          ]
+        },
+        {
+          "date": "14 – 20 thg 6, 2026",
+          "values": [
+            {
+              "query": "tâm linh",
+              "query_index": 0,
+              "value": "42",
+              "extracted_value": 42
+            }
+          ]
+        },
+        {
+          "date": "21 – 27 thg 6, 2026",
+          "values": [
+            {
+              "query": "tâm linh",
+              "query_index": 0,
+              "value": "36",
+              "extracted_value": 36
+            }
+          ]
+        },
+        {
+          "date": "28 thg 6 – 4 thg 7, 2026",
+          "values": [
+            {
+              "query": "tâm linh",
+              "query_index": 0,
+              "value": "37",
+              "extracted_value": 37
+            }
+          ]
+        },
+        {
+          "date": "5 – 11 thg 7, 2026",
+          "values": [
+            {
+              "query": "tâm linh",
+              "query_index": 0,
+              "value": "37",
+              "extracted_value": 37
+            }
+          ]
+        },
+        {
+          "date": "12 – 18 thg 7, 2026",
+          "values": [
+            {
+              "query": "tâm linh",
+              "query_index": 0,
+              "value": "37",
+              "extracted_value": 37
+            }
+          ]
+        },
+        {
+          "date": "19 – 25 thg 7, 2026",
+          "values": [
+            {
+              "query": "tâm linh",
+              "query_index": 0,
+              "value": "32",
+              "extracted_value": 32
+            }
+          ]
+        },
+        {
+          "date": "26 thg 7 – 1 thg 8, 2026",
+          "values": [
+            {
+              "query": "tâm linh",
+              "query_index": 0,
+              "value": "39",
+              "extracted_value": 39
+            }
+          ]
+        },
+        {
+          "date": "2 – 8 thg 8, 2026",
+          "values": [
+            {
+              "query": "tâm linh",
+              "query_index": 0,
+              "value": "35",
+              "extracted_value": 35
+            }
+          ]
+        },
+        {
+          "date": "9 – 15 thg 8, 2026",
+          "values": [
+            {
+              "query": "tâm linh",
+              "query_index": 0,
+              "value": "44",
+              "extracted_value": 44
+            }
+          ]
+        },
+        {
+          "date": "16 – 22 thg 8, 2026",
+          "values": [
+            {
+              "query": "tâm linh",
+              "query_index": 0,
+              "value": "37",
+              "extracted_value": 37
+            }
+          ]
+        },
+        {
+          "date": "23 – 29 thg 8, 2026",
+          "values": [
+            {
+              "query": "tâm linh",
+              "query_index": 0,
+              "value": "43",
+              "extracted_value": 43
+            }
+          ]
+        },
+        {
+          "date": "30 thg 8 – 5 thg 9, 2026",
+          "values": [
+            {
+              "query": "tâm linh",
+              "query_index": 0,
+              "value": "41",
+              "extracted_value": 41
+            }
+          ]
+        },
+        {
+          "date": "6 – 12 thg 9, 2026",
+          "values": [
+            {
+              "query": "tâm linh",
+              "query_index": 0,
+              "value": "35",
+              "extracted_value": 35
+            }
+          ]
+        }
+      ],
+      "retrieved_at": "2026-09-07T04:11:56.784066+00:00",
+      "error": null
+    },
+    "vidiq": {
+      "source": "vidiq",
+      "status": "unavailable",
+      "query": "tâm linh",
+      "records": [],
+      "retrieved_at": "2026-09-07T04:11:56.785692+00:00",
+      "error": "vidIQ tùy chọn: set VIDIQ_RESEARCH_JSON nếu có export"
+    }
+  },
+  "normalized": {
+    "keyword": "tâm linh",
+    "country": "VN",
+    "language": "vi",
+    "demand_signals": {
+      "serpapi": 8,
+      "google_trends": 52,
+      "vidiq": 0
+    },
+    "source_status": {
+      "serpapi": "ok",
+      "google_trends": "ok",
+      "vidiq": "unavailable"
+    },
+    "provider_summary": {
+      "serpapi": {
+        "status": "ok",
+        "record_count": 8,
+        "error": null
+      },
+      "google_trends": {
+        "status": "ok",
+        "record_count": 52,
+        "error": null
+      },
+      "vidiq": {
+        "status": "unavailable",
+        "record_count": 0,
+        "error": "vidIQ tùy chọn: set VIDIQ_RESEARCH_JSON nếu có export"
+      }
+    }
+  },
+  "opportunities": [
+    {
+      "opportunity_id": "opp-faa1fe2d88",
+      "keyword": "tâm linh",
+      "country": "VN",
+      "language": "vi",
+      "gap_statement": "Đối thủ đang bao phủ 'tâm linh' ở mức chủ đề; chưa có bằng chứng đủ mạnh rằng họ giải quyết khoảnh khắc/câu hỏi cụ thể 'tâm linh' theo cấu trúc cơ chế tâm lý trước giải pháp.",
+      "audience_moment": "Người xem tại VN đang tìm câu trả lời cho: tâm linh",
+      "unserved_question": "tâm linh",
+      "editorial_angle": "recognition → mechanism → self-understanding → practical shift",
+      "promise": "Hiểu chính xác điều đang xảy ra phía sau 'tâm linh' mà không biến nó thành lời khuyên sáo rỗng.",
+      "competitor_coverage": "observed",
+      "specific_moment_coverage": "needs_validation",
+      "evidence_sources": [
+        "serpapi",
+        "google_trends"
+      ],
+      "evidence_count": 60,
+      "evidence_summary": {
+        "competitors": {
+          "observed_items": 8,
+          "keyword_aligned_items": 8,
+          "sample_titles": [
+            "[ Tập 1134 ] CHẾT ĐI SỐNG LẠI - Chuyện Tâm Linh",
+            "tâm linh - tin tức, hình ảnh, video, bình luận",
+            "Đời sống tâm linh: tin tức, hình ảnh, video, bình luận mới nhất",
+            "TÂM LINH LÀ CHUYỆN CÓ THẬT, bình luận còn thêm ...",
+            "\"Tâm linh\" rốt cuộc là gì? : r/religion",
+            "Tâm Linh là Tâm mình đặt ở đâu thì ở đó có linh thiêng ...",
+            "Chuyện Tâm Linh ● Chư linh theo ám 8 năm hồi hướng tu ...",
+            "Chuyện tâm Linh là có thật?"
+          ],
+          "coverage_ratio": 1.0
+        },
+        "trends": {
+          "rising_queries": [],
+          "timeline_points": 52
+        },
+        "questions": []
+      },
+      "channel_fit": "high",
+      "opportunity_score": 86,
+      "score_breakdown": {
+        "demand": 30,
+        "evidence_quality": 20,
+        "competitor_coverage": 16,
+        "channel_fit": 20
+      },
+      "risk_flags": [
+        "no_specific_demand_signal"
+      ],
+      "coverage_terms": [
+        "tâm linh",
+        "[ Tập 1134 ] CHẾT ĐI SỐNG LẠI - Chuyện Tâm Linh",
+        "tâm linh - tin tức, hình ảnh, video, bình luận",
+        "Đời sống tâm linh: tin tức, hình ảnh, video, bình luận mới nhất",
+        "TÂM LINH LÀ CHUYỆN CÓ THẬT, bình luận còn thêm ...",
+        "\"Tâm linh\" rốt cuộc là gì? : r/religion",
+        "Tâm Linh là Tâm mình đặt ở đâu thì ở đó có linh thiêng ...",
+        "Chuyện Tâm Linh ● Chư linh theo ám 8 năm hồi hướng tu ...",
+        "Chuyện tâm Linh là có thật?"
+      ]
+    }
+  ],
+  "selected_opportunity_id": null
+}

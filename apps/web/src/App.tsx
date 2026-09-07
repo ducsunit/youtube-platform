@@ -10,6 +10,8 @@ const VideoGenPage = lazy(() => import('./pages/VideoGenPage').then(m => ({ defa
 const ImageGenPage = lazy(() => import('./pages/ImageGenPage').then(m => ({ default: m.ImageGenPage })));
 const RunDetailPage = lazy(() => import('./pages/RunDetailPage').then(m => ({ default: m.RunDetailPage })));
 const ModelConfigPage = lazy(() => import('./pages/ModelConfigPage').then(m => ({ default: m.ModelConfigPage })));
+const ChannelsPage = lazy(() => import('./pages/ChannelsPage').then(m => ({ default: m.ChannelsPage })));
+const ResearchPage = lazy(() => import('./pages/ResearchPage').then(m => ({ default: m.ResearchPage })));
 
 function PageFallback() {
   return (
@@ -28,9 +30,11 @@ export default function App() {
         <Routes>
           <Route path="/" element={<RunsPage />} />
           <Route path="/data" element={<DataPage />} />
+          <Route path="/research" element={<ResearchPage />} />
           <Route path="/build" element={<BuildPage />} />
           <Route path="/video-gen" element={<VideoGenPage />} />
           <Route path="/image-gen" element={<ImageGenPage />} />
+          <Route path="/channels" element={<ChannelsPage />} />
           <Route path="/settings/providers" element={<ModelConfigPage />} />
           <Route path="/runs/:runId" element={<RunDetailPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />

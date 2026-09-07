@@ -61,34 +61,52 @@ class BuildBusyError(Exception):
 
 
 class BuildRunner:
-    """Singleton — tối đa một build job. Trạng thái trong bộ nhớ hoặc trên đĩa."""
+    """Runner có tối đa một build job cho mỗi namespace user/channel."""
+
+    @staticmethod
+    def jobs_dir(user_id: str | None = None, channel_id: str | None = None) -> Path:
+        if bool(user_id) != bool(channel_id):
+            raise ValueError("user_id và channel_id phải được truyền cùng nhau")
+        return (
+            paths.channel_root(user_id, channel_id) / "runtime" / "build-jobs"
+            if user_id and channel_id
+            else paths.build_jobs_dir()
+        )
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
-        self._proc: Optional[subprocess.Popen] = None
-        self._job: Optional[dict] = None
-        self._finished: dict[str, dict] = {}
+        self._jobs: dict[tuple[str | None, str | None], tuple[subprocess.Popen, dict]] = {}
+        self._finished: dict[tuple[tuple[str | None, str | None], str], dict] = {}
+        self._finished_order: list[tuple[tuple[str | None, str | None], str]] = []
 
     # --------------------------------------------------------------- query
 
-    def active_job(self) -> Optional[dict]:
-        """{id, run_id, started_at, log_path, orphaned} | None."""
+    def active_job(self, *, user_id: str | None = None, channel_id: str | None = None) -> Optional[dict]:
+        """{id, run_id, started_at, log_path, orphaned} | None in this namespace."""
+        jobs_dir = self.jobs_dir(user_id, channel_id)
         with self._lock:
-            return self._active_unlocked()
+            return self._active_unlocked(jobs_dir, (user_id, channel_id))
 
-    def busy(self) -> bool:
-        return self.active_job() is not None
+    @staticmethod
+    def _scope(user_id: str | None, channel_id: str | None) -> tuple[str | None, str | None]:
+        if bool(user_id) != bool(channel_id):
+            raise ValueError("user_id và channel_id phải được truyền cùng nhau")
+        return user_id, channel_id
 
-    def _active_unlocked(self) -> Optional[dict]:
-        if self._proc is not None and self._proc.poll() is None and self._job:
-            return {
-                "id": self._job["id"],
-                "run_id": self._job.get("run_id"),
-                "started_at": self._job["started_at"],
-                "log_path": self._job["log_path"],
-                "orphaned": False,
-            }
-        jobs_dir = paths.build_jobs_dir()
+    def busy(self, *, user_id: str | None = None, channel_id: str | None = None) -> bool:
+        return self.active_job(user_id=user_id, channel_id=channel_id) is not None
+
+    def _active_unlocked(
+        self,
+        jobs_dir: Path | None = None,
+        scope: tuple[str | None, str | None] | None = None,
+    ) -> Optional[dict]:
+        if jobs_dir is None:
+            jobs_dir = paths.build_jobs_dir()
+        for job_scope, (proc, job) in self._jobs.items():
+            if proc.poll() is None and (scope is None or job_scope == scope):
+                return {**job, "orphaned": False}
+
         if jobs_dir.is_dir():
             for pid_file in sorted(jobs_dir.glob("*.pid")):
                 info = _read_pid_info(pid_file)
@@ -98,25 +116,40 @@ class BuildRunner:
                     except OSError:
                         pass
                     continue
+                info_scope = (info.get("user_id"), info.get("channel_id"))
+                if scope is not None and info_scope != scope:
+                    continue
                 return {
                     "id": pid_file.stem,
                     "run_id": info.get("run_id"),
                     "started_at": None,
                     "log_path": str(jobs_dir / ("%s.log" % pid_file.stem)),
+                    "user_id": info.get("user_id"),
+                    "channel_id": info.get("channel_id"),
                     "orphaned": True,
                 }
         return None
 
     # --------------------------------------------------------------- start
 
-    def start(self, run_id: str, argv: list[str], cwd: Path) -> dict:
+    def start(
+        self,
+        run_id: str,
+        argv: list[str],
+        cwd: Path,
+        *,
+        user_id: str | None = None,
+        channel_id: str | None = None,
+    ) -> dict:
         """Spawn build job; trả {id, run_id, started_at, log_path}."""
+        jobs_dir = self.jobs_dir(user_id, channel_id)
+        scope = self._scope(user_id, channel_id)
         with self._lock:
-            active = self._active_unlocked()
+            active = self._active_unlocked(jobs_dir, scope)
             if active is not None:
                 raise BuildBusyError(str(active["id"]))
             job_id = uuid.uuid4().hex
-            log_file = paths.build_jobs_dir() / ("%s.log" % job_id)
+            log_file = jobs_dir / ("%s.log" % job_id)
             log_file.parent.mkdir(parents=True, exist_ok=True)
             # fd kế thừa — KHÔNG PIPE: server chết -> child không bị SIGPIPE,
             # log tiếp tục ghi, server mới đọc lại được.
@@ -144,75 +177,106 @@ class BuildRunner:
             handle.close()
             try:
                 # pid info dạng json {pid, kind} (đọc linh hoạt) + run_id cho orphan.
-                (paths.build_jobs_dir() / ("%s.pid" % job_id)).write_text(
-                    json.dumps({"pid": proc.pid, "kind": "build", "run_id": run_id}),
+                (jobs_dir / ("%s.pid" % job_id)).write_text(
+                    json.dumps(
+                        {
+                            "pid": proc.pid,
+                            "kind": "build",
+                            "run_id": run_id,
+                            "user_id": user_id,
+                            "channel_id": channel_id,
+                        }
+                    ),
                     encoding="utf-8",
                 )
             except OSError:
                 pass
-            self._proc = proc
             started_at = _now_iso()
-            self._job = {
+            job = {
                 "id": job_id,
                 "run_id": run_id,
+                "user_id": user_id,
+                "channel_id": channel_id,
                 "started_at": started_at,
                 "log_path": str(log_file),
+                "jobs_dir": str(jobs_dir),
             }
+            self._jobs[scope] = (proc, job)
             threading.Thread(
-                target=self._waiter, args=(proc, job_id, run_id, started_at), daemon=True
+                target=self._waiter, args=(proc, job_id, run_id, started_at, jobs_dir, scope), daemon=True
             ).start()
             return {"id": job_id, "run_id": run_id, "started_at": started_at, "log_path": str(log_file)}
 
-    def _waiter(self, proc: subprocess.Popen, job_id: str, run_id: str, started_at: str) -> None:
+    def _waiter(
+        self,
+        proc: subprocess.Popen,
+        job_id: str,
+        run_id: str,
+        started_at: str,
+        jobs_dir: Path,
+        scope: tuple[str | None, str | None],
+    ) -> None:
         code = proc.wait()
+        log_path = jobs_dir / ("%s.log" % job_id)
         with self._lock:
-            if self._proc is proc:
-                self._proc = None
-                self._job = None
-            self._finished[job_id] = {
+            current = self._jobs.get(scope)
+            if current is not None and current[0] is proc:
+                self._jobs.pop(scope, None)
+            self._finished[(scope, job_id)] = {
                 "id": job_id,
                 "run_id": run_id,
+                "user_id": scope[0],
+                "channel_id": scope[1],
                 "status": "complete" if code == 0 else "failed",
                 "exit_code": code,
                 "started_at": started_at,
                 "finished_at": _now_iso(),
-                "log_path": str(paths.build_jobs_dir() / ("%s.log" % job_id)),
+                "log_path": str(log_path),
             }
-            while len(self._finished) > 20:  # ring nhỏ, không lớn mãi
-                self._finished.pop(next(iter(self._finished)))
+            self._finished_order.append((scope, job_id))
+            while len(self._finished_order) > 20:
+                self._finished.pop(self._finished_order.pop(0), None)
         try:
-            with open(paths.build_jobs_dir() / ("%s.log" % job_id), "ab") as fh:
+            with open(log_path, "ab") as fh:
                 fh.write(("=== exit code %d ===\n" % code).encode("utf-8"))
         except OSError:
             pass
         try:
-            (paths.build_jobs_dir() / ("%s.pid" % job_id)).unlink()
+            (jobs_dir / ("%s.pid" % job_id)).unlink()
         except OSError:
             pass
 
-    # --------------------------------------------------------------- status
-
-    def job_status(self, job_id: str) -> Optional[dict]:
-        """{id, run_id, status, exit_code, started_at, finished_at} | None."""
-        with self._lock:
-            if (
-                self._job is not None
-                and self._job["id"] == job_id
-                and self._proc is not None
-                and self._proc.poll() is None
-            ):
+    def _in_memory_job(
+        self, job_id: str, scope: tuple[str | None, str | None]
+    ) -> Optional[dict]:
+        current = self._jobs.get(scope)
+        if current is not None:
+            proc, job = current
+            if job["id"] == job_id and proc.poll() is None:
                 return {
-                    "id": job_id,
-                    "run_id": self._job.get("run_id"),
+                    **job,
                     "status": "running",
                     "exit_code": None,
-                    "started_at": self._job["started_at"],
                     "finished_at": None,
                 }
-            if job_id in self._finished:
-                return dict(self._finished[job_id])
+        finished = self._finished.get((scope, job_id))
+        return dict(finished) if finished is not None else None
+
+    def log_path(self, job_id: str, *, user_id: str | None = None, channel_id: str | None = None) -> Path:
+        self._scope(user_id, channel_id)
+        return self.jobs_dir(user_id, channel_id) / ("%s.log" % job_id)
+
+    # --------------------------------------------------------------- status
+
+    def job_status(self, job_id: str, *, user_id: str | None = None, channel_id: str | None = None) -> Optional[dict]:
+        """{id, run_id, status, exit_code, started_at, finished_at} | None."""
+        scope = self._scope(user_id, channel_id)
+        with self._lock:
+            in_memory = self._in_memory_job(job_id, scope)
+            if in_memory is not None:
+                return in_memory
         # Đường đĩa — phục vụ job mồ côi / sau khi server restart.
-        jobs_dir = paths.build_jobs_dir()
+        jobs_dir = self.jobs_dir(user_id, channel_id)
         log_file = jobs_dir / ("%s.log" % job_id)
         pid_file = jobs_dir / ("%s.pid" % job_id)
         info = _read_pid_info(pid_file)
@@ -220,6 +284,8 @@ class BuildRunner:
             return {
                 "id": job_id,
                 "run_id": info.get("run_id"),
+                "user_id": info.get("user_id"),
+                "channel_id": info.get("channel_id"),
                 "status": "running",
                 "exit_code": None,
                 "started_at": None,
@@ -233,6 +299,8 @@ class BuildRunner:
                 return {
                     "id": job_id,
                     "run_id": None,
+                    "user_id": info.get("user_id") if info else user_id,
+                    "channel_id": info.get("channel_id") if info else channel_id,
                     "status": "complete" if code == 0 else "failed",
                     "exit_code": code,
                     "started_at": None,
@@ -241,6 +309,8 @@ class BuildRunner:
             return {
                 "id": job_id,
                 "run_id": None,
+                "user_id": user_id,
+                "channel_id": channel_id,
                 "status": "failed",
                 "exit_code": None,
                 "started_at": None,
@@ -250,18 +320,14 @@ class BuildRunner:
 
     # --------------------------------------------------------------- cancel
 
-    def cancel(self, job_id: str) -> bool:
+    def cancel(self, job_id: str, *, user_id: str | None = None, channel_id: str | None = None) -> bool:
         """SIGTERM cả process group; đúng cho proc trong bộ nhớ lẫn orphan."""
         with self._lock:
-            if (
-                self._proc is not None
-                and self._job is not None
-                and self._job["id"] == job_id
-                and self._proc.poll() is None
-            ):
-                self._terminate(self._proc)
+            current = self._jobs.get(self._scope(user_id, channel_id))
+            if current is not None and current[1]["id"] == job_id and current[0].poll() is None:
+                self._terminate(current[0])
                 return True
-        info = _read_pid_info(paths.build_jobs_dir() / ("%s.pid" % job_id))
+        info = _read_pid_info(self.jobs_dir(user_id, channel_id) / ("%s.pid" % job_id))
         if info is not None and _pid_alive(info["pid"]):
             try:
                 os.killpg(os.getpgid(info["pid"]), signal.SIGTERM)

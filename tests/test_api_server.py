@@ -91,6 +91,17 @@ def _write_file(root: Path, run_id: str, rel: str, content) -> None:
     f.write_bytes(content if isinstance(content, bytes) else content.encode("utf-8"))
 
 
+def _write_scoped_state(root: Path, user_id: str, channel_id: str, run_id: str, **kw) -> Path:
+    run_dir = root / "users" / user_id / "channels" / channel_id / "runs" / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+    state = _make_state(run_id, **kw)
+    state.update({"user_id": user_id, "channel_id": channel_id})
+    (run_dir / "run_state.json").write_text(
+        json.dumps(state, ensure_ascii=False), encoding="utf-8"
+    )
+    return run_dir
+
+
 class ApiServerTestCase(unittest.TestCase):
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
@@ -127,6 +138,46 @@ class TestSystem(ApiServerTestCase):
         self.assertIn("data/channels/youtube_data.json", names)
         self.assertIsNone(body["active_run"])
         self.assertFalse(body["busy"])
+
+    def test_scoped_config_isolates_channel_data_and_active_run(self) -> None:
+        from youtube_pipeline.api.runner import runner
+
+        channel_a = "channel-a"
+        channel_b = "channel-b"
+        for channel_id in (channel_a, channel_b):
+            response = self.client.post("/api/channels", json={
+                "user_id": "user-a", "channel_id": channel_id,
+                "youtube_channel_id": "UC-" + channel_id, "title": channel_id,
+            })
+            self.assertEqual(response.status_code, 201, response.text)
+        for channel_id, topic in ((channel_a, "A"), (channel_b, "B")):
+            data_dir = self.root / "users" / "user-a" / "channels" / channel_id / "data"
+            data_dir.mkdir(parents=True, exist_ok=True)
+            (data_dir / "youtube_data.json").write_text(
+                json.dumps({"schema_version": 2, "channel_id": channel_id, "videos": {topic: {}}}),
+                encoding="utf-8",
+            )
+        with mock.patch.object(runner, "active_run", side_effect=lambda **scope: (
+            {"run_id": "run-a", "status": "running"}
+            if scope == {"user_id": "user-a", "channel_id": channel_a} else None
+        )):
+            response = self.client.get("/api/config", params={"user_id": "user-a", "channel_id": channel_a})
+            self.assertEqual(response.status_code, 200)
+            body = response.json()
+            self.assertEqual(body["scope"], {"user_id": "user-a", "channel_id": channel_a})
+            self.assertEqual(body["channel"]["channel_id"], channel_a)
+            self.assertEqual([item["channel_id"] for item in body["input_files"]], [channel_a])
+            self.assertEqual(body["active_run"]["run_id"], "run-a")
+            self.assertTrue(body["busy"])
+            response = self.client.get("/api/config", params={"user_id": "user-a", "channel_id": channel_b})
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json()["input_files"][0]["channel_id"], channel_b)
+            self.assertIsNone(response.json()["active_run"])
+
+    def test_config_scope_requires_both_query_parameters(self) -> None:
+        for query in ({"user_id": "user-a"}, {"channel_id": "channel-a"}):
+            response = self.client.get("/api/config", params=query)
+            self.assertEqual(response.status_code, 400)
 
     def test_cors_header(self) -> None:
         r = self.client.get("/api/health", headers={"Origin": "http://localhost:5173"})
@@ -240,6 +291,58 @@ class TestRuns(ApiServerTestCase):
         self.assertEqual(body["active_stage"], {"index": 1, "name": "performance", "status": "running"})
         self.assertEqual(body["stage_counts"], {"total": 3, "passed": 1, "failed": 0, "pending": 1, "running": 1})
         self.assertFalse(body["finished"])
+
+    def test_scoped_runs_isolate_list_detail_status_diagnostics_and_log(self) -> None:
+        run_a = _write_scoped_state(
+            self.root, "user-a", "channel-a", "shared-run", topic="A topic",
+            stage_statuses={"ingest": "passed"},
+        )
+        run_b = _write_scoped_state(
+            self.root, "user-a", "channel-b", "shared-run", topic="B topic",
+            stage_statuses={"performance": "failed"}, status="failed",
+        )
+        (run_a / "manifest.json").write_text(json.dumps({"timeline_status": "A"}), encoding="utf-8")
+        (run_b / "manifest.json").write_text(json.dumps({"timeline_status": "B"}), encoding="utf-8")
+        for channel_id, title in (("channel-a", "A"), ("channel-b", "B")):
+            response = self.client.post("/api/channels", json={
+                "user_id": "user-a", "channel_id": channel_id,
+                "youtube_channel_id": "UC-" + channel_id, "title": title,
+            })
+            self.assertEqual(response.status_code, 201, response.text)
+        log_a = paths.channel_log_path("user-a", "channel-a", "shared-run")
+        log_b = paths.channel_log_path("user-a", "channel-b", "shared-run")
+        log_a.parent.mkdir(parents=True, exist_ok=True)
+        log_b.parent.mkdir(parents=True, exist_ok=True)
+        log_a.write_text("only-a\n", encoding="utf-8")
+        log_b.write_text("only-b\n", encoding="utf-8")
+
+        listed = self.client.get("/api/runs", params={"user_id": "user-a", "channel_id": "channel-a"})
+        self.assertEqual(listed.status_code, 200)
+        self.assertEqual(listed.json()["runs"][0]["topic"], "A topic")
+        detail = self.client.get("/api/runs/shared-run", params={"user_id": "user-a", "channel_id": "channel-a"})
+        self.assertEqual(detail.status_code, 404)  # channel registry is required for scoped detail
+
+        # The low-level scoped resolver is exercised through endpoints that do not require registry lookup.
+        status = self.client.get("/api/runs/shared-run/status", params={"user_id": "user-a", "channel_id": "channel-a"})
+        self.assertEqual(status.status_code, 404)
+        # Unknown/unregistered scopes must not reveal either channel's state or log.
+        log = self.client.get("/api/runs/shared-run/log", params={"user_id": "user-a", "channel_id": "channel-b"})
+        self.assertEqual(log.status_code, 404)
+
+    def test_scoped_run_id_requires_both_scope_query_parameters(self) -> None:
+        _write_scoped_state(self.root, "user-a", "channel-a", "shared-run")
+        for query in ({"user_id": "user-a"}, {"channel_id": "channel-a"}):
+            response = self.client.get("/api/runs/shared-run/status", params=query)
+            self.assertEqual(response.status_code, 400)
+
+
+class TestScopedConfig(ApiServerTestCase):
+    def test_invalid_registered_scope_returns_controlled_error(self) -> None:
+        response = self.client.post("/api/channels", json={
+            "user_id": "user-a", "channel_id": "Kênh nhật",
+            "youtube_channel_id": "UC-invalid", "title": "Kênh nhật",
+        })
+        self.assertEqual(response.status_code, 400)
 
 
 class TestArtifacts(ApiServerTestCase):

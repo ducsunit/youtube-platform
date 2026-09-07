@@ -23,8 +23,13 @@ import {
 import { LogViewer } from '../components/LogViewer';
 import { usePolling } from '../hooks/usePolling';
 import { useT } from '../i18n';
+import { useChannelContext } from '../contexts/ChannelContext';
 import type { BuildImportResult, BuildJob, SrtJob, SubStyle } from '../types';
+import type { RunScope } from '../services/runsService';
 import { formatDate } from '../utils';
+
+const scopeForChannel = (channel: ReturnType<typeof useChannelContext>['currentChannel']): RunScope | null =>
+  channel ? { user_id: channel.user_id, channel_id: channel.channel_id } : null;
 
 const STATUS_INTERVAL_MS = 5000;
 const JOB_INTERVAL_MS = 1500;
@@ -76,16 +81,34 @@ const PACK_FILE_KEYS: ReadonlyArray<[PackFileKey, string]> = [
  */
 export function BuildPage() {
   const { t, lang } = useT();
+  const { currentChannel, loading: channelLoading } = useChannelContext();
+  const scope = scopeForChannel(currentChannel);
+  const channelScope = currentChannel
+    ? { user_id: currentChannel.user_id, channel_id: currentChannel.channel_id }
+    : undefined;
+  const channelScopeKey = channelScope ? `${channelScope.user_id}:${channelScope.channel_id}` : null;
+  const scopeKey = scope ? `${scope.user_id}:${scope.channel_id}` : null;
 
-  // Danh sách run để chọn.
-  const runsPoll = usePolling(() => listRuns(), {
-    enabled: true,
+  // Danh sách run để chọn, giới hạn trong channel đang chọn.
+  const runsPoll = usePolling(() => (scope ? listRuns(scope) : Promise.resolve(null)), {
+    enabled: scope !== null,
     intervalMs: STATUS_INTERVAL_MS,
   });
-  const runs = runsPoll.data?.runs ?? [];
+  const [runsScopeKey, setRunsScopeKey] = useState<string | null>(null);
+  const runs = runsScopeKey === scopeKey ? runsPoll.data?.runs ?? [] : [];
 
   // Run đang xem (mặc định run mới nhất có resource_pack).
   const [runId, setRunId] = useState<string>('');
+  useEffect(() => {
+    let cancelled = false;
+    setRunId('');
+    setRunsScopeKey(null);
+    if (!scopeKey) return () => { cancelled = true; };
+    void runsPoll.refresh().then(() => {
+      if (!cancelled) setRunsScopeKey(scopeKey);
+    });
+    return () => { cancelled = true; };
+  }, [scopeKey, runsPoll.refresh]);
   useEffect(() => {
     if (runId === '' && runs.length > 0) {
       const packRuns = runs.filter((r) => r.has_manifest);
@@ -94,10 +117,14 @@ export function BuildPage() {
   }, [runs, runId]);
 
   // Trạng thái tài nguyên của run đang xem.
-  const statusPoll = usePolling(() => getBuildStatus(runId), {
-    enabled: runId !== '',
+  const statusPoll = usePolling(() => getBuildStatus(runId, channelScope), {
+    enabled: runId !== '' && scope !== null,
     intervalMs: STATUS_INTERVAL_MS,
   });
+
+  if (channelLoading || !currentChannel) {
+    return <div className="page"><div className="empty-state">{channelLoading ? 'Đang tải channel...' : 'Chưa có channel được đăng ký.'}</div></div>;
+  }
   const status = statusPoll.data;
 
   // Job dựng đang theo dõi — kèm log live.
@@ -105,7 +132,7 @@ export function BuildPage() {
   const [job, setJob] = useState<BuildJob | null>(null);
   const [jobError, setJobError] = useState<unknown>(null);
   const jobDone = job !== null && job.status !== 'running';
-  const jobPoll = usePolling(() => getBuildJob(jobId ?? ''), {
+  const jobPoll = usePolling(() => getBuildJob(jobId ?? '', channelScope), {
     enabled: jobId !== null && !jobDone,
     intervalMs: JOB_INTERVAL_MS,
   });
@@ -126,8 +153,8 @@ export function BuildPage() {
   const [actionError, setActionError] = useState<string | null>(null);
 
   // SRT is generated from the selected run's script and narration audio.
-  const srtStatusPoll = usePolling(() => getSrtStatus(), { enabled: true, intervalMs: STATUS_INTERVAL_MS * 2 });
-  const srtInputsPoll = usePolling(() => getSrtInputs(runId), { enabled: runId !== '', intervalMs: STATUS_INTERVAL_MS });
+  const srtStatusPoll = usePolling(() => getSrtStatus(channelScope), { enabled: scope !== null, intervalMs: STATUS_INTERVAL_MS * 2 });
+  const srtInputsPoll = usePolling(() => getSrtInputs(runId, channelScope), { enabled: runId !== '' && scope !== null, intervalMs: STATUS_INTERVAL_MS });
   const [srtModel, setSrtModel] = useState('large-v3');
   const [srtDevice, setSrtDevice] = useState('cpu');
   const [srtMode, setSrtMode] = useState('accurate');
@@ -136,7 +163,7 @@ export function BuildPage() {
   const [srtJob, setSrtJob] = useState<SrtJob | null>(null);
   const [srtError, setSrtError] = useState<string | null>(null);
   const srtRunning = srtJobId !== null && (srtJob === null || srtJob.status === 'running');
-  const srtJobPoll = usePolling(() => getSrtJob(srtJobId ?? ''), { enabled: srtRunning, intervalMs: JOB_INTERVAL_MS });
+  const srtJobPoll = usePolling(() => getSrtJob(srtJobId ?? '', channelScope), { enabled: srtRunning && scope !== null, intervalMs: JOB_INTERVAL_MS });
   useEffect(() => {
     if (srtJobPoll.data) setSrtJob(srtJobPoll.data);
     if (srtJobPoll.error) setSrtError(String(srtJobPoll.error));
@@ -153,7 +180,7 @@ export function BuildPage() {
     setSubLoaded(false);
     setSubSaved(false);
     setSubError(null);
-    getSubStyle(runId)
+    getSubStyle(runId, channelScope)
       .then((r) => {
         if (cancelled) return;
         setSubStyle({ ...SUB_DEFAULTS, ...r.style });
@@ -165,13 +192,13 @@ export function BuildPage() {
     return () => {
       cancelled = true;
     };
-  }, [runId]);
+  }, [runId, channelScopeKey]);
 
   const doSaveSubStyle = async () => {
     if (!runId) return;
     setSubError(null);
     try {
-      const r = await putSubStyle(runId, subStyle);
+      const r = await putSubStyle(runId, subStyle, channelScope);
       setSubStyle(r.style);
       setSubSaved(true);
     } catch (e) {
@@ -200,7 +227,7 @@ export function BuildPage() {
         source_dir: importDir.trim(),
         ...(importInsert.trim() ? { insert: importInsert.trim() } : {}),
         apply,
-      });
+      }, channelScope);
       setImportResult({ ...r, apply });
       if (apply && r.ok) void statusPoll.refresh();
     } catch (e) {
@@ -213,7 +240,7 @@ export function BuildPage() {
   const doStart = async (preview: boolean) => {
     setActionError(null);
     try {
-      if (subtitles && !preview) await putSubStyle(runId, subStyle);
+      if (subtitles && !preview) await putSubStyle(runId, subStyle, channelScope);
       const parts = resolution.split('x').map((s) => Number(s.trim()));
       const body = {
         render: preview ? true : render,
@@ -226,7 +253,7 @@ export function BuildPage() {
         ...(subtitles && !preview ? { subtitles: true } : {}),
         ...(logoCleanup ? { logo_cleanup: true, logo_mode: logoMode } : {}),
       };
-      const r = await startBuild(runId, body);
+      const r = await startBuild(runId, body, channelScope);
       setJobId(r.job_id);
       setJob(null);
       setJobError(null);
@@ -241,7 +268,7 @@ export function BuildPage() {
     if (!window.confirm(t('build.job.cancelConfirm'))) return;
     setActionError(null);
     try {
-      await cancelBuildJob(jobId);
+      await cancelBuildJob(jobId, channelScope);
       void statusPoll.refresh();
       void jobPoll.refresh();
     } catch (e) {
@@ -253,7 +280,7 @@ export function BuildPage() {
     if (!runId) return;
     setActionError(null);
     try {
-      await mergeTtsChunks(runId);
+      await mergeTtsChunks(runId, channelScope);
       void statusPoll.refresh();
       void srtInputsPoll.refresh();
     } catch (e) {
@@ -265,7 +292,7 @@ export function BuildPage() {
     if (!runId) return;
     setSrtError(null);
     try {
-      const result = await startSrtGenerate(runId, { model: srtModel, device: srtDevice, mode: srtMode, max_chars: srtMaxChars });
+      const result = await startSrtGenerate(runId, { model: srtModel, device: srtDevice, mode: srtMode, max_chars: srtMaxChars }, channelScope);
       setSrtJobId(result.job_id);
       setSrtJob(null);
       void srtInputsPoll.refresh();
@@ -277,7 +304,7 @@ export function BuildPage() {
   const doCancelSrt = async () => {
     if (!srtJobId) return;
     try {
-      await cancelSrtJob(srtJobId);
+      await cancelSrtJob(srtJobId, channelScope);
       void srtJobPoll.refresh();
     } catch (e) {
       setSrtError(String(e));
@@ -434,7 +461,7 @@ export function BuildPage() {
                       </div>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
                         {status.tts_chunks.chunks.map((chunk) => (
-                          <a key={chunk.id} className="btn btn-ghost" style={{ padding: '3px 8px', fontSize: 12 }} href={artifactUrl(runId, chunk.path, true)}>
+                          <a key={chunk.id} className="btn btn-ghost" style={{ padding: '3px 8px', fontSize: 12 }} href={artifactUrl(runId, chunk.path, true, scope ?? undefined)}>
                             {chunk.id} · {chunk.chars.toLocaleString()} ký tự
                           </a>
                         ))}
@@ -574,7 +601,7 @@ export function BuildPage() {
 
       {srtJobId !== null && <div className="panel" style={{ marginBottom: 20 }}>
         <div className="panel-title"><span>{t('srt.log')}</span><span className="spacer" /><span className={`badge badge-${srtJob?.status ?? 'running'}`}>{t(`srt.${srtJob?.status ?? 'running'}`)}</span></div>
-        <LogViewer logFetcher={(offset, limit) => getSrtJobLog(srtJobId, offset, limit)} running={srtRunning} intervalMs={JOB_INTERVAL_MS} />
+        <LogViewer logFetcher={(offset, limit) => getSrtJobLog(srtJobId, offset, limit, channelScope)} running={srtRunning} intervalMs={JOB_INTERVAL_MS} />
       </div>}
 
       {/* ------------------------------------------------ báo cáo gần nhất */}
@@ -1020,8 +1047,8 @@ export function BuildPage() {
             )}
           </div>
           <LogViewer
-            logFetcher={(offset, limit) => getBuildJobLog(jobId, offset, limit)}
-            downloadUrl={buildJobLogDownloadUrl(jobId)}
+            logFetcher={(offset, limit) => getBuildJobLog(jobId, offset, limit, channelScope)}
+            downloadUrl={buildJobLogDownloadUrl(jobId, channelScope)}
             running={jobRunning}
             intervalMs={JOB_INTERVAL_MS}
           />

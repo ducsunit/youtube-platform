@@ -18,6 +18,7 @@ from ..infrastructure.logging import configure_logging, configure_model_call_log
 from ..infrastructure.model_trace import finish_run, start_run
 from ..resource_pack.pipeline import ResourcePackPipeline
 from ..resource_pack.providers import AIResourceProvider, DemoResourceProvider
+from ..channel_context import ChannelContext
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +33,33 @@ def _parser() -> argparse.ArgumentParser:
     source.add_argument("--no-channel-data", action="store_true")
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--run-id")
+    parser.add_argument("--user-id")
+    parser.add_argument("--channel-id")
+    parser.add_argument("--youtube-channel-id")
+    parser.add_argument("--flow-profile", default="resource_pack")
+    parser.add_argument("--approved-research-brief", type=Path)
     return parser
+
+
+def _read_approved_brief(path: Path, *, channel_root: Path, user_id: str, channel_id: str) -> dict:
+    try:
+        resolved = path.resolve()
+        expected = (channel_root / "research").resolve()
+        if resolved.parent != expected:
+            raise ValueError("approved research brief phải nằm trong research namespace của channel")
+        data = json.loads(resolved.read_text(encoding="utf-8"))
+    except OSError as exc:
+        raise ValueError("Không đọc được approved research brief: %s" % exc) from exc
+    except json.JSONDecodeError as exc:
+        raise ValueError("Approved research brief không phải JSON hợp lệ: %s" % exc.msg) from exc
+    if not isinstance(data, dict) or not isinstance(data.get("opportunity"), dict):
+        raise ValueError("Approved research brief không hợp lệ")
+    if data.get("user_id") != user_id or data.get("channel_id") != channel_id:
+        raise ValueError("Approved research brief không khớp channel scope")
+    if data.get("channel_profile", {}).get("stop_before_media_generation") is not True:
+        raise ValueError("Approved research brief phải dừng trước media generation")
+    return data
+
 
 
 def _read_snapshot(path: Path) -> tuple[str, dict]:
@@ -75,14 +102,43 @@ def _run_new(args: argparse.Namespace) -> tuple[ResourcePackPipeline, object, st
             "generated_at": source.get("generated_at"),
             "analytics_window": source.get("analytics_window"),
         }
+    channel = None
+    approved_brief = None
+    if args.channel_id or args.user_id or args.youtube_channel_id or args.approved_research_brief:
+        if not (args.user_id and args.channel_id and args.youtube_channel_id):
+            raise ValueError("channel context cần user_id, channel_id và youtube_channel_id")
+        channel = ChannelContext(
+            user_id=args.user_id,
+            channel_id=args.channel_id,
+            youtube_channel_id=args.youtube_channel_id,
+            root_dir=args.output_dir.parent.parent,
+            flow_profile=args.flow_profile,
+        )
+        if args.approved_research_brief:
+            approved_brief = _read_approved_brief(
+                args.approved_research_brief,
+                channel_root=channel.root_dir,
+                user_id=channel.user_id,
+                channel_id=channel.channel_id,
+            )
     pipeline = ResourcePackPipeline(
         provider, args.output_dir, max_retries=1 if args.demo else provider.max_retries,
-        retry_delay=0 if args.demo else 1, progress=print,
+        retry_delay=0 if args.demo else 1, progress=print, channel=channel,
     )
     state = pipeline.create_state(raw_data, run_id=args.run_id)
     state.config_snapshot["input_provenance"] = provenance
     if args.manual_topic:
         state.config_snapshot["manual_topic"] = str(args.manual_topic).strip()
+    if approved_brief is not None:
+        state.config_snapshot["approved_research_brief"] = approved_brief
+        state.config_snapshot["research_run_id"] = approved_brief.get("research_run_id")
+        state.config_snapshot["market"] = approved_brief.get("market", {})
+        state.config_snapshot["input_provenance"] = {
+            "mode": "approved_market_research",
+            "research_run_id": approved_brief.get("research_run_id"),
+            "market": approved_brief.get("market", {}),
+            "channel_data_used": False,
+        }
     pipeline.store.save_state(state)
     return pipeline, state, "demo" if args.demo else "production"
 
@@ -99,9 +155,28 @@ def _run_resume(args: argparse.Namespace) -> tuple[ResourcePackPipeline, object,
     provider = AIResourceProvider(
         Settings.from_env(require_keys=False), routing_snapshot=state.config_snapshot.get("model_routing")
     )
+    channel = None
+    if state.user_id or state.channel_id or state.youtube_channel_id:
+        if not (state.user_id and state.channel_id and state.youtube_channel_id):
+            raise ValueError("run_state channel context không đầy đủ")
+        if args.user_id and args.user_id != state.user_id:
+            raise ValueError("user_id resume không khớp run_state")
+        if args.channel_id and args.channel_id != state.channel_id:
+            raise ValueError("channel_id resume không khớp run_state")
+        if args.youtube_channel_id and args.youtube_channel_id != state.youtube_channel_id:
+            raise ValueError("youtube_channel_id resume không khớp run_state")
+        channel = ChannelContext(
+            user_id=state.user_id,
+            channel_id=state.channel_id,
+            youtube_channel_id=state.youtube_channel_id,
+            root_dir=args.output_dir.parent.parent,
+            flow_profile=state.flow_profile,
+        )
+    elif args.user_id or args.channel_id or args.youtube_channel_id:
+        raise ValueError("không thể thêm channel context vào legacy run khi resume")
     pipeline = ResourcePackPipeline(
         provider, args.output_dir, max_retries=provider.max_retries,
-        retry_delay=1, progress=print,
+        retry_delay=1, progress=print, channel=channel,
     )
     return pipeline, state, "resume"
 

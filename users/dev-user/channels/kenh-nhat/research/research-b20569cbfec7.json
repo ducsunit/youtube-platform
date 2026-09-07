@@ -1,0 +1,740 @@
+{
+  "research_run_id": "research-b20569cbfec7",
+  "user_id": "dev-user",
+  "channel_id": "kenh-nhat",
+  "youtube_channel_id": "UCL3xuEku7ezoFg2C9pwcTXg",
+  "keyword": "tâm linh và khoa học",
+  "country": "VN",
+  "language": "vi",
+  "created_at": "2026-09-07T03:47:10.350778+00:00",
+  "evidence": {
+    "serpapi": {
+      "source": "serpapi",
+      "status": "ok",
+      "query": "tâm linh và khoa học",
+      "records": [
+        {
+          "title": "98% Người Không Biết: Phong Thủy và Tâm Lý Học Giao Thoa",
+          "link": "https://tamlinh.cuthongthai.vn/blog/98-nguoi-khong-biet-phong-thuy-va-tam-ly-hoc-giao-thoa",
+          "snippet": "... Tâm linh Cú Tiên Sinh. Phong thủy và tâm lý học là hai hệ thống niềm tin và khoa học cùng hướng tới mục tiêu tối ưu hóa không gian sống để ..."
+        },
+        {
+          "title": "Trạng Thái Thứ Tư",
+          "link": "https://khoahoctamlinh.vn/trang-thai-thu-tu-2089.html",
+          "snippet": "Khoa Học Tâm Linh. Được xây dựng nhằm mục đích phụng sự nhân loại phát triển về tâm thức và khoa học hướng tới thời kỳ Đại Đồng Thánh Đức."
+        },
+        {
+          "title": "73 câu nói tâm linh về cuộc sống | Patricia Morgan",
+          "link": "https://translate.google.com/translate?u=https://www.solutionsforresilience.com/73-spiritual-quotes-about-life/&hl=vi&sl=en&tl=vi&client=srp",
+          "snippet": "Những câu nói hay về cuộc sống mang ý nghĩa sâu sắc có thể làm phong phú thêm cuộc sống của bạn, chữa lành vết thương hoặc thay đổi cuộc đời bạn."
+        },
+        {
+          "title": "Thức Tỉnh Là Gì?",
+          "link": "https://khoahoctamlinh.vn/thuc-tinh-la-gi-2609.html",
+          "snippet": "Khoa Học Tâm Linh. Được xây dựng nhằm mục đích phụng sự nhân loại phát triển về tâm thức và khoa học hướng tới thời kỳ Đại Đồng Thánh Đức."
+        },
+        {
+          "title": "Cách bảo vệ bé khỏi tà khí - Bảo vệ tâm linh cho bé — Ananda",
+          "link": "https://translate.google.com/translate?u=https://www.ananda.org/ask/spiritual-protection-for-baby/&hl=vi&sl=en&tl=vi&client=srp",
+          "snippet": "Phải làm gì khi năng lượng tiêu cực hoặc những cơn ác mộng làm bé sợ hãi? Hãy học cách bảo vệ bé khỏi điều xấu bằng các kỹ thuật cầu nguyện ..."
+        },
+        {
+          "title": "Nếu Vũ Trụ Nói Chuyện Bằng Tiếng Việt",
+          "link": "https://khoahoctamlinh.vn/neu-vu-tru-noi-chuyen-bang-tieng-viet-2188.html",
+          "snippet": "Khoa Học Tâm Linh. Được xây dựng nhằm mục đích phụng sự nhân loại phát triển về tâm thức và khoa học hướng tới thời kỳ Đại Đồng Thánh Đức."
+        },
+        {
+          "title": "Quyền lợi nổi bật khi tham gia khóa học 1 năm cùng MC Mỹ ...",
+          "link": "https://www.facebook.com/trungtamdaotaonghethuatmcmyvan/videos/quy%E1%BB%81n-l%E1%BB%A3i-n%E1%BB%95i-b%E1%BA%ADt-khi-tham-gia-kh%C3%B3a-h%E1%BB%8Dc-1-n%C4%83m-c%C3%B9ng-mc-m%E1%BB%B9-v%C3%A2nmc-m%E1%BB%B9-v%C3%A2n-chia-s%E1%BA%BB-nh/863029486813415/",
+          "snippet": "... lĩnh vực này vui lòng kết nối với cổng tư vấn ... Đó, và với những khóa học như thế thì yên tâm rằng là chúng ta có thể lột xác luôn đấy ạ."
+        }
+      ],
+      "retrieved_at": "2026-09-07T03:47:07.684662+00:00",
+      "error": null
+    },
+    "google_trends": {
+      "source": "google_trends",
+      "status": "ok",
+      "query": "tâm linh và khoa học",
+      "records": [
+        {
+          "date": "14 – 20 thg 9, 2025",
+          "values": [
+            {
+              "query": "tâm linh và khoa học",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            }
+          ]
+        },
+        {
+          "date": "21 – 27 thg 9, 2025",
+          "values": [
+            {
+              "query": "tâm linh và khoa học",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            }
+          ]
+        },
+        {
+          "date": "28 thg 9 – 4 thg 10, 2025",
+          "values": [
+            {
+              "query": "tâm linh và khoa học",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            }
+          ]
+        },
+        {
+          "date": "5 – 11 thg 10, 2025",
+          "values": [
+            {
+              "query": "tâm linh và khoa học",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            }
+          ]
+        },
+        {
+          "date": "12 – 18 thg 10, 2025",
+          "values": [
+            {
+              "query": "tâm linh và khoa học",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            }
+          ]
+        },
+        {
+          "date": "19 – 25 thg 10, 2025",
+          "values": [
+            {
+              "query": "tâm linh và khoa học",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            }
+          ]
+        },
+        {
+          "date": "26 thg 10 – 1 thg 11, 2025",
+          "values": [
+            {
+              "query": "tâm linh và khoa học",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            }
+          ]
+        },
+        {
+          "date": "2 – 8 thg 11, 2025",
+          "values": [
+            {
+              "query": "tâm linh và khoa học",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            }
+          ]
+        },
+        {
+          "date": "9 – 15 thg 11, 2025",
+          "values": [
+            {
+              "query": "tâm linh và khoa học",
+              "query_index": 0,
+              "value": "100",
+              "extracted_value": 100
+            }
+          ]
+        },
+        {
+          "date": "16 – 22 thg 11, 2025",
+          "values": [
+            {
+              "query": "tâm linh và khoa học",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            }
+          ]
+        },
+        {
+          "date": "23 – 29 thg 11, 2025",
+          "values": [
+            {
+              "query": "tâm linh và khoa học",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            }
+          ]
+        },
+        {
+          "date": "30 thg 11 – 6 thg 12, 2025",
+          "values": [
+            {
+              "query": "tâm linh và khoa học",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            }
+          ]
+        },
+        {
+          "date": "7 – 13 thg 12, 2025",
+          "values": [
+            {
+              "query": "tâm linh và khoa học",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            }
+          ]
+        },
+        {
+          "date": "14 – 20 thg 12, 2025",
+          "values": [
+            {
+              "query": "tâm linh và khoa học",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            }
+          ]
+        },
+        {
+          "date": "21 – 27 thg 12, 2025",
+          "values": [
+            {
+              "query": "tâm linh và khoa học",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            }
+          ]
+        },
+        {
+          "date": "28 thg 12, 2025 – 3 thg 1, 2026",
+          "values": [
+            {
+              "query": "tâm linh và khoa học",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            }
+          ]
+        },
+        {
+          "date": "4 – 10 thg 1, 2026",
+          "values": [
+            {
+              "query": "tâm linh và khoa học",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            }
+          ]
+        },
+        {
+          "date": "11 – 17 thg 1, 2026",
+          "values": [
+            {
+              "query": "tâm linh và khoa học",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            }
+          ]
+        },
+        {
+          "date": "18 – 24 thg 1, 2026",
+          "values": [
+            {
+              "query": "tâm linh và khoa học",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            }
+          ]
+        },
+        {
+          "date": "25 – 31 thg 1, 2026",
+          "values": [
+            {
+              "query": "tâm linh và khoa học",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            }
+          ]
+        },
+        {
+          "date": "1 – 7 thg 2, 2026",
+          "values": [
+            {
+              "query": "tâm linh và khoa học",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            }
+          ]
+        },
+        {
+          "date": "8 – 14 thg 2, 2026",
+          "values": [
+            {
+              "query": "tâm linh và khoa học",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            }
+          ]
+        },
+        {
+          "date": "15 – 21 thg 2, 2026",
+          "values": [
+            {
+              "query": "tâm linh và khoa học",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            }
+          ]
+        },
+        {
+          "date": "22 – 28 thg 2, 2026",
+          "values": [
+            {
+              "query": "tâm linh và khoa học",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            }
+          ]
+        },
+        {
+          "date": "1 – 7 thg 3, 2026",
+          "values": [
+            {
+              "query": "tâm linh và khoa học",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            }
+          ]
+        },
+        {
+          "date": "8 – 14 thg 3, 2026",
+          "values": [
+            {
+              "query": "tâm linh và khoa học",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            }
+          ]
+        },
+        {
+          "date": "15 – 21 thg 3, 2026",
+          "values": [
+            {
+              "query": "tâm linh và khoa học",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            }
+          ]
+        },
+        {
+          "date": "22 – 28 thg 3, 2026",
+          "values": [
+            {
+              "query": "tâm linh và khoa học",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            }
+          ]
+        },
+        {
+          "date": "29 thg 3 – 4 thg 4, 2026",
+          "values": [
+            {
+              "query": "tâm linh và khoa học",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            }
+          ]
+        },
+        {
+          "date": "5 – 11 thg 4, 2026",
+          "values": [
+            {
+              "query": "tâm linh và khoa học",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            }
+          ]
+        },
+        {
+          "date": "12 – 18 thg 4, 2026",
+          "values": [
+            {
+              "query": "tâm linh và khoa học",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            }
+          ]
+        },
+        {
+          "date": "19 – 25 thg 4, 2026",
+          "values": [
+            {
+              "query": "tâm linh và khoa học",
+              "query_index": 0,
+              "value": "57",
+              "extracted_value": 57
+            }
+          ]
+        },
+        {
+          "date": "26 thg 4 – 2 thg 5, 2026",
+          "values": [
+            {
+              "query": "tâm linh và khoa học",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            }
+          ]
+        },
+        {
+          "date": "3 – 9 thg 5, 2026",
+          "values": [
+            {
+              "query": "tâm linh và khoa học",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            }
+          ]
+        },
+        {
+          "date": "10 – 16 thg 5, 2026",
+          "values": [
+            {
+              "query": "tâm linh và khoa học",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            }
+          ]
+        },
+        {
+          "date": "17 – 23 thg 5, 2026",
+          "values": [
+            {
+              "query": "tâm linh và khoa học",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            }
+          ]
+        },
+        {
+          "date": "24 – 30 thg 5, 2026",
+          "values": [
+            {
+              "query": "tâm linh và khoa học",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            }
+          ]
+        },
+        {
+          "date": "31 thg 5 – 6 thg 6, 2026",
+          "values": [
+            {
+              "query": "tâm linh và khoa học",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            }
+          ]
+        },
+        {
+          "date": "7 – 13 thg 6, 2026",
+          "values": [
+            {
+              "query": "tâm linh và khoa học",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            }
+          ]
+        },
+        {
+          "date": "14 – 20 thg 6, 2026",
+          "values": [
+            {
+              "query": "tâm linh và khoa học",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            }
+          ]
+        },
+        {
+          "date": "21 – 27 thg 6, 2026",
+          "values": [
+            {
+              "query": "tâm linh và khoa học",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            }
+          ]
+        },
+        {
+          "date": "28 thg 6 – 4 thg 7, 2026",
+          "values": [
+            {
+              "query": "tâm linh và khoa học",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            }
+          ]
+        },
+        {
+          "date": "5 – 11 thg 7, 2026",
+          "values": [
+            {
+              "query": "tâm linh và khoa học",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            }
+          ]
+        },
+        {
+          "date": "12 – 18 thg 7, 2026",
+          "values": [
+            {
+              "query": "tâm linh và khoa học",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            }
+          ]
+        },
+        {
+          "date": "19 – 25 thg 7, 2026",
+          "values": [
+            {
+              "query": "tâm linh và khoa học",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            }
+          ]
+        },
+        {
+          "date": "26 thg 7 – 1 thg 8, 2026",
+          "values": [
+            {
+              "query": "tâm linh và khoa học",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            }
+          ]
+        },
+        {
+          "date": "2 – 8 thg 8, 2026",
+          "values": [
+            {
+              "query": "tâm linh và khoa học",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            }
+          ]
+        },
+        {
+          "date": "9 – 15 thg 8, 2026",
+          "values": [
+            {
+              "query": "tâm linh và khoa học",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            }
+          ]
+        },
+        {
+          "date": "16 – 22 thg 8, 2026",
+          "values": [
+            {
+              "query": "tâm linh và khoa học",
+              "query_index": 0,
+              "value": "0",
+              "extracted_value": 0
+            }
+          ]
+        },
+        {
+          "date": "23 – 29 thg 8, 2026",
+          "values": [
+            {
+              "query": "tâm linh và khoa học",
+              "query_index": 0,
+              "value": "25",
+              "extracted_value": 25
+            }
+          ]
+        },
+        {
+          "date": "30 thg 8 – 5 thg 9, 2026",
+          "values": [
+            {
+              "query": "tâm linh và khoa học",
+              "query_index": 0,
+              "value": "19",
+              "extracted_value": 19
+            }
+          ]
+        },
+        {
+          "date": "6 – 12 thg 9, 2026",
+          "values": [
+            {
+              "query": "tâm linh và khoa học",
+              "query_index": 0,
+              "value": "25",
+              "extracted_value": 25
+            }
+          ]
+        }
+      ],
+      "retrieved_at": "2026-09-07T03:47:10.347211+00:00",
+      "error": null
+    },
+    "vidiq": {
+      "source": "vidiq",
+      "status": "unavailable",
+      "query": "tâm linh và khoa học",
+      "records": [],
+      "retrieved_at": "2026-09-07T03:47:10.349812+00:00",
+      "error": "vidIQ tùy chọn: set VIDIQ_RESEARCH_JSON nếu có export"
+    }
+  },
+  "normalized": {
+    "keyword": "tâm linh và khoa học",
+    "country": "VN",
+    "language": "vi",
+    "demand_signals": {
+      "serpapi": 7,
+      "google_trends": 52,
+      "vidiq": 0
+    },
+    "source_status": {
+      "serpapi": "ok",
+      "google_trends": "ok",
+      "vidiq": "unavailable"
+    },
+    "provider_summary": {
+      "serpapi": {
+        "status": "ok",
+        "record_count": 7,
+        "error": null
+      },
+      "google_trends": {
+        "status": "ok",
+        "record_count": 52,
+        "error": null
+      },
+      "vidiq": {
+        "status": "unavailable",
+        "record_count": 0,
+        "error": "vidIQ tùy chọn: set VIDIQ_RESEARCH_JSON nếu có export"
+      }
+    }
+  },
+  "opportunities": [
+    {
+      "opportunity_id": "opp-94b6771ef5",
+      "keyword": "tâm linh và khoa học",
+      "country": "VN",
+      "language": "vi",
+      "gap_statement": "Đối thủ đang bao phủ 'tâm linh và khoa học' ở mức chủ đề; chưa có bằng chứng đủ mạnh rằng họ giải quyết khoảnh khắc/câu hỏi cụ thể 'tâm linh và khoa học' theo cấu trúc cơ chế tâm lý trước giải pháp.",
+      "audience_moment": "Người xem tại VN đang tìm câu trả lời cho: tâm linh và khoa học",
+      "unserved_question": "tâm linh và khoa học",
+      "editorial_angle": "recognition → mechanism → self-understanding → practical shift",
+      "promise": "Hiểu chính xác điều đang xảy ra phía sau 'tâm linh và khoa học' mà không biến nó thành lời khuyên sáo rỗng.",
+      "competitor_coverage": "observed",
+      "specific_moment_coverage": "needs_validation",
+      "evidence_sources": [
+        "serpapi",
+        "google_trends"
+      ],
+      "evidence_count": 59,
+      "evidence_summary": {
+        "competitors": {
+          "observed_items": 7,
+          "keyword_aligned_items": 4,
+          "sample_titles": [
+            "98% Người Không Biết: Phong Thủy và Tâm Lý Học Giao Thoa",
+            "Trạng Thái Thứ Tư",
+            "73 câu nói tâm linh về cuộc sống | Patricia Morgan",
+            "Thức Tỉnh Là Gì?",
+            "Cách bảo vệ bé khỏi tà khí - Bảo vệ tâm linh cho bé — Ananda",
+            "Nếu Vũ Trụ Nói Chuyện Bằng Tiếng Việt",
+            "Quyền lợi nổi bật khi tham gia khóa học 1 năm cùng MC Mỹ ..."
+          ],
+          "coverage_ratio": 0.571
+        },
+        "trends": {
+          "rising_queries": [],
+          "timeline_points": 52
+        },
+        "questions": []
+      },
+      "channel_fit": "high",
+      "opportunity_score": 83,
+      "score_breakdown": {
+        "demand": 29,
+        "evidence_quality": 20,
+        "competitor_coverage": 14,
+        "channel_fit": 20
+      },
+      "risk_flags": [
+        "no_specific_demand_signal"
+      ],
+      "coverage_terms": [
+        "tâm linh và khoa học",
+        "98% Người Không Biết: Phong Thủy và Tâm Lý Học Giao Thoa",
+        "Trạng Thái Thứ Tư",
+        "73 câu nói tâm linh về cuộc sống | Patricia Morgan",
+        "Thức Tỉnh Là Gì?",
+        "Cách bảo vệ bé khỏi tà khí - Bảo vệ tâm linh cho bé — Ananda",
+        "Nếu Vũ Trụ Nói Chuyện Bằng Tiếng Việt",
+        "Quyền lợi nổi bật khi tham gia khóa học 1 năm cùng MC Mỹ ..."
+      ]
+    }
+  ],
+  "selected_opportunity_id": null
+}
