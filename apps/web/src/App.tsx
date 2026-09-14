@@ -10,6 +10,7 @@ const VideoGenPage = lazy(() => import('./pages/VideoGenPage').then(m => ({ defa
 const ImageGenPage = lazy(() => import('./pages/ImageGenPage').then(m => ({ default: m.ImageGenPage })));
 const RunDetailPage = lazy(() => import('./pages/RunDetailPage').then(m => ({ default: m.RunDetailPage })));
 const ModelConfigPage = lazy(() => import('./pages/ModelConfigPage').then(m => ({ default: m.ModelConfigPage })));
+const PSPipelinePage = lazy(() => import('./pages/PSPipelinePage').then(m => ({ default: m.PSPipelinePage })));
 
 function PageFallback() {
   return (
@@ -27,6 +28,7 @@ export default function App() {
       <Suspense fallback={<PageFallback />}>
         <Routes>
           <Route path="/" element={<RunsPage />} />
+          <Route path="/ps-pipeline" element={<PSPipelinePage />} />
           <Route path="/data" element={<DataPage />} />
           <Route path="/build" element={<BuildPage />} />
           <Route path="/video-gen" element={<VideoGenPage />} />

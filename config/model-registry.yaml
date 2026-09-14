@@ -1,0 +1,374 @@
+# config/model-registry.yaml
+# MASTER CONFIGURATION - Single source of truth for ALL model assignments
+# ZERO PAID MODELS - All free/local
+
+version: 2
+
+# ─────────────────────────────────────────────────────────────
+# PROVIDER DEFINITIONS
+# ─────────────────────────────────────────────────────────────
+providers:
+  # ───── TEXT/LLM ─────
+  gemini:
+    type: "gemini"
+    api_key_env: "GEMINI_API_KEY"
+    base_url: ""
+    rate_limit_rpm: 1500
+    models:
+      - "gemini-2.5-flash"
+      - "gemini-2.5-pro"
+      - "gemini-1.5-flash"
+      - "gemini-1.5-pro"
+
+  deepseek:
+    type: "openai_compatible"
+    api_key_env: "DEEPSEEK_API_KEY"
+    base_url: "https://api.deepseek.com"
+    rate_limit_rpm: 1200
+    models:
+      - "deepseek-chat"
+      - "deepseek-reasoner"
+
+  ollama:
+    type: "openai_compatible"
+    api_key_env: ""
+    base_url: "http://localhost:11434/v1"
+    models: []
+
+  # ───── LOCAL IMAGE GEN (ComfyUI + IP-Adapter FaceID) ─────
+  comfyui:
+    type: "comfyui"
+    api_key_env: ""
+    base_url: "http://localhost:8188"
+    models:
+      - "sdxl_base_1.0"
+      - "flux1-schnell"
+      - "flux1-dev"
+    extra:
+      workflows_dir: "./workflows"
+
+  # ───── VIDEO/ANIMATION ─────
+  kling:
+    type: "kling"
+    api_key_env: "KLING_API_KEY"
+    base_url: "https://api.klingai.com/v1"
+    models:
+      - "kling-v1.6"
+      - "kling-v1.5"
+
+  hailuo:
+    type: "hailuo"
+    api_key_env: "HAILUO_API_KEY"
+    base_url: "https://api.hailuo.ai/v1"
+    models:
+      - "minimax-video-01"
+      - "minimax-video-01-live"
+
+  runway:
+    type: "runway"
+    api_key_env: "RUNWAY_API_KEY"
+    base_url: "https://api.runwayml.com/v1"
+    models:
+      - "gen3a-turbo"
+      - "gen3a"
+
+  # ───── LIP-SYNC ─────
+  hedra:
+    type: "hedra"
+    api_key_env: "HEDRA_API_KEY"
+    base_url: "https://api.hedra.com/v1"
+    models:
+      - "character-1"
+
+  liveportrait:
+    type: "liveportrait"
+    api_key_env: ""
+    base_url: "http://localhost:8080"
+    models:
+      - "liveportrait-v1"
+
+  # ───── TTS (ALL FREE/LOCAL) ─────
+  voicevox:
+    type: "voicevox"
+    api_key_env: ""
+    base_url: "http://localhost:50021"
+    models: []
+
+  edge_tts:
+    type: "edge_tts"
+    api_key_env: ""
+    base_url: ""
+    models:
+      - "ja-JP-NanamiNeural"
+      - "ja-JP-KeitaNeural"
+      - "ja-JP-AoiNeural"
+
+  google_cloud_tts:
+    type: "google_cloud"
+    api_key_env: "GOOGLE_CLOUD_CREDENTIALS"
+    base_url: "https://texttospeech.googleapis.com"
+    models:
+      - "ja-JP-Neural2-B"
+      - "ja-JP-Neural2-C"
+      - "ja-JP-Standard-B"
+
+# ─────────────────────────────────────────────────────────────
+# ROLE ASSIGNMENTS
+# ─────────────────────────────────────────────────────────────
+roles:
+  # ───── TEXT/LLM ROLES ─────
+  analysis:
+    primary:
+      provider: "gemini"
+      model: "gemini-2.5-flash"
+      temperature: 0.2
+      max_tokens: 8192
+    fallback:
+      - provider: "deepseek"
+        model: "deepseek-chat"
+        temperature: 0.2
+
+  writer:
+    primary:
+      provider: "deepseek"
+      model: "deepseek-chat"
+      temperature: 0.7
+      max_tokens: 16384
+    fallback:
+      - provider: "gemini"
+        model: "gemini-2.5-pro"
+        temperature: 0.7
+
+  reviewer:
+    primary:
+      provider: "gemini"
+      model: "gemini-2.5-pro"
+      temperature: 0.2
+      max_tokens: 8192
+    fallback:
+      - provider: "deepseek"
+        model: "deepseek-chat"
+        temperature: 0.2
+
+  editor:
+    primary:
+      provider: "deepseek"
+      model: "deepseek-chat"
+      temperature: 0.3
+      max_tokens: 16384
+    fallback:
+      - provider: "gemini"
+        model: "gemini-2.5-pro"
+        temperature: 0.3
+
+  auditor:
+    primary:
+      provider: "gemini"
+      model: "gemini-2.5-flash"
+      temperature: 0.1
+      max_tokens: 8192
+    fallback:
+      - provider: "deepseek"
+        model: "deepseek-chat"
+        temperature: 0.1
+
+  packaging:
+    primary:
+      provider: "deepseek"
+      model: "deepseek-chat"
+      temperature: 0.4
+      max_tokens: 8192
+    fallback:
+      - provider: "gemini"
+        model: "gemini-2.5-flash"
+        temperature: 0.4
+
+  translator:
+    primary:
+      provider: "deepseek"
+      model: "deepseek-chat"
+      temperature: 0.3
+      max_tokens: 8192
+    fallback:
+      - provider: "gemini"
+        model: "gemini-2.5-flash"
+        temperature: 0.3
+
+  # ───── IMAGE ROLES (LOCAL ComfyUI + IP-Adapter FaceID) ─────
+  character_ref:
+    primary:
+      provider: "comfyui"
+      model: "sdxl_base_1.0"
+      temperature: 0
+      params:
+        workflow: "ipadapter_faceid_char_ref"
+        width: 1024
+        height: 1024
+        steps: 30
+        cfg: 7
+        batch_size: 1
+    fallback:
+      - provider: "comfyui"
+        model: "flux1-dev"
+        params:
+          workflow: "ipadapter_faceid_char_ref"
+          width: 1024
+          height: 1024
+          steps: 20
+          cfg: 3.5
+          batch_size: 1
+
+  image_batch:
+    primary:
+      provider: "comfyui"
+      model: "sdxl_base_1.0"
+      temperature: 0
+      params:
+        workflow: "ipadapter_faceid_batch"
+        width: 1024
+        height: 576
+        steps: 25
+        cfg: 7
+        batch_size: 4
+    fallback:
+      - provider: "comfyui"
+        model: "flux1-schnell"
+        params:
+          workflow: "ipadapter_faceid_batch"
+          width: 1024
+          height: 576
+          steps: 8
+          cfg: 1.0
+          batch_size: 4
+
+  thumbnail:
+    primary:
+      provider: "comfyui"
+      model: "sdxl_base_1.0"
+      temperature: 0
+      params:
+        workflow: "ipadapter_faceid_thumbnail"
+        width: 1280
+        height: 720
+        steps: 30
+        cfg: 7
+        batch_size: 2
+    fallback:
+      - provider: "comfyui"
+        model: "flux1-dev"
+        params:
+          workflow: "ipadapter_faceid_thumbnail"
+          width: 1280
+          height: 720
+          steps: 20
+          cfg: 3.5
+          batch_size: 2
+
+  # ───── VIDEO/ANIMATION ─────
+  animation:
+    primary:
+      provider: "kling"
+      model: "kling-v1.6"
+      params:
+        duration: 10
+        mode: "std"
+    fallback:
+      - provider: "hailuo"
+        model: "minimax-video-01"
+        params:
+          duration: 6
+      - provider: "runway"
+        model: "gen3a-turbo"
+        params:
+          duration: 10
+
+  # ───── LIP-SYNC ─────
+  lip_sync:
+    primary:
+      provider: "hedra"
+      model: "character-1"
+    fallback:
+      - provider: "liveportrait"
+        model: "liveportrait-v1"
+
+  # ───── TTS (VOICEVOX PRIMARY, EDGE-TTS FALLBACK) ─────
+  tts_primary:
+    primary:
+      provider: "voicevox"
+      model: "speaker_8"
+      params:
+        speed_scale: 1.0
+        pitch_scale: 0.0
+        intonation_scale: 1.0
+        volume_scale: 1.0
+    fallback:
+      - provider: "edge_tts"
+        model: "ja-JP-NanamiNeural"
+        params:
+          rate: "+0%"
+          pitch: "+0Hz"
+      - provider: "google_cloud_tts"
+        model: "ja-JP-Neural2-B"
+        params:
+          speaking_rate: 1.0
+          pitch: 0.0
+
+  tts_fallback:
+    primary:
+      provider: "edge_tts"
+      model: "ja-JP-NanamiNeural"
+      params:
+        rate: "+0%"
+        pitch: "+0Hz"
+    fallback:
+      - provider: "google_cloud_tts"
+        model: "ja-JP-Neural2-B"
+
+# ─────────────────────────────────────────────────────────────
+# PIPELINE STAGE MAPPING
+# ─────────────────────────────────────────────────────────────
+pipeline_stages:
+  # Text pipeline
+  topic_research: "analysis"
+  topic_candidates: "analysis"
+  topic_selection: "analysis"
+  source_lock: "analysis"
+  psychology_brief: "analysis"
+  contract: "writer"
+  shot_list: "writer"
+  script_writing: "writer"
+  review: "reviewer"
+  apply_review: "editor"
+  audit: "auditor"
+  repair: "editor"
+  translate_vi: "translator"
+  
+  # Visual pipeline (local ComfyUI)
+  character_ref_gen: "character_ref"
+  image_batch_gen: "image_batch"
+  thumbnail_gen: "thumbnail"
+  
+  # Motion pipeline
+  animation_gen: "animation"
+  lip_sync_gen: "lip_sync"
+  
+  # Audio pipeline
+  voiceover_gen: "tts_primary"
+  voiceover_fallback: "tts_fallback"
+  
+  # Assembly
+  video_edit: "local"
+  publish_pack: "packaging"
+
+# ─────────────────────────────────────────────────────────────
+# GLOBAL SETTINGS
+# ─────────────────────────────────────────────────────────────
+settings:
+  default_max_retries: 3
+  default_timeout_seconds: 300
+  fallback_enabled: true
+  fallback_max_attempts: 3
+  parallel_workers: 2
+  rate_limit_buffer_pct: 0.8
+  log_level: "INFO"
+  trace_requests: true

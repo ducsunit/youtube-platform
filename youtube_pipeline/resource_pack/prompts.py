@@ -1321,3 +1321,83 @@ Trả JSON:
   "tags":[],
   "source_note":""
 }}"""
+
+
+# ─────────────────────────────────────────────────────────────
+# V2 PROMPTS (Problem-Solving Format 8-10 min + Shorts)
+# ─────────────────────────────────────────────────────────────
+
+from .prompts_v2 import (
+    psychology_brief_v2_prompt,
+    contract_v2_prompt,
+    shot_list_prompt,
+    writing_v2_prompt,
+    review_v2_prompt,
+    planning_prompt,
+    _shorts_script_prompt,
+    _shorts_shot_list_prompt,
+    _shorts_publish_prompt,
+)
+
+# Expose v2 prompts at module level for backward compatibility
+psychology_brief_v2_prompt = psychology_brief_v2_prompt
+contract_v2_prompt = contract_v2_prompt
+shot_list_prompt = shot_list_prompt
+writing_v2_prompt = writing_v2_prompt
+review_v2_prompt = review_v2_prompt
+planning_prompt = planning_prompt
+
+__all__ = [
+    "SOURCE_SYSTEM",
+    "TOPIC_RESEARCH_SYSTEM",
+    "TOPIC_SELECTION_SYSTEM",
+    "CONTRACT_SYSTEM",
+    "PSYCHOLOGY_BRIEF_SYSTEM",
+    "ANTI_STORY_RULES",
+    "CLAIM_VOCAB_BAN_VI",
+    "CLAIM_VOCAB_BAN_JA",
+    "PLANNING_SYSTEM",
+    "WRITING_SYSTEM",
+    "REVIEW_SYSTEM",
+    "AUDIT_SYSTEM",
+    "REPAIR_SYSTEM",
+    "TRANSLATE_SYSTEM",
+    "PUBLISH_SYSTEM",
+    "CHARACTER_BIBLE",
+    "CHARACTER_REFERENCE_LOCK",
+    "CHARACTER_SAFETY",
+    "CHARACTER_STYLE_LOCK",
+    "THUMBNAIL_COMPOSITION_LOCK",
+    "THUMBNAIL_TYPOGRAPHY_LOCK",
+    "THUMBNAIL_SYSTEM",
+    "IMAGE_SYSTEM",
+    "PUBLISH_SYSTEM",
+    "_json",
+    "topic_research_prompt",
+    "topic_candidates_prompt",
+    "topic_selection_prompt",
+    "source_prompt",
+    "psychology_brief_prompt",
+    "contract_prompt",
+    "planning_prompt",
+    "writing_prompt",
+    "review_prompt",
+    "audit_prompt",
+    "repair_prompt",
+    "translate_prompt",
+    "thumbnail_prompt",
+    "image_strategy_prompt",
+    "image_strategy_foundation_prompt",
+    "image_strategy_chunk_prompt",
+    "image_prompts_prompt",
+    "publish_prompt",
+    "vietnamese_translation_prompt",
+    "writing_movement_prompt",
+    # V2 prompts
+    "psychology_brief_v2_prompt",
+    "contract_v2_prompt",
+    "shot_list_prompt",
+    "writing_v2_prompt",
+    "review_v2_prompt",
+    "planning_prompt",
+]

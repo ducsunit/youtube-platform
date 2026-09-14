@@ -69,7 +69,26 @@ from .validation import (
     unsupported_source_claims,
     mechanism_is_covered,
     title_hook_alignment,
+    # V2 validation
+    validate_contract_v2,
+    validate_psychology_brief_v2,
+    validate_shot_list,
 )
+
+# V2 stages
+from .stages.psychology_brief_v2 import _psychology_brief_v2
+from .stages.contract_v2 import _contract_v2
+from .stages.shot_list import _shot_list
+from .stages.script_writing_v2 import _script_writing_v2
+from .stages.review_v2 import _review_v2
+from .stages.character_ref import _character_ref_gen
+from .stages.image_batch import _image_batch_gen
+from .stages.thumbnail import _thumbnail_gen
+from .stages.animation import _animation_gen
+from .stages.lip_sync import _lip_sync_gen
+from .stages.voiceover import _voiceover_gen
+from .stages.video_edit import _video_edit
+from .stages.shorts_pipeline import _shorts_pipeline
 
 logger = logging.getLogger(__name__)
 
@@ -1835,6 +1854,10 @@ RESOURCE_PACK_REQUIRED = (
     "thumbnail_contract",
     "thumbnail_prompt", "thumbnail_prompt_text", "image_strategy", "storyboard", "image_prompts_all", "image_prompt_qa",
     "description_draft", "pinned_comment", "publish_metadata",
+    # V2 artifacts
+    "psychology_brief_v2", "script_contract_v2", "shot_list", "voiceover_segments", "animation_clips",
+    "synced_clips", "character_ref_url", "generated_images", "thumbnail_options",
+    "animation_clips", "synced_clips", "final_video", "shorts_publish_pack",
 )
 
 
@@ -1902,9 +1925,17 @@ def resource_pack_stages(output_dir: Path | None = None) -> list[FunctionStage]:
         FunctionStage("topic_selection", _topic_selection, requires=("topic_candidates", "topic_research", "performance_review"), version="3"),
         FunctionStage("source_lock", _source_lock, requires=("selected_topic", "channel_snapshot", "performance_review")),
         FunctionStage("claim_ledger", _claim_ledger, requires=("source_pack",), version="3"),
-        # One skill-led creative brief emits compatibility artifacts consumed by
-        # downstream packaging/visual stages. It replaces three independent
-        # model calls (brief -> contract -> planning).
+        # V2: Problem-solving psychology brief (1 mechanism + 3 tools)
+        FunctionStage("psychology_brief_v2", _psychology_brief_v2, requires=("selected_topic", "source_pack", "claim_ledger", "performance_review"), version="1"),
+        # V2: Contract for 8-10min problem-solving format
+        FunctionStage("contract_v2", _contract_v2, requires=("psychology_brief_v2", "source_pack", "performance_review"), version="1"),
+        # V2: Shot list with 55 shots mapping
+        FunctionStage("shot_list", _shot_list, requires=("script_draft", "script_contract", "psychology_brief"), version="1"),
+        # V2: Script writing v2 (problem-solving format)
+        FunctionStage("script_writing_v2", _script_writing_v2, requires=("contract_v2", "shot_list", "source_pack", "claim_ledger", "psychology_brief"), version="1"),
+        # V2: Review v2 (problem-solving gate)
+        FunctionStage("review_v2", _review_v2, requires=("script_draft", "contract_v2", "planning", "source_pack", "claim_ledger", "psychology_brief"), version="1"),
+        # Legacy compatibility (deprecated but kept for transition)
         FunctionStage("narrative_brief", _narrative_brief, requires=("selected_topic", "source_pack", "claim_ledger", "performance_review"), version="6"),
         FunctionStage("writing", _writing, requires=("script_contract", "planning", "source_pack", "claim_ledger", "psychology_brief"), version="11"),
         # One audit plus at most one targeted repair; no generic review pass.
@@ -1917,6 +1948,20 @@ def resource_pack_stages(output_dir: Path | None = None) -> list[FunctionStage]:
         FunctionStage("thumbnail_contract", _thumbnail, requires=("final_script", "script_contract"), version="10"),
         FunctionStage("image_strategy", _image_strategy, requires=("final_script", "script_qa", "sections", "script_contract", "planning", "thumbnail_contract"), version="8"),
         FunctionStage("image_prompts", _image_prompts, requires=("image_strategy", "script_qa", "sections", "script_contract", "planning"), version="8"),
+        FunctionStage("publish_draft", _publish, requires=("script_contract", "source_pack"), version="2"),
+        # V2: Visual pipeline (ComfyUI + IP-Adapter)
+        FunctionStage("character_ref_gen", _character_ref_gen, requires=("psychology_brief_v2", "script_contract_v2"), version="1"),
+        FunctionStage("image_batch_gen", _image_batch_gen, requires=("shot_list", "character_ref_url"), version="1"),
+        FunctionStage("thumbnail_gen", _thumbnail_gen, requires=("script_contract_v2", "character_ref_url"), version="1"),
+        # V2: Motion pipeline
+        FunctionStage("animation_gen", _animation_gen, requires=("shot_list", "generated_images"), version="1"),
+        FunctionStage("lip_sync_gen", _lip_sync_gen, requires=("shot_list", "animation_clips", "voiceover_segments"), version="1"),
+        # V2: Audio pipeline
+        FunctionStage("voiceover_gen", _voiceover_gen, requires=("shot_list", "script_draft"), version="1"),
+        # V2: Video assembly
+        FunctionStage("video_edit", _video_edit, requires=("shot_list", "synced_clips", "voiceover_segments", "animation_clips"), version="1"),
+        # V2: Shorts pipeline
+        FunctionStage("shorts_pipeline", _shorts_pipeline, requires=("script_draft", "psychology_brief_v2", "character_ref_url"), version="1"),
         FunctionStage("publish_draft", _publish, requires=("script_contract", "source_pack"), version="2"),
         FunctionStage("resource_pack", _resource_pack, requires=("sections", "thumbnail_contract", "image_prompt_pack", "publish_metadata"), version="8"),
     ]

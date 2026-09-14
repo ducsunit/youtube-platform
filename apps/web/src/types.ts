@@ -585,3 +585,158 @@ export interface SrtJob {
   exit_code: number | null;
   output_path?: string;
 }
+
+// ---- Problem-Solving Pipeline (ps-pipeline) -----------------------------------
+
+export interface PSRunBody {
+  run_id?: string;
+  topic: string;
+  mode?: 'demo' | 'production';
+  manual_brief?: string;
+  output_dir?: string;
+}
+
+export interface PSRunResponse {
+  run_id: string;
+  status: string;
+  message: string;
+  run_dir: string;
+  log_path: string;
+}
+
+export interface PSRunStatus {
+  run_id: string;
+  status: string;
+  current_stage?: string;
+  stage_progress: Record<string, string>;
+  artifacts_ready: Record<string, boolean>;
+  progress_percent: number;
+  message: string;
+  updated_at: string;
+}
+
+export interface PSRunListItem {
+  run_id: string;
+  topic: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  progress_percent: number;
+}
+
+export interface PSRunList {
+  runs: PSRunListItem[];
+}
+
+export interface PSArtifact {
+  type: string;
+  size_bytes: number;
+  path: string;
+}
+
+export interface PSArtifactList {
+  run_id: string;
+  artifacts: Record<string, PSArtifact>;
+}
+
+export interface PSRunBody {
+  run_id?: string;
+  topic: string;
+  mode?: 'demo' | 'production';
+  manual_brief?: string;
+  output_dir?: string;
+}
+
+export interface PSRunResponse {
+  run_id: string;
+  status: string;
+  message: string;
+  run_dir: string;
+  log_path: string;
+}
+
+export interface PSRunStatus {
+  run_id: string;
+  status: string;
+  current_stage?: string;
+  stage_progress: Record<string, string>;
+  artifacts_ready: Record<string, boolean>;
+  progress_percent: number;
+  message: string;
+  updated_at: string;
+}
+
+export interface PSRunListItem {
+  run_id: string;
+  topic: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  progress_percent: number;
+}
+
+export interface PSRunList {
+  runs: PSRunListItem[];
+}
+
+export interface PSArtifact {
+  type: string;
+  size_bytes: number;
+  path: string;
+}
+
+export interface PSArtifactList {
+  run_id: string;
+  artifacts: Record<string, PSArtifact>;
+}
+
+export interface PSRunBody {
+  run_id?: string;
+  topic: string;
+  mode?: 'demo' | 'production';
+  manual_brief?: string;
+  output_dir?: string;
+}
+
+export interface PSRunResponse {
+  run_id: string;
+  status: string;
+  message: string;
+  run_dir: string;
+  log_path: string;
+}
+
+export interface PSRunStatus {
+  run_id: string;
+  status: string;
+  current_stage?: string;
+  stage_progress: Record<string, string>;
+  artifacts_ready: Record<string, boolean>;
+  progress_percent: number;
+  message: string;
+  updated_at: string;
+}
+
+export interface PSRunListItem {
+  run_id: string;
+  topic: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  progress_percent: number;
+}
+
+export interface PSRunList {
+  runs: PSRunListItem[];
+}
+
+export interface PSArtifact {
+  type: string;
+  size_bytes: number;
+  path: string;
+}
+
+export interface PSArtifactList {
+  run_id: string;
+  artifacts: Record<string, PSArtifact>;
+}

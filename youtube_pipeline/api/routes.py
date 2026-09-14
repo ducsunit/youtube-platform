@@ -24,8 +24,10 @@ from fastapi.responses import StreamingResponse
 
 from . import content, paths
 from .runner import BusyError, runner
+from .ps_pipeline_routes import ps_router
 
 router = APIRouter(prefix="/api")
+router.include_router(ps_router)
 
 _RUN_ID_RE = re.compile(paths.RUN_ID_PATTERN)
 

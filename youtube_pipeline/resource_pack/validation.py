@@ -9,6 +9,7 @@ from .claim_ledger import (
     causal_capability_violations,
     source_causal_capabilities,
     source_supports_reinforcement_loop,
+    policy_violations,
 )
 
 from .metrics import non_whitespace_chars
@@ -2052,3 +2053,142 @@ def select_video_candidates(
 
     ranked = sorted(eligible, key=lambda image_id: (-_score(image_id), image_id))
     return ranked[:max_count]
+
+
+# ─────────────────────────────────────────────────────────────
+# V2 VALIDATION FUNCTIONS (Problem-Solving Format)
+# ─────────────────────────────────────────────────────────────
+
+def validate_contract_v2(value: dict) -> None:
+    """Validate contract v2 for problem-solving format."""
+    require_fields(value, (
+        "core_self_insight", "central_emotion", "psychological_identity",
+        "core_psychological_question", "main_tension", "route",
+        "selected_mechanisms", "single_core_promise",
+        "title_candidates", "chosen_title", "chosen_title_char_count",
+        "target_duration_minutes", "target_char_min", "target_char_max",
+        "hook_contract", "format_lock", "content_spine",
+        "recognition_device", "packaging_layer", "tool_slots"
+    ), "contract_v2")
+    
+    # Check duration format
+    duration = value.get("target_duration_minutes", "")
+    if "8-10" not in duration:
+        raise ValueError("target_duration_minutes must be '8-10' for problem-solving format.")
+    
+    # Check char targets
+    if value.get("target_char_min") != 4500 or value.get("target_char_max") != 6500:
+        raise ValueError("Problem-solving format requires 4500-6500 chars.")
+    
+    # Hook contract timing
+    hook = value.get("hook_contract", {})
+    required_hook = {"recognition_by_seconds": 5, "misconception_or_tension_by_seconds": 12,
+                     "first_real_insight_by_seconds": 25, "core_question_by_seconds": 40}
+    for key, expected in required_hook.items():
+        if hook.get(key) != expected:
+            raise ValueError(f"hook_contract.{key} must be {expected} for problem-solving format.")
+    
+    # Format lock
+    fmt = value.get("format_lock", {})
+    if fmt.get("tool_slots") != 3:
+        raise ValueError("format_lock.tool_slots must be 3 for problem-solving format.")
+    if "multiple mechanisms" not in str(fmt.get("forbidden_spine", [])):
+        raise ValueError("format_lock.forbidden_spine must include 'multiple mechanisms'.")
+    
+    # Tool slots
+    tools = value.get("tool_slots", [])
+    if len(tools) != 3:
+        raise ValueError("contract_v2 must have exactly 3 tool_slots.")
+    for i, tool in enumerate(tools):
+        require_fields(tool, ("slot", "tool_name", "mechanism_link"), f"tool_slots[{i}]")
+        if tool.get("slot") != i + 1:
+            raise ValueError(f"tool_slots[{i}].slot must be {i+1}.")
+
+
+def validate_psychology_brief_v2(value: dict, source_pack: dict | None = None) -> None:
+    """Validate psychology brief v2 for problem-solving format (1 mechanism + 3 tools)."""
+    # Inherit base validation
+    validate_psychology_brief(value, source_pack)
+    
+    # Check exactly 1 mechanism
+    selected = value.get("selected_mechanisms", [])
+    if len(selected) != 1:
+        raise ValueError("Problem-solving format requires EXACTLY 1 mechanism in selected_mechanisms.")
+    
+    # Check exactly 3 actionable tools
+    tools = value.get("actionable_tools", [])
+    if len(tools) != 3:
+        raise ValueError("Problem-solving format requires EXACTLY 3 actionable_tools.")
+    
+    for i, tool in enumerate(tools):
+        require_fields(tool, ("name", "description", "script_template", "micro_action", "mechanism_link"), f"actionable_tools[{i}]")
+        if tool.get("mechanism_link") != selected[0].get("name"):
+            raise ValueError(f"actionable_tools[{i}].mechanism_link must link to the single mechanism.")
+
+
+def validate_shot_list(value: dict) -> None:
+    """Validate shot list for problem-solving format."""
+    require_fields(value, ("shots",), "shot_list")
+    shots = value.get("shots", [])
+    if not 50 <= len(shots) <= 60:
+        raise ValueError(f"Shot list must have 50-60 shots, got {len(shots)}.")
+    
+    total_duration = 0
+    character_shots = 0
+    lip_sync_shots = 0
+    prev_end = 0
+    
+    for i, shot in enumerate(shots):
+        require_fields(shot, ("shot_id", "type", "prompt", "visual_information", 
+                              "duration_sec", "audio_segment", "lip_sync", 
+                              "animation_provider", "motion", "text_start", "text_end"), f"shot_list[{i}]")
+        
+        # Check type
+        if shot["type"] not in ("character_closeup", "character_medium", "pov_screen", "metaphor", "environment"):
+            raise ValueError(f"Shot {shot['shot_id']}: invalid type '{shot['type']}'.")
+        
+        # Check duration
+        dur = shot["duration_sec"]
+        if not 2 <= dur <= 15:
+            raise ValueError(f"Shot {shot['shot_id']}: duration {dur}s out of range 2-15s.")
+        
+        # Check text mapping
+        if shot["text_start"] != prev_end:
+            raise ValueError(f"Shot {shot['shot_id']}: text_start {shot['text_start']} != prev_end {prev_end}.")
+        if shot["text_end"] <= shot["text_start"]:
+            raise ValueError(f"Shot {shot['shot_id']}: text_end <= text_start.")
+        prev_end = shot["text_end"]
+        
+        total_duration += shot["duration_sec"]
+        if shot["type"] in ("character_closeup", "character_medium"):
+            character_shots += 1
+        if shot.get("lip_sync"):
+            lip_sync_shots += 1
+    
+    if not 480 <= total_duration <= 600:
+        raise ValueError(f"Total duration {total_duration}s out of range 480-600s (8-10 min).")
+    
+    if character_shots < 15:
+        raise ValueError(f"Need at least 15 character shots for lip-sync, got {character_shots}.")
+
+
+def validate_psychology_brief_v2(value: dict, source_pack: dict | None = None) -> None:
+    """Validate psychology brief v2 for problem-solving format (1 mechanism + 3 tools)."""
+    # Inherit base validation
+    validate_psychology_brief(value, source_pack)
+    
+    # Check exactly 1 mechanism
+    selected = value.get("selected_mechanisms", [])
+    if len(selected) != 1:
+        raise ValueError("Problem-solving format requires EXACTLY 1 mechanism in selected_mechanisms.")
+    
+    # Check exactly 3 actionable tools
+    tools = value.get("actionable_tools", [])
+    if len(tools) != 3:
+        raise ValueError("Problem-solving format requires EXACTLY 3 actionable_tools.")
+    
+    mechanism_name = selected[0].get("name") if selected else ""
+    for i, tool in enumerate(tools):
+        require_fields(tool, ("name", "description", "script_template", "micro_action", "mechanism_link"), f"actionable_tools[{i}]")
+        if tool.get("mechanism_link") != mechanism_name:
+            raise ValueError(f"actionable_tools[{i}].mechanism_link must link to the single mechanism: {mechanism_name}.")

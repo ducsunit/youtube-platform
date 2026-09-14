@@ -1,0 +1,133 @@
+{
+  "1": {
+    "inputs": {
+      "ckpt_name": "sd_xl_base_1.0.safetensors"
+    },
+    "class_type": "CheckpointLoaderSimple",
+    "_meta": {
+      "title": "Load SDXL Checkpoint"
+    }
+  },
+  "2": {
+    "inputs": {
+      "image": "ref.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "Load Character Reference"
+    }
+  },
+  "3": {
+    "inputs": {
+      "ipadapter_file": "ip-adapter-faceid-plusv2_sdxl.bin",
+      "image": [
+        "2",
+        0
+      ],
+      "weight": 0.9,
+      "faceid_weight": 0.95,
+      "provider": "cuda",
+      "insightface_provider": "cuda"
+    },
+    "class_type": "IPAdapterFaceID",
+    "_meta": {
+      "title": "IP-Adapter FaceID"
+    }
+  },
+  "4": {
+    "inputs": {
+      "text": "INPUT_PROMPT_PLACEHOLDER",
+      "clip": [
+        "1",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "Encode Shot Prompt"
+    }
+  },
+  "5": {
+    "inputs": {
+      "text": "photorealistic, realistic, detailed face, anime, manga, color, gradient, shadow, noise, watermark, text, signature, ugly, deformed, extra limbs, low quality, blurry, bad anatomy, mutated",
+      "clip": [
+        "1",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "Encode Negative Prompt"
+    }
+  },
+  "6": {
+    "inputs": {
+      "seed": 123456789,
+      "steps": 25,
+      "cfg": 7,
+      "sampler_name": "euler_ancestral",
+      "scheduler": "karras",
+      "denoise": 1,
+      "model": [
+        "3",
+        0
+      ],
+      "positive": [
+        "4",
+        0
+      ],
+      "negative": [
+        "5",
+        0
+      ],
+      "latent_image": [
+        "7",
+        0
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "KSampler"
+    }
+  },
+  "7": {
+    "inputs": {
+      "width": 1024,
+      "height": 576,
+      "batch_size": 4
+    },
+    "class_type": "EmptyLatentImage",
+    "_meta": {
+      "title": "Empty Latent Image (Batch)"
+    }
+  },
+  "8": {
+    "inputs": {
+      "samples": [
+        "6",
+        0
+      ],
+      "vae": [
+        "1",
+        2
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "9": {
+    "inputs": {
+      "filename_prefix": "shot",
+      "images": [
+        "8",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "Save Shot Images"
+    }
+  }
+}
