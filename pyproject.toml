@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "youtube-ai-pipeline"
 version = "0.1.0"
-description = "Stateful Gemini/DeepSeek pipeline for producing YouTube scripts"
+description = "AI-powered platform for researching, generating, validating, and refining YouTube content"
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [

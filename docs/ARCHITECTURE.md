@@ -1,69 +1,114 @@
 # Architecture
 
-## Monorepo boundary
-
-The repository is one application. YouTube data acquisition is part of
-`youtube_pipeline.analysis`; it is not a second project or a subprocess dependency.
+## High-Level Architecture
 
 ```text
-youtube-v3/
-├── youtube_pipeline/
-│   ├── analysis/             # YouTube Data/Analytics/Reporting collector
-│   ├── api/                  # FastAPI routes + job runners
-│   ├── core/                 # resumable stage engine, state, artifacts
-│   ├── domain/               # domain models and consistency rules
-│   ├── infrastructure/      # logging and model tracing
-│   ├── resource_pack/       # research → psychology → script → packaging
-│   └── video/                # timeline/build/Veo
-├── apps/web/                 # React/Vite dashboard
-├── data/channels/            # channel input/output JSON
-├── config/channels/          # channel configuration templates
-├── runs/                     # resumable per-video artifacts
-├── runtime/logs/             # process logs and job pid files
-├── assets/                   # production assets
-├── docs/                     # documentation and editorial specs
-├── skills/                   # AI production skills
-└── tests/
+┌─────────────────────┐
+│      Web Client     │
+│      apps/web       │
+└──────────┬──────────┘
+           │
+           ▼
+┌─────────────────────┐
+│       FastAPI       │
+│       Backend       │
+└──────────┬──────────┘
+           │
+           ▼
+┌─────────────────────────────────┐
+│        Pipeline Engine          │
+│                                 │
+│  ┌───────────────────────────┐  │
+│  │ Resource Analysis         │  │
+│  └─────────────┬─────────────┘  │
+│                ▼                │
+│  ┌───────────────────────────┐  │
+│  │ Topic Selection           │  │
+│  └─────────────┬─────────────┘  │
+│                ▼                │
+│  ┌───────────────────────────┐  │
+│  │ Content Generation        │  │
+│  └─────────────┬─────────────┘  │
+│                ▼                │
+│  ┌───────────────────────────┐  │
+│  │ Content Validation        │  │
+│  └─────────────┬─────────────┘  │
+│                ▼                │
+│  ┌───────────────────────────┐  │
+│  │ Targeted Repair           │  │
+│  └─────────────┬─────────────┘  │
+│                ▼                │
+│  ┌───────────────────────────┐  │
+│  │ Metrics / Logging         │  │
+│  └───────────────────────────┘  │
+└───────────────┬─────────────────┘
+                │
+       ┌────────┼─────────┐
+       ▼        ▼         ▼
+   Gemini    OpenAI    DeepSeek
+
+                │
+                ▼
+       ┌──────────────────┐
+       │  YouTube Data API │
+       │  Google OAuth 2.0 │
+       └──────────────────┘
 ```
 
-## Dependency direction
+## Pipeline Design
+
+The pipeline is organized as sequential processing stages.
+
+Each stage can:
+
+1. Receive structured input from the previous stage.
+2. Execute its processing logic.
+3. Validate its output.
+4. Retry when the failure is transient.
+5. Fail fast when the error is deterministic.
+6. Record execution metrics.
+
+## Reliability Model
 
 ```text
-apps/web
-    │ HTTP
-    ▼
-youtube_pipeline.api
-    │
-    ├── analysis
-    ├── resource_pack
-    ├── video
-    └── core/domain/infrastructure
+Stage
+ │
+ ▼
+Execute
+ │
+ ├── Success ───────────────► Next Stage
+ │
+ ├── Deterministic Error ──► Fail Fast
+ │
+ ├── Transient Error ──────► Retry
+ │
+ └── Invalid Model Output ─► Limited Fresh Retry
 ```
 
-`youtube_pipeline.api` owns process/job orchestration. The analysis collector is
-a normal package module and can also be executed through:
+## Content Repair
 
-```bash
-python -m youtube_pipeline.analysis.youtube_pull
+Content validation can identify localized quality issues.
+
+Instead of regenerating the complete output:
+
+```text
+Generated Script
+       │
+       ▼
+    Validate
+       │
+       ├── Valid ──────► Final
+       │
+       └── Invalid
+              │
+              ▼
+       Identify Issue
+              │
+              ▼
+       Targeted Repair
+              │
+              ▼
+            Final
 ```
 
-`YT_DATA_PULL_DIR` remains an explicit compatibility override for users who still
-maintain an external collector.
-
-## Resource-pack pipeline
-
-The production resource flow is canonical under `youtube_pipeline.resource_pack`.
-The old top-level `resource_*` modules are compatibility shims only.
-
-The current stage order is defined by `resource_pack.pipeline.resource_pack_stages()`
-and remains resumable through `runs/<run-id>/run_state.json`.
-
-## Runtime data
-
-- Channel JSON: `data/channels/`
-- Pipeline artifacts: `runs/<run-id>/`
-- API job logs: `runtime/logs/`
-- Thumbnail assets: `assets/thumbnails/`
-
-Secrets (`.env`, OAuth client files and `token.json`) are local-only and must never
-be committed.
+This approach reduces unnecessary regeneration and keeps the repair process focused on the detected issue.
